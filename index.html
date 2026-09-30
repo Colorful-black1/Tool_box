@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星轨书屋 · Novel Read UI 设计稿</title>
+<style>
+/* ============================================================
+   星轨书屋 · 米哈游二次元风格 UI 设计稿
+   风格参考: 崩坏·星穹铁道 (Honkai: Star Rail)
+   配色: 深空蓝黑底 + 鎏金描边 + 星辉青点缀 + 玻璃拟态
+   ============================================================ */
+:root {
+  --bg-deep: #080b16;
+  --bg-panel: rgba(20, 26, 48, .72);
+  --bg-panel-solid: #141a30;
+  --gold: #e8c98a;
+  --gold-dim: #b89b62;
+  --gold-line: rgba(232, 201, 138, .35);
+  --cyan: #7fe7ff;
+  --purple: #b48cf2;
+  --pink: #ff9ec7;
+  --text-hi: #f4eedd;
+  --text-mid: #a9b0c8;
+  --text-dim: #5d6480;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: var(--sans);
+  background: var(--bg-deep);
+  color: var(--text-hi);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ---------- 星空背景 ---------- */
+.starfield {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 55% at 70% -10%, rgba(72, 60, 140, .38), transparent 60%),
+    radial-gradient(ellipse 60% 45% at 10% 110%, rgba(30, 80, 120, .30), transparent 60%),
+    radial-gradient(ellipse 40% 35% at 95% 80%, rgba(120, 70, 140, .18), transparent 60%),
+    linear-gradient(180deg, #0a0e1e 0%, #080b16 100%);
+}
+.star { position: absolute; background: #fff; border-radius: 50%; opacity: .8;
+  animation: twinkle var(--d, 3s) ease-in-out infinite alternate; }
+@keyframes twinkle { from { opacity: .15; transform: scale(.7);} to { opacity: .9; transform: scale(1.15);} }
+.shooting-star {
+  position: absolute; width: 140px; height: 1.5px; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255,255,255,.9), transparent);
+  transform: rotate(-35deg); opacity: 0;
+  animation: shoot 9s linear infinite;
+}
+@keyframes shoot {
+  0%, 82% { opacity: 0; transform: rotate(-35deg) translateX(0); }
+  84% { opacity: 1; }
+  92%, 100% { opacity: 0; transform: rotate(-35deg) translateX(-420px); }
+}
+
+/* ---------- 整体框架 ---------- */
+.app {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  height: 100vh;
+}
+
+/* ---------- 左侧导航栏 ---------- */
+.side-rail {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 22px 0 18px;
+  background: linear-gradient(180deg, rgba(16,20,40,.85), rgba(10,13,26,.9));
+  border-right: 1px solid var(--gold-line);
+  backdrop-filter: blur(14px);
+}
+.logo-mark {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: grid; place-items: center;
+  font-family: var(--serif); font-size: 24px; font-weight: 700; color: #1a1408;
+  background: linear-gradient(135deg, #f5dfa8, #d3ab5e 60%, #a87f3a);
+  box-shadow: 0 0 18px rgba(232,201,138,.45), inset 0 1px 0 rgba(255,255,255,.5);
+  clip-path: polygon(12% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 12%);
+  margin-bottom: 26px;
+}
+.nav-item {
+  width: 64px; padding: 11px 0 9px; margin-bottom: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  border-radius: 12px; cursor: pointer;
+  color: var(--text-dim); font-size: 11px; letter-spacing: 2px;
+  border: 1px solid transparent;
+  transition: all .28s cubic-bezier(.4,0,.2,1);
+  position: relative;
+}
+.nav-item .ico { font-size: 21px; filter: grayscale(.6) opacity(.65); transition: all .28s; }
+.nav-item:hover { color: var(--text-mid); }
+.nav-item.active {
+  color: var(--gold);
+  background: linear-gradient(160deg, rgba(232,201,138,.14), rgba(232,201,138,.03));
+  border-color: var(--gold-line);
+  box-shadow: 0 0 16px rgba(232,201,138,.12), inset 0 0 12px rgba(232,201,138,.06);
+}
+.nav-item.active .ico { filter: none; transform: scale(1.12); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 26px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--gold), transparent);
+  box-shadow: 0 0 8px var(--gold);
+}
+.rail-spacer { flex: 1; }
+.rail-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--gold-dim);
+  background: radial-gradient(circle at 35% 30%, #f9d9a8, #c98a4b 70%);
+  display: grid; place-items: center; font-size: 20px;
+  box-shadow: 0 0 12px rgba(232,201,138,.3);
+  cursor: pointer;
+}
+
+/* ---------- 主区域 ---------- */
+.main { display: flex; flex-direction: column; overflow: hidden; }
+
+/* 顶栏 */
+.topbar {
+  display: flex; align-items: center; gap: 20px;
+  padding: 18px 34px 14px;
+  border-bottom: 1px solid rgba(232,201,138,.14);
+  background: linear-gradient(180deg, rgba(12,16,32,.6), transparent);
+}
+.page-title { font-family: var(--serif); font-size: 26px; letter-spacing: 6px; font-weight: 700;
+  background: linear-gradient(120deg, #f7e7bd, var(--gold) 55%, #c9a55f);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.page-sub { font-size: 11px; color: var(--text-dim); letter-spacing: 3px; margin-top: 3px; }
+.search-box {
+  margin-left: auto; display: flex; align-items: center; gap: 9px;
+  width: 300px; padding: 9px 16px;
+  background: rgba(255,255,255,.045);
+  border: 1px solid rgba(232,201,138,.22);
+  border-radius: 999px; color: var(--text-dim); font-size: 13px;
+  transition: all .25s;
+}
+.search-box:focus-within { border-color: var(--gold); box-shadow: 0 0 14px rgba(232,201,138,.18); color: var(--text-mid); }
+.search-box input { flex: 1; background: none; border: none; outline: none; color: var(--text-hi); font-size: 13px; }
+.top-actions { display: flex; gap: 12px; }
+.orb-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 16px; cursor: pointer;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(232,201,138,.22);
+  transition: all .25s;
+}
+.orb-btn:hover { border-color: var(--gold); box-shadow: 0 0 12px rgba(232,201,138,.25); transform: translateY(-1px); }
+
+/* 视图容器 */
+.viewport { flex: 1; overflow-y: auto; padding: 26px 34px 40px; position: relative; }
+.viewport::-webkit-scrollbar { width: 6px; }
+.viewport::-webkit-scrollbar-thumb { background: rgba(232,201,138,.25); border-radius: 3px; }
+.view { display: none; animation: viewIn .45s cubic-bezier(.22,.9,.3,1); }
+.view.show { display: block; }
+@keyframes viewIn { from { opacity: 0; transform: translateY(14px);} to { opacity: 1; transform: none;} }
+
+/* 通用: 分区标题 */
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 16px; }
+.sec-head:first-child { margin-top: 0; }
+.sec-title { font-family: var(--serif); font-size: 19px; letter-spacing: 4px; color: var(--text-hi); }
+.sec-title::before { content: "◆ "; color: var(--gold); font-size: 12px; vertical-align: 2px; }
+.sec-more { margin-left: auto; font-size: 12px; color: var(--text-dim); cursor: pointer; letter-spacing: 1px; }
+.sec-more:hover { color: var(--gold); }
+
+/* ---------- 玻璃卡片 ---------- */
+.glass {
+  background: var(--bg-panel);
+  border: 1px solid rgba(232,201,138,.16);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+}
+
+/* ---------- 书架视图 ---------- */
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 22px; }
+.book-card { cursor: pointer; transition: transform .3s cubic-bezier(.34,1.4,.5,1); }
+.book-card:hover { transform: translateY(-7px); }
+.book-cover {
+  position: relative; aspect-ratio: 3/4; border-radius: 10px; overflow: hidden;
+  border: 1px solid rgba(232,201,138,.3);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  transition: box-shadow .3s;
+}
+.book-card:hover .book-cover { box-shadow: 0 14px 34px rgba(0,0,0,.6), 0 0 22px rgba(232,201,138,.22); }
+.cover-art { position: absolute; inset: 0; }
+.cover-title {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 12px 12px;
+  font-family: var(--serif); font-size: 15px; letter-spacing: 2px;
+  background: linear-gradient(transparent, rgba(5,7,14,.92));
+  text-shadow: 0 2px 6px #000;
+}
+.cover-tag {
+  position: absolute; top: 8px; left: 8px; padding: 3px 9px;
+  font-size: 10px; letter-spacing: 1px; border-radius: 4px;
+  background: rgba(8,11,22,.72); border: 1px solid var(--gold-line); color: var(--gold);
+  backdrop-filter: blur(4px);
+}
+.book-meta { padding: 10px 4px 0; }
+.book-name { font-size: 13.5px; color: var(--text-hi); letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-progress { margin-top: 7px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; }
+.book-progress i { display: block; height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold)); box-shadow: 0 0 6px rgba(232,201,138,.5); }
+.book-sub { margin-top: 6px; font-size: 11px; color: var(--text-dim); }
+
+/* 继续阅读横幅 */
+.continue-banner {
+  display: flex; align-items: center; gap: 24px;
+  padding: 22px 28px; margin-bottom: 8px;
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(ellipse 50% 120% at 85% 50%, rgba(127,231,255,.10), transparent),
+    linear-gradient(120deg, rgba(28,34,62,.9), rgba(16,20,40,.85));
+  border: 1px solid rgba(232,201,138,.25);
+  border-radius: 16px;
+}
+.continue-banner::after {
+  content: ""; position: absolute; right: -40px; top: -60px; width: 260px; height: 260px;
+  background: radial-gradient(circle, rgba(232,201,138,.12), transparent 70%);
+  border-radius: 50%;
+}
+.cb-cover { width: 74px; height: 100px; border-radius: 8px; flex-shrink: 0;
+  border: 1px solid var(--gold-line); box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.cb-info { flex: 1; min-width: 0; }
+.cb-label { font-size: 11px; color: var(--cyan); letter-spacing: 3px; margin-bottom: 7px; }
+.cb-title { font-family: var(--serif); font-size: 21px; letter-spacing: 2px; margin-bottom: 7px; }
+.cb-chapter { font-size: 12.5px; color: var(--text-mid); }
+.btn-gold {
+  padding: 12px 34px; border: none; cursor: pointer;
+  font-family: var(--serif); font-size: 15px; letter-spacing: 4px; font-weight: 700;
+  color: #241b08; border-radius: 8px;
+  background: linear-gradient(135deg, #f7e3b0, #dcb76f 55%, #c39a4e);
+  box-shadow: 0 4px 18px rgba(232,201,138,.35), inset 0 1px 0 rgba(255,255,255,.6);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: all .25s;
+}
+.btn-gold:hover { filter: brightness(1.1); box-shadow: 0 6px 24px rgba(232,201,138,.5); transform: translateY(-1px); }
+
+/* ---------- 书城视图 ---------- */
+.hero-banner {
+  position: relative; height: 210px; border-radius: 16px; overflow: hidden;
+  border: 1px solid rgba(232,201,138,.28);
+  background:
+    radial-gradient(ellipse 70% 100% at 80% 20%, rgba(180,140,242,.35), transparent 55%),
+    radial-gradient(ellipse 60% 90% at 25% 90%, rgba(127,231,255,.22), transparent 55%),
+    linear-gradient(120deg, #1c2242, #10152c 70%);
+  display: flex; align-items: center; padding: 0 44px;
+}
+.hero-text .tag { font-size: 11px; letter-spacing: 4px; color: var(--cyan); margin-bottom: 10px; }
+.hero-text h2 { font-family: var(--serif); font-size: 30px; letter-spacing: 5px; margin-bottom: 10px;
+  background: linear-gradient(120deg, #fff, var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-text p { font-size: 13px; color: var(--text-mid); max-width: 420px; line-height: 1.8; }
+.hero-orb { position: absolute; right: 60px; top: 50%; transform: translateY(-50%);
+  width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,236,190,.9), rgba(212,160,80,.65) 45%, rgba(120,80,180,.25) 75%, transparent);
+  filter: blur(1px); box-shadow: 0 0 60px rgba(232,201,138,.4);
+  animation: float 5s ease-in-out infinite alternate; }
+@keyframes float { from { transform: translateY(-56%);} to { transform: translateY(-44%);} }
+.hero-dots { position: absolute; bottom: 16px; left: 44px; display: flex; gap: 7px; }
+.hero-dots i { width: 18px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.18); }
+.hero-dots i.on { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+
+.rank-wrap { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.rank-col { padding: 18px 20px; }
+.rank-col h4 { font-family: var(--serif); font-size: 15px; letter-spacing: 3px; color: var(--gold);
+  padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(232,201,138,.18); }
+.rank-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
+.rank-row:hover .rank-name { color: var(--gold); }
+.rank-no { width: 24px; font-family: var(--serif); font-size: 16px; font-style: italic; color: var(--text-dim); text-align: center; }
+.rank-row:nth-child(2) .rank-no, .rank-row:nth-child(3) .rank-no, .rank-row:nth-child(4) .rank-no { color: var(--gold); text-shadow: 0 0 8px rgba(232,201,138,.5); }
+.rank-name { flex: 1; font-size: 13px; color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
+.rank-heat { font-size: 11px; color: var(--pink); }
+
+/* ---------- 阅读器视图 ---------- */
+.reader-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 22px; height: calc(100vh - 150px); }
+.reader-page {
+  border-radius: 16px; padding: 52px 64px; overflow-y: auto;
+  background: linear-gradient(180deg, #f6ecd9, #efe2c8);
+  border: 1px solid rgba(184,155,98,.5);
+  color: #3a3226; box-shadow: 0 10px 40px rgba(0,0,0,.45), inset 0 0 80px rgba(184,155,98,.15);
+  user-select: text;
+}
+.reader-page::-webkit-scrollbar { width: 6px; }
+.reader-page::-webkit-scrollbar-thumb { background: rgba(120,95,50,.3); border-radius: 3px; }
+.rp-chapter { font-family: var(--serif); font-size: 24px; letter-spacing: 3px; text-align: center;
+  color: #2c2517; margin-bottom: 8px; }
+.rp-divider { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 14px 0 30px; color: #a08c5c; font-size: 12px; }
+.rp-divider::before, .rp-divider::after { content: ""; width: 70px; height: 1px; background: linear-gradient(90deg, transparent, #b89b62); }
+.rp-divider::after { transform: scaleX(-1); }
+.rp-body p { font-family: var(--serif); font-size: 16.5px; line-height: 2.15; letter-spacing: 1px;
+  margin-bottom: 20px; text-indent: 2em; }
+.reader-tools { display: flex; flex-direction: column; gap: 14px; }
+.tool-card { padding: 18px 20px; }
+.tool-card h5 { font-size: 12px; letter-spacing: 3px; color: var(--gold); margin-bottom: 14px; }
+.font-sizes { display: flex; gap: 8px; }
+.fs-opt { flex: 1; padding: 8px 0; text-align: center; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(232,201,138,.18); color: var(--text-mid); font-size: 12px; transition: all .2s; }
+.fs-opt.on { border-color: var(--gold); color: var(--gold); background: rgba(232,201,138,.1); }
+.theme-dots { display: flex; gap: 12px; }
+.t-dot { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all .2s; }
+.t-dot.on { border-color: var(--gold); box-shadow: 0 0 10px rgba(232,201,138,.4); transform: scale(1.08); }
+.slider-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+.slider { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); position: relative; }
+.slider i { position: absolute; left: 0; top: 0; bottom: 0; width: 62%; border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold)); }
+.slider b { position: absolute; left: 62%; top: 50%; transform: translate(-50%,-50%);
+  width: 14px; height: 14px; border-radius: 50%; background: var(--gold);
+  box-shadow: 0 0 8px rgba(232,201,138,.6); }
+.chapter-list { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 0; }
+.chapter-list::-webkit-scrollbar { width: 5px; }
+.chapter-list::-webkit-scrollbar-thumb { background: rgba(232,201,138,.25); border-radius: 3px; }
+.ch-item { padding: 9px 12px; font-size: 12.5px; color: var(--text-mid); border-radius: 8px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-item:hover { background: rgba(255,255,255,.05); color: var(--text-hi); }
+.ch-item.on { color: var(--gold); background: rgba(232,201,138,.1); }
+
+/* ---------- 我的视图 ---------- */
+.profile-head { display: flex; align-items: center; gap: 24px; padding: 28px 32px; }
+.p-avatar { width: 84px; height: 84px; border-radius: 50%; flex-shrink: 0;
+  border: 3px solid var(--gold-dim); display: grid; place-items: center; font-size: 38px;
+  background: radial-gradient(circle at 35% 30%, #f9d9a8, #c98a4b 70%);
+  box-shadow: 0 0 24px rgba(232,201,138,.35); }
+.p-name { font-family: var(--serif); font-size: 23px; letter-spacing: 3px; margin-bottom: 6px; }
+.p-uid { font-size: 12px; color: var(--text-dim); letter-spacing: 1px; }
+.p-level { margin-left: auto; text-align: right; }
+.p-level .lv { font-family: var(--serif); font-size: 20px; color: var(--gold); font-style: italic; }
+.p-level .bar { width: 190px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 8px; overflow: hidden; }
+.p-level .bar i { display: block; width: 68%; height: 100%; background: linear-gradient(90deg, var(--purple), var(--cyan)); border-radius: 3px; }
+.p-level .exp { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 20px; }
+.stat-card { padding: 20px; text-align: center; position: relative; overflow: hidden; }
+.stat-card::before { content: ""; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.stat-num { font-family: var(--serif); font-size: 27px; color: var(--gold); font-style: italic; }
+.stat-label { font-size: 12px; color: var(--text-dim); letter-spacing: 2px; margin-top: 6px; }
+.set-list { margin-top: 22px; }
+.set-row { display: flex; align-items: center; gap: 14px; padding: 16px 22px; cursor: pointer;
+  border-bottom: 1px solid rgba(232,201,138,.08); transition: background .2s; }
+.set-row:hover { background: rgba(255,255,255,.03); }
+.set-row:last-child { border-bottom: none; }
+.set-ico { font-size: 17px; width: 26px; text-align: center; }
+.set-name { font-size: 14px; letter-spacing: 1px; }
+.set-val { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+.set-arrow { color: var(--text-dim); font-size: 12px; }
+.toggle { margin-left: auto; width: 42px; height: 22px; border-radius: 11px; background: rgba(255,255,255,.12); position: relative; transition: background .25s; }
+.toggle.on { background: linear-gradient(90deg, var(--gold-dim), var(--gold)); }
+.toggle i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .25s; }
+.toggle.on i { left: 22px; }
+
+/* 角标装饰 */
+.corner-deco { position: absolute; width: 26px; height: 26px; pointer-events: none; opacity: .6; }
+.corner-deco::before, .corner-deco::after { content: ""; position: absolute; background: var(--gold); }
+.corner-deco::before { width: 100%; height: 1px; }
+.corner-deco::after { width: 1px; height: 100%; }
+.cd-tl { top: -1px; left: -1px; }
+.cd-br { bottom: -1px; right: -1px; transform: rotate(180deg); }
+</style>
+</head>
+<body>
+
+<div class="starfield" id="starfield">
+  <div class="shooting-star" style="top: 18%; left: 70%;"></div>
+  <div class="shooting-star" style="top: 42%; left: 90%; animation-delay: 4.5s;"></div>
+</div>
+
+<div class="app">
+  <!-- ===== 左侧导航 ===== -->
+  <nav class="side-rail">
+    <div class="logo-mark">书</div>
+    <div class="nav-item active" data-view="shelf"><span class="ico">📚</span>书架</div>
+    <div class="nav-item" data-view="store"><span class="ico">✨</span>书城</div>
+    <div class="nav-item" data-view="reader"><span class="ico">📖</span>阅读</div>
+    <div class="nav-item" data-view="mine"><span class="ico">🌙</span>我的</div>
+    <div class="rail-spacer"></div>
+    <div class="rail-avatar" title="开拓者">🌸</div>
+  </nav>
+
+  <!-- ===== 主区域 ===== -->
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title" id="pageTitle">星轨书架</div>
+        <div class="page-sub" id="pageSub">BOOKSHELF · 愿此行，终抵群星</div>
+      </div>
+      <div class="search-box">
+        <span>🔍</span>
+        <input placeholder="搜索书名 / 作者 / 角色…">
+        <span style="font-size:11px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:1px 5px;">⌘K</span>
+      </div>
+      <div class="top-actions">
+        <div class="orb-btn">📥</div>
+        <div class="orb-btn">🔔</div>
+        <div class="orb-btn">⚙️</div>
+      </div>
+    </header>
+
+    <div class="viewport">
+
+      <!-- ===== 书架 ===== -->
+      <section class="view show" id="view-shelf">
+        <div class="continue-banner">
+          <div class="cb-cover" style="background:linear-gradient(160deg,#4a3a7a,#1c2440 60%,#0e1226);"></div>
+          <div class="cb-info">
+            <div class="cb-label">▶ 继续阅读 · CONTINUE</div>
+            <div class="cb-title">星穹铁道：无名客纪行</div>
+            <div class="cb-chapter">第 128 章 · 群星为证的誓约 — 已读 64%</div>
+          </div>
+          <button class="btn-gold" onclick="switchView('reader')">立即启程</button>
+        </div>
+
+        <div class="sec-head"><div class="sec-title">我的藏书</div><span class="sec-more">共 12 本 · 管理 ⌄</span></div>
+        <div class="shelf-grid" id="shelfGrid"></div>
+      </section>
+
+      <!-- ===== 书城 ===== -->
+      <section class="view" id="view-store">
+        <div class="hero-banner">
+          <div class="hero-text">
+            <div class="tag">✦ 本周主推 · WEEKLY FEATURE</div>
+            <h2>银河幻想祭 · 星轨特辑</h2>
+            <p>穿越星海的列车即将进站，八部星际幻想佳作限时免费，与开拓者一同踏上未知星域的旅程。</p>
+          </div>
+          <div class="hero-orb"></div>
+          <div class="hero-dots"><i class="on"></i><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="sec-head"><div class="sec-title">星轨榜单</div><span class="sec-more">查看完整榜单 ›</span></div>
+        <div class="rank-wrap">
+          <div class="glass rank-col"><h4>🔥 热度星榜</h4><div id="rankHot"></div></div>
+          <div class="glass rank-col"><h4>🌟 新书星榜</h4><div id="rankNew"></div></div>
+          <div class="glass rank-col"><h4>💎 完本星榜</h4><div id="rankEnd"></div></div>
+        </div>
+
+        <div class="sec-head"><div class="sec-title">猜你喜欢</div><span class="sec-more">换一批 ⟳</span></div>
+        <div class="shelf-grid" id="guessGrid"></div>
+      </section>
+
+      <!-- ===== 阅读器 ===== -->
+      <section class="view" id="view-reader">
+        <div class="reader-wrap">
+          <div class="reader-page">
+            <div class="rp-chapter">第 128 章 · 群星为证的誓约</div>
+            <div class="rp-divider">✦ ✦ ✦</div>
+            <div class="rp-body">
+              <p>列车驶出最后一个跃迁点时，舷窗外的星光忽然安静了下来。姬子站在观景车厢的尽头，手中的咖啡还冒着热气，目光却落在那片陌生的星域上——那里有一颗蓝色的星球，正安静地悬在黑暗里，像一枚被遗忘的宝石。</p>
+              <p>"那就是目的地吗？"三月七趴在舷窗上，鼻尖几乎要贴上玻璃，"看起来……好温柔的一颗星星。"</p>
+              <p>开拓者没有回答。他的指尖轻轻触上胸前的星核，那里传来一阵微弱却清晰的共鸣，仿佛整片银河都在这一刻屏住了呼吸。丹恒合上手中的书卷，青龙的眼眸里掠过一丝不易察觉的波澜。</p>
+              <p>"根据星图的记载，"瓦尔特推了推眼镜，声音一如既往地平缓，"这颗星球上已经三千年没有过开拓者到访的记录了。我们不知道迎接我们的会是什么——是朋友，是敌人，还是……一段被时间尘封的誓约。"</p>
+              <p>帕姆的声音从广播里传来，带着列车长特有的认真："请各位乘客系好安全带帕！星穹列车，即将进站——下一站，苍蓝之星！"</p>
+              <p>星光倾泻而下，落在每一个人的肩上。开拓者抬起头，望向那颗越来越近的蓝色星球，轻声说出了那句古老的誓言：</p>
+              <p>"愿此行，终抵群星。"</p>
+            </div>
+          </div>
+          <aside class="reader-tools">
+            <div class="glass tool-card">
+              <h5>✦ 字号</h5>
+              <div class="font-sizes">
+                <div class="fs-opt">小</div><div class="fs-opt on">中</div><div class="fs-opt">大</div><div class="fs-opt">特大</div>
+              </div>
+            </div>
+            <div class="glass tool-card">
+              <h5>✦ 阅读主题</h5>
+              <div class="theme-dots">
+                <div class="t-dot on" style="background:#f6ecd9" title="羊皮卷"></div>
+                <div class="t-dot" style="background:#dfe8d5" title="青竹"></div>
+                <div class="t-dot" style="background:#1a1f33" title="星夜"></div>
+                <div class="t-dot" style="background:#e8d8d8" title="樱粉"></div>
+              </div>
+            </div>
+            <div class="glass tool-card">
+              <h5>✦ 屏幕亮度</h5>
+              <div class="slider-row">🌙<div class="slider"><i></i><b></b></div>☀️</div>
+            </div>
+            <div class="glass chapter-list">
+              <div class="ch-item">第 125 章 · 跃迁前夜</div>
+              <div class="ch-item">第 126 章 · 星海低语</div>
+              <div class="ch-item">第 127 章 · 无名星的来信</div>
+              <div class="ch-item on">第 128 章 · 群星为证的誓约</div>
+              <div class="ch-item">第 129 章 · 苍蓝登陆战</div>
+              <div class="ch-item">第 130 章 · 沉睡的神殿</div>
+              <div class="ch-item">第 131 章 · 三千年前的约定</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ===== 我的 ===== -->
+      <section class="view" id="view-mine">
+        <div class="glass profile-head" style="position:relative;">
+          <div class="corner-deco cd-tl"></div><div class="corner-deco cd-br"></div>
+          <div class="p-avatar">🌸</div>
+          <div>
+            <div class="p-name">星轨旅人</div>
+            <div class="p-uid">UID: 1008611 · 开拓等级特权用户</div>
+          </div>
+          <div class="p-level">
+            <div class="lv">Lv.42</div>
+            <div class="bar"><i></i></div>
+            <div class="exp">阅历 6,840 / 10,000</div>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="glass stat-card"><div class="stat-num">128</div><div class="stat-label">阅读时长 (h)</div></div>
+          <div class="glass stat-card"><div class="stat-num">12</div><div class="stat-label">在架藏书</div></div>
+          <div class="glass stat-card"><div class="stat-num">356</div><div class="stat-label">读书笔记</div></div>
+          <div class="glass stat-card"><div class="stat-num">89</div><div class="stat-label">连续签到 (天)</div></div>
+        </div>
+
+        <div class="sec-head"><div class="sec-title">星轨设置</div></div>
+        <div class="glass set-list">
+          <div class="set-row"><span class="set-ico">🌌</span><span class="set-name">夜间模式</span><div class="toggle on"><i></i></div></div>
+          <div class="set-row"><span class="set-ico">📡</span><span class="set-name">WiFi 下自动缓存章节</span><div class="toggle on"><i></i></div></div>
+          <div class="set-row"><span class="set-ico">🔔</span><span class="set-name">更新提醒</span><div class="toggle"><i></i></div></div>
+          <div class="set-row"><span class="set-ico">☁️</span><span class="set-name">云端同步</span><span class="set-val">上次同步: 10 分钟前</span><span class="set-arrow">›</span></div>
+          <div class="set-row"><span class="set-ico">🎨</span><span class="set-name">主题皮肤</span><span class="set-val">星穹之夜 · 限定</span><span class="set-arrow">›</span></div>
+          <div class="set-row"><span class="set-ico">💫</span><span class="set-name">关于星轨书屋</span><span class="set-val">v0.3.1</span><span class="set-arrow">›</span></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- 星空生成 ---------- */
+const sf = document.getElementById('starfield');
+for (let i = 0; i < 90; i++) {
+  const s = document.createElement('div');
+  s.className = 'star';
+  const sz = Math.random() * 2 + 0.6;
+  s.style.cssText = `width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${(Math.random()*3+2).toFixed(1)}s;animation-delay:${(Math.random()*3).toFixed(1)}s;`;
+  sf.appendChild(s);
+}
+
+/* ---------- 视图切换 ---------- */
+const titles = {
+  shelf:  ['星轨书架', 'BOOKSHELF · 愿此行，终抵群星'],
+  store:  ['星轨书城', 'GALAXY STORE · 万千星海，一书即达'],
+  reader: ['沉浸阅读', 'READING · 与群星同行'],
+  mine:   ['星轨档案', 'PROFILE · 开拓者的旅程记录'],
+};
+function switchView(v) {
+  document.querySelectorAll('.view').forEach(e => e.classList.remove('show'));
+  document.getElementById('view-' + v).classList.add('show');
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.toggle('active', e.dataset.view === v));
+  document.getElementById('pageTitle').textContent = titles[v][0];
+  document.getElementById('pageSub').textContent = titles[v][1];
+}
+document.querySelectorAll('.nav-item').forEach(e => e.addEventListener('click', () => switchView(e.dataset.view)));
+/* 支持 #shelf / #store / #reader / #mine 深链直达 */
+if (location.hash && titles[location.hash.slice(1)]) switchView(location.hash.slice(1));
+
+/* ---------- 数据渲染 ---------- */
+const grad = (a, b, c) => `linear-gradient(160deg, ${a}, ${b} 58%, ${c})`;
+const books = [
+  ['星穹铁道：无名客纪行', grad('#4a3a7a','#1c2440','#0e1226'), '连载中', 64, '读至 128 章'],
+  ['原神：提瓦特风物志', grad('#2e6b5e','#153a44','#0b1a26'), '已完结', 100, '已读完'],
+  ['崩坏：虚数之海', grad('#7a3a5e','#3a1c40','#160e26'), '连载中', 42, '读至 87 章'],
+  ['银河铁道之夜', grad('#3a5a8a','#1c2c50','#0d1226'), '已完结', 100, '已读完'],
+  ['仙舟罗浮异闻录', grad('#8a5a2e','#44261a','#1e1010'), '连载中', 18, '读至 23 章'],
+  ['黑塔空间站日志', grad('#3a7a8a','#163a4a','#0a1826'), '连载中', 77, '读至 201 章'],
+  ['雅利洛-VI 冬城纪事', grad('#5a7a9a','#24344e','#101626'), '已完结', 100, '已读完'],
+  ['匹诺康尼梦泡集', grad('#8a3a6e','#401c3a','#1c0e20'), '连载中', 9, '读至 6 章'],
+];
+const shelfHTML = books.map(([n, g, t, p, s]) => `
+  <div class="book-card">
+    <div class="book-cover"><div class="cover-art" style="background:${g}"></div>
+      <div class="cover-tag">${t}</div><div class="cover-title">${n}</div></div>
+    <div class="book-meta"><div class="book-name">${n}</div>
+      <div class="book-progress"><i style="width:${p}%"></i></div>
+      <div class="book-sub">${s}</div></div>
+  </div>`).join('');
+document.getElementById('shelfGrid').innerHTML = shelfHTML;
+document.getElementById('guessGrid').innerHTML = shelfHTML;
+
+const ranks = {
+  rankHot: [['崩坏：虚数之海','9.8万'],['星穹铁道：无名客纪行','9.2万'],['匹诺康尼梦泡集','8.7万'],['仙舟罗浮异闻录','7.9万'],['黑塔空间站日志','7.1万']],
+  rankNew: [['苍蓝之星的誓约','6.6万'],['星核猎手前传','6.1万'],['天才俱乐部秘话','5.8万'],['巡海游侠行记','5.2万'],['假面愚者剧场','4.9万']],
+  rankEnd: [['银河铁道之夜','12万'],['原神：提瓦特风物志','11万'],['雅利洛-VI 冬城纪事','9.4万'],['星穹旧事','8.8万'],['机械帝国衰亡史','8.1万']],
+};
+for (const [id, list] of Object.entries(ranks)) {
+  document.getElementById(id).innerHTML = list.map(([n, h], i) =>
+    `<div class="rank-row"><span class="rank-no">${i+1}</span><span class="rank-name">${n}</span><span class="rank-heat">🔥${h}</span></div>`).join('');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.playwright-mcp/
+.workbuddy/
+
+# User-specific
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
