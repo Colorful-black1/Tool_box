@@ -7,11 +7,11 @@
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { AI_PROVIDER_PRESETS, findAiProvider } from '../../shared-bridge'
 import type { AiProfileView, AiProviderId, AiProviderPreset } from '../../shared-bridge'
-import { Banner, Field, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
+import { Banner, ChipRow, Field, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
 import { fetchModels } from '../../ai/model-fetcher'
 import { useServices } from '../../runtime/services'
 import { colors, fonts, radius, spacing } from '../../theme'
@@ -89,14 +89,11 @@ export function AiProfileEditor({
     }
   }
 
+  // 同上：嵌在设置页的纵向 ScrollView 里，这里用 View 避免嵌套滚动
   return (
-    <ScrollView contentContainerStyle={styles.root} keyboardShouldPersistTaps="handled">
+    <View style={styles.root}>
       <SectionTitle>供应商</SectionTitle>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-      >
+      <ChipRow contentContainerStyle={styles.chips}>
         {AI_PROVIDER_PRESETS.map((preset: AiProviderPreset) => (
           <Chip
             key={preset.id}
@@ -105,7 +102,7 @@ export function AiProfileEditor({
             onPress={() => pickProvider(preset.id)}
           />
         ))}
-      </ScrollView>
+      </ChipRow>
 
       <View style={styles.form}>
         <Field
@@ -172,7 +169,7 @@ export function AiProfileEditor({
 
         <GhostButton label="取消" onPress={onDone} />
       </View>
-    </ScrollView>
+    </View>
   )
 }
 
@@ -199,7 +196,7 @@ function Chip({
 
 const styles = StyleSheet.create({
   root: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
-  chips: { gap: spacing.sm, paddingVertical: spacing.xs, paddingRight: spacing.lg },
+  chips: { paddingVertical: spacing.xs, paddingRight: spacing.lg },
   chip: {
     paddingVertical: 6,
     paddingHorizontal: spacing.md,

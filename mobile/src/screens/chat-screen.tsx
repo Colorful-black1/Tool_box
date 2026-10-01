@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
-import { StyleSheet, View } from 'react-native'
 
+import { Screen } from '../components/screen'
 import { ChatDetailScreen } from '../ui/chat/chat-detail-screen'
 import { ChatListScreen } from '../ui/chat/chat-list-screen'
-import { colors } from '../theme'
+import type { ConversationSummary } from '../shared-bridge'
 
 /**
  * 对话页。
@@ -13,23 +13,22 @@ import { colors } from '../theme'
  * 当前只有两层，加一个 @react-navigation/native-stack 依赖换来的收益不抵成本。
  */
 export function ChatScreen(): ReactNode {
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [open, setOpen] = useState<ConversationSummary | null>(null)
+  const [reloadSignal, setReloadSignal] = useState(0)
 
-  if (openId) {
-    return (
-      <View style={styles.root}>
-        <ChatDetailScreen conversationId={openId} onBack={() => setOpenId(null)} />
-      </View>
-    )
-  }
+  const leave = useCallback(() => {
+    setOpen(null)
+    // 详情页可能重命名/删除过会话，返回时让列表重读
+    setReloadSignal((value) => value + 1)
+  }, [])
 
   return (
-    <View style={styles.root}>
-      <ChatListScreen onOpen={setOpenId} />
-    </View>
+    <Screen>
+      {open ? (
+        <ChatDetailScreen conversationId={open.id} onBack={leave} />
+      ) : (
+        <ChatListScreen reloadSignal={reloadSignal} onOpen={setOpen} />
+      )}
+    </Screen>
   )
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bgDeep }
-})

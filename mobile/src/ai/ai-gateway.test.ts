@@ -365,3 +365,173 @@ describe('AiGateway 失败路径', () => {
     await waitFor(() => !gateway.isStreaming('c1'))
   })
 })
+
+describe('AiGateway.complete', () => {
+  /** 造一个只返回一次非流式 JSON 的 fetch，并记录请求内容 */
+  function completionFetch(payload: unknown, status = 200): { fetchImpl: FetchLike; bodies: string[] } {
+    const bodies: string[] = []
+    const fetchImpl: FetchLike = (_url, init) => {
+      bodies.push(String(init?.body ?? ''))
+      return Promise.resolve({
+        ok: status >= 200 && status < 300,
+        status,
+        text: () => Promise.resolve(JSON.stringify(payload))
+      } as unknown as Response)
+    }
+    return { fetchImpl, bodies }
+  }
+
+  it('返回完整正文', async () => {
+    const { fetchImpl } = completionFetch({
+      choices: [{ message: { content: '[{"title":"GitHub"}]' } }]
+    })
+    const gateway = new AiGateway(
+      fakeSettings(),
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    await expect(gateway.complete({ prompt: '识别', system: 'S' })).resolves.toBe('[{"title":"GitHub"}]')
+  })
+
+  it('不落库、不进 active 表', async () => {
+    const store = new FakeStore()
+    const { fetchImpl } = completionFetch({ choices: [{ message: { content: 'ok' } }] })
+    const gateway = new AiGateway(fakeSettings(), store as unknown as MobileStore, fetchImpl)
+
+    await gateway.complete({ prompt: '识别' })
+    expect(store.messages).toHaveLength(0)
+    expect(store.renameCalls).toBe(0)
+    // 不占会话级并发名额：同一会话正在流式时也能调用
+    expect(gateway.isStreaming('c1')).toBe(false)
+  })
+
+  it('带上 system 与 prompt，且 stream 为 false', async () => {
+    const { fetchImpl, bodies } = completionFetch({ choices: [{ message: { content: 'ok' } }] })
+    const gateway = new AiGateway(
+      fakeSettings(),
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    await gateway.complete({ prompt: '识别这段', system: '你是抽取器' })
+
+    const body = JSON.parse(bodies[0] ?? '{}')
+    expect(body.stream).toBe(false)
+    expect(body.messages).toEqual([
+      { role: 'system', content: '你是抽取器' },
+      { role: 'user', content: '识别这段' }
+    ])
+  })
+
+  it('未启用任何档案时报错', async () => {
+    const settings = {
+      getActiveConfig: () => Promise.reject(new Error('尚未启用任何 AI 配置'))
+    } as unknown as AiSettingsService
+    const gateway = new AiGateway(
+      settings,
+      new FakeStore() as unknown as MobileStore,
+      completionFetch({}).fetchImpl
+    )
+    await expect(gateway.complete({ prompt: '识别' })).rejects.toThrow(/尚未启用/)
+  })
+
+  it('外部中止抛 AbortError，便于界面提示「已取消」', async () => {
+    const controller = new AbortController()
+    const fetchImpl: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        })
+      })
+    const gateway = new AiGateway(
+      fakeSettings(),
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    const work = gateway.complete({ prompt: '识别', signal: controller.signal })
+    controller.abort()
+    await expect(work).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('显式 sessionId 会被透传（OpenCode Go 依赖该头做路由）', async () => {
+    const headers: Array<Record<string, string>> = []
+    const fetchImpl: FetchLike = (_url, init) => {
+      headers.push((init?.headers ?? {}) as Record<string, string>)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+      } as unknown as Response)
+    }
+    const gateway = new AiGateway(
+      fakeSettings(),
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    await gateway.complete({ prompt: '识别', sessionId: 'fixed-session' })
+    // 默认档案是 deepseek，不需要会话头；这里只验证请求确实发出去了
+    expect(headers).toHaveLength(1)
+  })
+
+  it('OpenCode Go 档案下自动带上 x-opencode-session 与 UA', async () => {
+    const headers: Array<Record<string, string>> = []
+    const fetchImpl: FetchLike = (_url, init) => {
+      headers.push((init?.headers ?? {}) as Record<string, string>)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+      } as unknown as Response)
+    }
+    const goSettings = {
+      getActiveConfig: () =>
+        Promise.resolve({
+          provider: 'opencode-go' as const,
+          baseUrl: 'https://opencode.ai/zen/go/v1',
+          model: 'go-model',
+          apiKey: 'sk-go'
+        })
+    } as unknown as AiSettingsService
+    const gateway = new AiGateway(
+      goSettings,
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    await gateway.complete({ prompt: '识别', sessionId: 'fixed-session' })
+
+    expect(headers[0]?.['x-opencode-session']).toBe('fixed-session')
+    expect(headers[0]?.['User-Agent']).toBe('tool-box-mobile')
+  })
+
+  it('未显式传 sessionId 时自动生成一个稳定格式的 id', async () => {
+    const headers: Array<Record<string, string>> = []
+    const fetchImpl: FetchLike = (_url, init) => {
+      headers.push((init?.headers ?? {}) as Record<string, string>)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
+      } as unknown as Response)
+    }
+    const goSettings = {
+      getActiveConfig: () =>
+        Promise.resolve({
+          provider: 'opencode-go' as const,
+          baseUrl: 'https://opencode.ai/zen/go/v1',
+          model: 'go-model',
+          apiKey: 'sk-go'
+        })
+    } as unknown as AiSettingsService
+    const gateway = new AiGateway(
+      goSettings,
+      new FakeStore() as unknown as MobileStore,
+      fetchImpl
+    )
+    await gateway.complete({ prompt: '识别' })
+
+    const session = headers[0]?.['x-opencode-session'] ?? ''
+    expect(session).toMatch(/^oneshot-/)
+    expect(session.length).toBeGreaterThan(10)
+  })
+})

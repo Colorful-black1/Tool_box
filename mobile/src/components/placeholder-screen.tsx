@@ -1,4 +1,10 @@
-import { useState } from 'react'
+/**
+ * M0 占位屏：仅验证「路由 + 主题 + 跨端引用」三件事。
+ *
+ * 顶部安全区由 `Screen` 统一处理，这里**不再加 `paddingTop`** ——
+ * 重复加会让标题整体下移一截。同理 `useScreenTitle` 这个从未被使用的
+ * 占位 hook 已删除，留着只会让人以为有状态托管。
+ */
 import type { ReactNode } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import type { StyleProp, ViewStyle } from 'react-native'
@@ -11,10 +17,6 @@ export interface PlaceholderScreenProps {
   children?: ReactNode
 }
 
-/**
- * M0 占位屏：仅验证「路由 + 主题 + 跨端引用」三件事，
- * 各模块的真实界面分别在 M2（对话）、M3（记事本）、M4（阅读）、M5（密码箱）实现。
- */
 export function PlaceholderScreen({
   title,
   subtitle,
@@ -43,14 +45,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xxl,
     backgroundColor: colors.bgDeep
   },
   title: {
     fontSize: 22,
     color: colors.textHi,
     fontFamily: fonts.serif,
-    marginBottom: spacing.xs
+    marginBottom: spacing.xs,
+    paddingTop: spacing.xxl
   },
   subtitle: {
     fontSize: 12,
@@ -58,7 +60,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1
   },
   extra: {
-    marginTop: spacing.xl
+    marginTop: spacing.lg
   },
   card: {
     backgroundColor: colors.bgPanelSolid,
@@ -68,8 +70,3 @@ const styles = StyleSheet.create({
     padding: spacing.lg
   }
 })
-
-/** 供各屏复用的状态占位（后续接真实 store 时替换） */
-export function useScreenTitle(): [string, (next: string) => void] {
-  return useState('')
-}

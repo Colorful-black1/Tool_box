@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, StyleSheet, Text, View } from 'react-native'
 
 import { GlassCard } from '../../components/placeholder-screen'
 import { Banner, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
@@ -72,8 +72,11 @@ export function AiSettingsSection(): ReactNode {
     }
   }
 
+  // 用 View 而不是 ScrollView：本组件本来就嵌在设置页那个纵向 ScrollView 里，
+  // 再套一层同向滚动会触发 RN 的 "VirtualizedLists should never be nested"
+  // 警告，而且外层滚动时内层会抢走手势、键盘弹出也推不动内容。
   return (
-    <ScrollView contentContainerStyle={styles.root}>
+    <View style={styles.root}>
       <SectionTitle>AI 配置</SectionTitle>
       {error ? <Banner message={error} /> : null}
 
@@ -116,7 +119,7 @@ export function AiSettingsSection(): ReactNode {
       {view.profiles.length > 0 && !view.activeId ? (
         <Banner tone="info" message="当前没有启用中的档案，发送消息前请先启用一套。" />
       ) : null}
-    </ScrollView>
+    </View>
   )
 }
 

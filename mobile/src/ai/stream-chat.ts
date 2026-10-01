@@ -270,8 +270,11 @@ export function raceAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> 
   })
 }
 
-/** 读取错误响应体里的 message，便于命中 describeAiError 的 401/429/超时映射 */
-async function readErrorDetail(response: Response): Promise<string> {
+/**
+ * 读取错误响应体里的 message，便于命中 describeAiError 的 401/429/超时映射。
+ * 非流式的 `complete-chat.ts` 也要用同一套映射，故导出复用，避免两处漂移。
+ */
+export async function readErrorDetail(response: Response): Promise<string> {
   const MAX_ERROR_BODY = 512
   try {
     const text = (await response.text()).slice(0, MAX_ERROR_BODY)

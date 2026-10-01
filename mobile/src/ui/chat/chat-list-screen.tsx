@@ -6,15 +6,19 @@ import type { ReactNode } from 'react'
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { GlassCard } from '../../components/placeholder-screen'
+import { ScreenHeader } from '../../components/screen'
 import { GhostButton, PrimaryButton } from '../../components/ui'
 import { useServices } from '../../runtime/services'
 import type { ConversationSummary } from '../../shared-bridge'
 import { colors, fonts, spacing } from '../../theme'
 
 export function ChatListScreen({
-  onOpen
+  onOpen,
+  reloadSignal
 }: {
-  onOpen: (conversationId: string) => void
+  onOpen: (conversation: ConversationSummary) => void
+  /** 详情页返回后自增，触发列表重载 */
+  reloadSignal: number
 }): ReactNode {
   const { store } = useServices()
   const [items, setItems] = useState<ConversationSummary[]>([])
@@ -31,14 +35,14 @@ export function ChatListScreen({
 
   useEffect(() => {
     void reload()
-  }, [reload])
+  }, [reload, reloadSignal])
 
   const create = async (): Promise<void> => {
     setCreating(true)
     try {
       const conversation = await store.createConversation()
       await reload()
-      onOpen(conversation.id)
+      onOpen(conversation)
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : '新建会话失败')
     } finally {
@@ -68,13 +72,11 @@ export function ChatListScreen({
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>星轨对话</Text>
-          <Text style={styles.subtitle}>AI CHAT</Text>
-        </View>
-        <PrimaryButton label="新建" onPress={() => void create()} busy={creating} />
-      </View>
+      <ScreenHeader
+        title="星轨对话"
+        subtitle="AI CHAT"
+        actions={<PrimaryButton label="新建" onPress={() => void create()} busy={creating} />}
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -93,7 +95,7 @@ export function ChatListScreen({
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
-            onPress={() => onOpen(item.id)}
+            onPress={() => onOpen(item)}
             onLongPress={() => remove(item)}
             style={({ pressed }) => [pressed && styles.pressed]}
           >
@@ -126,17 +128,6 @@ function formatTime(ms: number): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgDeep },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-    gap: spacing.md
-  },
-  title: { fontSize: 22, color: colors.textHi, fontFamily: fonts.serif },
-  subtitle: { fontSize: 11, color: colors.textDim, letterSpacing: 2 },
   error: {
     color: colors.danger,
     fontSize: 12,

@@ -1,5 +1,6 @@
 /**
- * 流式对话网关（手机端）—— 语义与桌面端 `AiGateway` 对齐。
+ * AI 网关（手机端）—— 流式对话语义与桌面端 `AiGateway` 对齐，
+ * 另加一个不落库的非流式 `complete()` 供密码箱 AI 识别使用。
  *
  * 关键语义（与桌面端一致，改动会让两端行为分叉）：
  * 1. `active` 以 conversationId 为键，**同一会话同时只允许一个流**，
@@ -17,6 +18,7 @@ import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TIT
 import type { MobileStore } from '../data/store'
 
 import type { AiSettingsService } from './ai-settings'
+import { completeChat } from './complete-chat'
 import { isAbortError, streamChat } from './stream-chat'
 import type { FetchLike } from './stream-chat'
 
@@ -34,6 +36,21 @@ export interface ChatEventSink {
 export interface ChatSendResult {
   userMessage: ChatMessage
   conversation: ConversationSummary
+}
+
+/** 一次性补全（AI 识别）的超时，比对话短：用户站在弹窗前干等不宜过久 */
+const COMPLETE_TIMEOUT_MS = 45_000
+
+/**
+ * 一次性调用的会话 id。
+ *
+ * OpenCode Go 强校验 `x-opencode-session`，但它只是路由 / prompt 缓存的键，
+ * **不是凭据**，因此这里用 `Math.random` 生成即可 —— 不需要 crypto 随机数，
+ * 也就不必把 `expo-crypto` 引进这个纯逻辑模块（本文件要在 vitest 的 node 环境跑）。
+ * 对话链路仍然用 conversationId，那条必须逐轮稳定，另走 `send`。
+ */
+function newOneShotSessionId(): string {
+  return `oneshot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 export class AiGateway {
@@ -91,6 +108,54 @@ export class AiGateway {
   /** 用户主动停止：只中止，不发事件，由 runStream 判定后转成 stopped */
   stop(conversationId: string): void {
     this.active.get(conversationId)?.abort()
+  }
+
+  /**
+   * 非流式一次性调用，供密码箱「AI 识别」使用。
+   *
+   * 与 `send` 的边界（刻意不同，别混用）：
+   * - **不落库**：识别结果是临时的草稿，用户确认前不该进 messages 表；
+   * - **不进 active 表**：它不属于任何会话，不该占用会话级并发名额，
+   *   否则同一会话正在流式时点识别会被误判成「正在生成回复」；
+   * - **不走 autoTitle / 历史**：它不是对话，没有上下文。
+   *
+   * 超时单独给一个更短的默认值：识别是一次性往返，用户在弹窗前干等着，
+   * 顶着 120s 的对话超时体验很差。
+   */
+  async complete(input: {
+    prompt: string
+    system?: string
+    temperature?: number
+    signal?: AbortSignal
+    sessionId?: string
+    timeoutMs?: number
+  }): Promise<string> {
+    const config = await this.settings.getActiveConfig()
+
+    // 外部 signal 与内部 controller 串一层：completeChat 内部还会再包一层超时，
+    // 这里只负责把调用方的取消意图透进去。
+    const controller = new AbortController()
+    const onExternalAbort = (): void => controller.abort()
+    input.signal?.addEventListener('abort', onExternalAbort)
+    if (input.signal?.aborted) controller.abort()
+
+    try {
+      return await completeChat({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+        provider: config.provider,
+        sessionId: input.sessionId ?? newOneShotSessionId(),
+        system: input.system,
+        prompt: input.prompt,
+        signal: controller.signal,
+        timeoutMs: input.timeoutMs ?? COMPLETE_TIMEOUT_MS,
+        temperature: input.temperature,
+        fetchImpl: this.fetchImpl
+      })
+    } finally {
+      input.signal?.removeEventListener('abort', onExternalAbort)
+    }
   }
 
   private async runStream(input: {

@@ -5,13 +5,17 @@
  * - 增量文本放在 `streaming` 本地状态里，不落库（与桌面端语义一致：只有成功才落库）；
  * - 收到 completed / stopped / error 后重新从 store 拉一次消息，以库为准；
  * - 因此即使中途杀进程，也不会留下半截的 assistant 消息。
+ *
+ * 输入框的键盘避让用 `useKeyboardInset()` 而不是 `KeyboardAvoidingView`：
+ * 后者在 Android 上是否生效取决于宿主 App 的 `windowSoftInputMode`，
+ * Expo Go 不是 `adjustResize`，于是 `behavior="padding"` 完全不起作用，
+ * 输入框被键盘整块盖住。详见 `ui/keyboard.ts` 的说明。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -21,6 +25,7 @@ import {
 
 import { useServices } from '../../runtime/services'
 import { PrimaryButton } from '../../components/ui'
+import { useKeyboardInset } from '../keyboard'
 import type { ChatEventSink } from '../../ai/ai-gateway'
 import type { ChatMessage } from '../../shared-bridge'
 import { colors, fonts, radius, spacing } from '../../theme'
@@ -38,6 +43,7 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   const [sending, setSending] = useState(false)
   const [draft, setDraft] = useState('')
   const listRef = useRef<FlatList<ChatMessage> | null>(null)
+  const keyboard = useKeyboardInset()
 
   const streamingNow = sending || streaming.length > 0
 
@@ -103,7 +109,15 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" onPress={onBack} style={styles.back}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="返回会话列表"
+          onPress={() => {
+            Keyboard.dismiss()
+            onBack()
+          }}
+          style={styles.back}
+        >
           <Text style={styles.backText}>‹ 会话</Text>
         </Pressable>
         {streamingNow ? (
@@ -115,35 +129,37 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          onContentSizeChange={() => {
-            if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false })
-          }}
-          ListEmptyComponent={
-            messages.length === 0 && !streaming ? (
-              <Text style={styles.empty}>发送第一条消息开始对话</Text>
-            ) : null
-          }
-          renderItem={({ item }) => <Bubble message={item} />}
-          ListFooterComponent={
-            streaming ? (
-              <View style={[styles.bubble, styles.bubbleAssistant]}>
-                <Text style={styles.bubbleText}>{streaming}</Text>
-                <Text style={styles.cursor}>▍</Text>
-              </View>
-            ) : null
-          }
-        />
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => {
+          if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false })
+        }}
+        ListEmptyComponent={
+          messages.length === 0 && !streaming ? (
+            <Text style={styles.empty}>发送第一条消息开始对话</Text>
+          ) : null
+        }
+        renderItem={({ item }) => <Bubble message={item} />}
+        ListFooterComponent={
+          streaming ? (
+            <View style={[styles.bubble, styles.bubbleAssistant]}>
+              <Text style={styles.bubbleText}>{streaming}</Text>
+              <Text style={styles.cursor}>▍</Text>
+            </View>
+          ) : null
+        }
+      />
 
+      {/*
+        输入区整体上移键盘高度。
+        `offset` 已经是「扣除宿主自动缩放后仍需避让的净高度」，
+        所以 adjustResize 与 adjustPan 两种宿主下都不会重复避让或漏避让。
+      */}
+      <View style={[styles.composerWrap, { marginBottom: keyboard.offset }]}>
         <View style={styles.composer}>
           <TextInput
             style={styles.input}
@@ -161,7 +177,7 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
             disabled={streamingNow || draft.trim().length === 0}
           />
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </View>
   )
 }
@@ -177,13 +193,12 @@ function Bubble({ message }: { message: ChatMessage }): ReactNode {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgDeep },
-  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.sm
   },
   back: { paddingVertical: 4, paddingRight: spacing.md },
@@ -215,6 +230,8 @@ const styles = StyleSheet.create({
   bubbleAssistant: { alignSelf: 'flex-start', backgroundColor: colors.bgPanelSolid },
   bubbleText: { color: colors.textHi, fontSize: 14, lineHeight: 21, fontFamily: fonts.sans },
   cursor: { color: colors.gold, fontSize: 12 },
+  // 外层只负责挂 marginBottom，内容样式留给 composer，两层职责分开
+  composerWrap: { backgroundColor: colors.bgPanelSolid },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

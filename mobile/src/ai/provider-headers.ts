@@ -60,11 +60,11 @@ export function buildProviderHeaders(input: ProviderHeaderInput): Record<string,
 }
 
 /**
- * 组装拉取模型列表的请求头。
- * 部分供应商（OpenCode Go）对模型列表同样要求客户端标识与稳定会话 ID，
- * 否则模型列表也拉不到。
+ * 组装「一次性 JSON 请求」的公共请求头。
+ * 模型列表拉取与非流式补全（密码识别）都走这条路径：
+ * 两者都是 POST/GET 一次拿完整 JSON，供应商侧的额外要求完全一致。
  */
-export function buildModelListHeaders(input: {
+export function buildJsonHeaders(input: {
   provider: AiProviderId
   baseUrl: string
   apiKey: string
@@ -80,6 +80,20 @@ export function buildModelListHeaders(input: {
     headers['User-Agent'] = CLIENT_USER_AGENT
   }
   return headers
+}
+
+/**
+ * 组装拉取模型列表的请求头。
+ * 部分供应商（OpenCode Go）对模型列表同样要求客户端标识与稳定会话 ID，
+ * 否则模型列表也拉不到。
+ */
+export function buildModelListHeaders(input: {
+  provider: AiProviderId
+  baseUrl: string
+  apiKey: string
+  sessionId: string
+}): Record<string, string> {
+  return buildJsonHeaders(input)
 }
 
 /** 组装流式对话的完整请求头 */

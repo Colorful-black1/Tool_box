@@ -4,7 +4,17 @@
  * 复用 `theme.ts` 的设计令牌与 `GlassCard`，不另立一套样式体系
  * （与桌面端「复用 global.css 设计系统」保持同一原则）。
  */
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native'
 import type { StyleProp, ViewStyle } from 'react-native'
 import type { ReactNode } from 'react'
 
@@ -149,6 +159,140 @@ export function Row({
   return <View style={[styles.row, style]}>{children}</View>
 }
 
+/** 横向筛选片：分组切换、排序方式、主题选择都用它 */
+export function Chip({
+  label,
+  active = false,
+  onPress,
+  disabled = false
+}: {
+  label: string
+  active?: boolean
+  onPress: () => void
+  disabled?: boolean
+}): ReactNode {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.chip,
+        active && styles.chipActive,
+        disabled && styles.buttonDisabled,
+        pressed && !disabled && styles.buttonPressed
+      ]}
+    >
+      <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
+    </Pressable>
+  )
+}
+
+/**
+ * 横向滚动的筛选片容器。**必须用它，不要直接写 `<ScrollView horizontal>`。**
+ *
+ * 原因：React Native 的 `ScrollView` 基础样式里 **横竖两个方向都带 `flexGrow: 1`**
+ * （`Libraries/Components/ScrollView/ScrollView.js` 的 `baseHorizontal` / `baseVertical`）。
+ * 一个横向 ScrollView 放进 `flex: 1` 的纵向容器里，会被拉高到占满剩余空间 ——
+ * 实测书架页的两个筛选行就是这样被撑成两个巨大的椭圆，占掉半屏。
+ * 这里显式 `flexGrow: 0` 关掉，`flexShrink: 1` 保留（内容过多时仍可压缩）。
+ *
+ * `alignItems: 'center'` 是配套的：contentContainer 默认 `stretch`，
+ * 不居中的话筛选片会被拉成等高，视觉上更怪。
+ */
+export function ChipRow({
+  children,
+  contentContainerStyle,
+  style
+}: {
+  children: ReactNode
+  contentContainerStyle?: StyleProp<ViewStyle>
+  style?: StyleProp<ViewStyle>
+}): ReactNode {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      style={[styles.chipScroll, style]}
+      contentContainerStyle={[styles.chipRow, contentContainerStyle]}
+    >
+      {children}
+    </ScrollView>
+  )
+}
+
+/**
+ * 单行文本输入弹窗。
+ *
+ * 为什么不用 `Alert.prompt`：它在 iOS 上可用，但 **Android 上不存在**，
+ * 会直接抛错。分组新建 / 重命名、条目改名都需要这个能力，所以自带一个。
+ */
+export function PromptModal({
+  visible,
+  title,
+  placeholder = '',
+  initialValue = '',
+  confirmLabel = '确定',
+  onCancel,
+  onConfirm
+}: {
+  visible: boolean
+  title: string
+  placeholder?: string
+  initialValue?: string
+  confirmLabel?: string
+  onCancel: () => void
+  /** 返回空串视为取消，避免误把空名字提交上去 */
+  onConfirm: (value: string) => void
+}): ReactNode {
+  const [value, setValue] = useState(initialValue)
+
+  // 每次打开都重置为传入的初值：复用同一个 Modal 实例时，
+  // 上一次残留的文本会跟着进入下一次编辑。
+  useEffect(() => {
+    if (visible) setValue(initialValue)
+  }, [initialValue, visible])
+
+  const submit = (): void => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    onConfirm(trimmed)
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      accessibilityViewIsModal
+    >
+      <Pressable style={styles.promptBackdrop} onPress={onCancel} accessibilityLabel="关闭" />
+      <View style={styles.promptCard}>
+        <Text style={styles.promptTitle}>{title}</Text>
+        <TextInput
+          style={styles.promptInput}
+          value={value}
+          onChangeText={setValue}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textDim}
+          autoFocus
+          selectTextOnFocus
+          onSubmitEditing={submit}
+          returnKeyType="done"
+          accessibilityLabel={title}
+        />
+        <View style={styles.promptActions}>
+          <GhostButton label="取消" onPress={onCancel} />
+          <PrimaryButton label={confirmLabel} onPress={submit} />
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 const styles = StyleSheet.create({
   button: {
     flexDirection: 'row',
@@ -209,5 +353,41 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: spacing.sm
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line
+  },
+  chipActive: { backgroundColor: 'rgba(232, 201, 138, 0.16)', borderColor: colors.goldLine },
+  chipLabel: { color: colors.textDim, fontSize: 12, fontFamily: fonts.sans },
+  chipLabelActive: { color: colors.gold },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+  // 关掉 ScrollView 自带的 flexGrow: 1，否则横向滚动容器会被拉高占满剩余空间
+  chipScroll: { flexGrow: 0, flexShrink: 1 },
+  promptBackdrop: { flex: 1, backgroundColor: 'rgba(8, 11, 22, 0.72)' },
+  promptCard: {
+    marginHorizontal: spacing.xl,
+    padding: spacing.lg,
+    gap: spacing.md,
+    backgroundColor: colors.bgPanelSolid,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg
+  },
+  promptTitle: { color: colors.textHi, fontSize: 15, fontFamily: fonts.sans },
+  promptInput: {
+    backgroundColor: colors.bgDeep,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    color: colors.textHi,
+    fontSize: 14,
+    fontFamily: fonts.sans
+  },
+  promptActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm }
 })

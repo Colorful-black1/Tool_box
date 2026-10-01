@@ -18,6 +18,7 @@ export {
   FONT_OPTIONS,
   NIGHT_THEME,
   READER_THEMES,
+  effectiveReaderTheme,
   findAiProvider,
   isAiProviderId,
   matchProviderByBaseUrl
@@ -41,9 +42,12 @@ export type {
   ConversationSummary,
   NoteSaveInput,
   NoteView,
+  PageMode,
   PasswordDraft,
   PasswordEntryView,
   PasswordInput,
+  ReadConfig,
+  ReaderTheme,
   ReadingProgressInput,
   ReadingStat,
   StatsSummary
