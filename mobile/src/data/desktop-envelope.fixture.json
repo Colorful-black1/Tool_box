@@ -1,0 +1,9 @@
+{
+  "_comment": "由桌面端 SafeStorageSecretBox 真实实现产出（node:crypto aes-256-gcm），用于验证手机端 unpackEnvelope 解析同一格式。",
+  "payload": {
+    "account": "me@example.com",
+    "password": "p@ssw0rd-中文",
+    "remark": "跨端样本"
+  },
+  "cipherText": "{\"v\":1,\"iv\":\"OvU4yG6Hl5JD4ePd\",\"tag\":\"7PuEnPTvVRaVCcP1B1SDgw==\",\"data\":\"8j6KFjUwMtTHTLsX476eUlVLXevCgxq2/mD/0IiwU0ChAHTJrbBwCw+fa+GHbboGyTruQd5lglblhWxP2q1mX7F51Kn3ZhepGritbYiIGuyy\"}"
+}

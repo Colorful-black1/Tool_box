@@ -1,0 +1,364 @@
+{
+  "_comment": "由桌面端 toolbox.db 导出，作为手机端 schema 对齐的基准。改动桌面 schema 后需重新生成。",
+  "user_version": 4,
+  "tables": {
+    "book_groups": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "sort_index",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "bookmarks": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "book_id",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "chapter_idx",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "page_idx",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "page_idx_ratio",
+        "type": "REAL",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "snippet",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "books": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "author",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "cover_path",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "sort_index",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "group_id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "updated_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "chapters": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "book_id",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "idx",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "body",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "word_count",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "conversations": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "updated_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "kv": [
+      {
+        "name": "key",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "value",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "messages": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "conversation_id",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "role",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "content",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "notes": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "content",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "updated_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "password_entries": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "url",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "secret",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "first_letter",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "is_favorite",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "created_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "updated_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "reading_progress": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "book_id",
+        "type": "TEXT",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "chapter_idx",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "percent",
+        "type": "REAL",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "updated_at_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ],
+    "reading_stats": [
+      {
+        "name": "date",
+        "type": "TEXT",
+        "notnull": false,
+        "pk": true
+      },
+      {
+        "name": "duration_ms",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      },
+      {
+        "name": "char_count",
+        "type": "INTEGER",
+        "notnull": true,
+        "pk": false
+      }
+    ]
+  }
+}

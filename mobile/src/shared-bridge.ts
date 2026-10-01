@@ -31,13 +31,22 @@ export type {
   AiProviderId,
   AiProviderPreset,
   BackgroundPreset,
+  BookGroup,
+  BookSummary,
+  Bookmark,
+  ChapterContent,
   ChapterMeta,
   ChatMessage,
+  ChatRole,
   ConversationSummary,
+  NoteSaveInput,
   NoteView,
   PasswordDraft,
   PasswordEntryView,
-  PasswordInput
+  PasswordInput,
+  ReadingProgressInput,
+  ReadingStat,
+  StatsSummary
 } from '../../src/shared/types'
 
 // AI 错误映射与端点规范化：与桌面端共用，保证报错文案完全一致

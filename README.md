@@ -133,8 +133,17 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 | --- | --- |
 | 复用方式 | `mobile/metro.config.js` 把 `../src` 纳入 `watchFolders`；所有跨目录引用集中在 `mobile/src/shared-bridge.ts` 一个文件 |
 | 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
-| 需重写 | 数据层（`expo-sqlite`）、加密（`expo-crypto` + `expo-secure-store`）、AI 客户端（自写 SSE，不用 LangChain）、全部界面 |
+| 数据层 | `mobile/src/data/`：`expo-sqlite` + 与桌面端同构的 `MobileStore`；schema 与桌面端逐段对齐（v4，11 张表） |
+| 加密 | `expo-crypto` AES-256-GCM + `expo-secure-store` 存主密钥；**密文信封格式与桌面端一致**（`{v,iv,tag,data}`） |
+| 需重写 | AI 客户端（自写 SSE，不用 LangChain）、阅读器分页（RN 无 `scrollHeight`）、全部界面 |
 | 数据 | **与桌面端各自独立**，主密钥绑定设备，密码箱密文不互通 |
+
+**跨端对齐护栏**（防止两端 schema / 密文格式单边漂移）：
+
+- `desktop-schema.fixture.json` 由真实桌面 `toolbox.db` 导出，`schema.test.ts` 拿它与手机端 DDL 逐表逐列比对。
+- `desktop-envelope.fixture.json` 由桌面端 `SafeStorageSecretBox` 真实实现产出，`secret-envelope.test.ts` 验证手机端能解析同一信封。
+
+改动桌面端 schema 或信封格式后，需重新生成这两个 fixture。
 
 ```bash
 npm run mobile:typecheck   # 手机端类型校验
@@ -200,8 +209,8 @@ npx eas-cli build --profile preview --platform android --local
 
 ## 已知限制
 
-- 桌面端仅 Windows；手机端（`mobile/`）尚在 M0 阶段，只有导航骨架与占位页面。
-- 手机端与桌面端数据互相独立，密码箱密文不互通。
+- 桌面端仅 Windows；手机端处于 M1（数据层 + 加密已完成，界面仍是占位页）。
+- 手机端与桌面端数据互相独立，密码箱密文不互通（主密钥分属 DPAPI 与系统钥匙串）。
 - 安装包未做代码签名，首次安装 Windows SmartScreen 可能提示「未知发布者」。
 - 局域网同步、PC 摸鱼（老板键 / 伪装皮肤）、启动锁尚未迁移。
 - 密码箱 AI 识别需先在「设置 → AI 配置」中配置接口。

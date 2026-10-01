@@ -239,9 +239,15 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
   原因是 workspaces 会重排根 `node_modules`，可能覆盖 `better-sqlite3` 的 Electron ABI 构建。
 * **跨目录复用只经 `mobile/src/shared-bridge.ts` 一个文件**。新增复用目标时先确认它没有
   `import 'node:*'` / `'electron'` / `better-sqlite3`；手机端只有这一处允许出现 `../../src`。
+* 数据层在 `mobile/src/data/`：`MobileStore` 方法名与语义刻意对齐桌面端 `ToolboxStore`；
+  schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
+* 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，
+  因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
+* `transaction.ts` 单独成文件只为切断原生模块的运行期引用，勿合并回 `database.ts`。
 * 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
 * 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。
 * 手机端数据与桌面端互相独立，主密钥绑定设备，密码箱密文不互通 —— 不要在 UI 上暗示可同步。
+* 写文件避免 `Out-File -Encoding utf8`（会加 BOM，`package.json` 带 BOM 会让 Expo 配置解析直接失败）。
 * 验证跑 `npm run mobile:typecheck` 与 `npm run mobile:bundle`（后者无需真机即可证明跨目录引用能解析）。
 
 ---
