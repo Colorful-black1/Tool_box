@@ -3,23 +3,31 @@ import { create } from 'zustand'
 import type {
   AiConfigInput,
   AiConfigView,
+  AppInfo,
+  BookGroup,
   BookSummary,
-  ChapterContent,
-  ChapterMeta,
   ChatCompletedEvent,
   ChatDeltaEvent,
   ChatErrorEvent,
   ChatMessage,
   ChatStoppedEvent,
   ConversationSummary,
-  ImportResult,
   NoteSaveInput,
   NoteView,
+  PasswordDraft,
   PasswordEntryView,
-  PasswordInput
+  PasswordInput,
+  StatsSummary
 } from '../../../shared/types'
 
-export type AppView = 'chat' | 'shelf' | 'reading' | 'passwords' | 'notes' | 'settings'
+export type AppView =
+  | 'chat'
+  | 'shelf'
+  | 'reading'
+  | 'stats'
+  | 'passwords'
+  | 'notes'
+  | 'settings'
 
 interface StreamingState {
   conversationId: string
@@ -31,6 +39,7 @@ interface AppState {
   loading: boolean
   view: AppView
   error: string | null
+  appInfo: AppInfo | null
 
   settings: AiConfigView | null
   conversations: ConversationSummary[]
@@ -39,15 +48,16 @@ interface AppState {
   streaming: StreamingState | null
 
   books: BookSummary[]
+  groups: BookGroup[]
   activeBookId: string | null
-  chapters: ChapterMeta[]
-  chapterContent: ChapterContent | null
 
   passwords: PasswordEntryView[]
   notes: NoteView[]
+  stats: StatsSummary | null
 
   bootstrap(): Promise<void>
   setView(view: AppView): void
+  clearError(): void
 
   // AI 对话
   refreshConversations(): Promise<void>
@@ -62,23 +72,30 @@ interface AppState {
   failChat(event: ChatErrorEvent): void
   stopChat(event: ChatStoppedEvent): void
 
-  // 小说
+  // 书架
   refreshBooks(): Promise<void>
+  refreshGroups(): Promise<void>
   importBook(): Promise<void>
-  openReader(bookId: string): Promise<void>
-  loadBook(bookId: string): Promise<void>
-  gotoChapter(idx: number): Promise<void>
+  openReader(bookId: string): void
   closeReader(): void
   deleteBook(bookId: string): Promise<void>
+  reorderBooks(ids: string[]): Promise<void>
+  updateBookMeta(
+    id: string,
+    meta: { title?: string; author?: string }
+  ): Promise<void>
+  setCover(bookId: string): Promise<void>
+  setBooksGroup(ids: string[], groupId: string | null): Promise<void>
+  createGroup(name: string): Promise<BookGroup>
+  renameGroup(id: string, name: string): Promise<void>
+  deleteGroup(id: string): Promise<void>
 
   // 密码箱
   refreshPasswords(): Promise<void>
-  savePasswordEntry(
-    input: PasswordInput & { id?: string }
-  ): Promise<void>
+  savePasswordEntry(input: PasswordInput & { id?: string }): Promise<void>
   deletePasswordEntry(id: string): Promise<void>
   togglePasswordFavorite(id: string, isFavorite: boolean): Promise<void>
-  importPasswords(): Promise<ImportResult | null>
+  savePasswordDrafts(drafts: PasswordDraft[]): Promise<number>
 
   // 记事本
   refreshNotes(): Promise<void>
@@ -87,92 +104,90 @@ interface AppState {
   importNote(): Promise<NoteView | null>
   exportNote(id: string): Promise<string | null>
 
-  // 设置 / 系统
-  loadSettings(): Promise<void>
+  // 统计
+  refreshStats(): Promise<void>
+
+  // 设置
   saveSettings(input: AiConfigInput): Promise<AiConfigView>
   copyText(text: string): Promise<void>
-  clearError(): void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   bootstrapped: false,
-  loading: true as unknown as never,
+  loading: true,
   view: 'chat',
   error: null,
+  appInfo: null,
   settings: null,
   conversations: [],
   activeConversationId: null,
   messages: [],
   streaming: null,
   books: [],
+  groups: [],
   activeBookId: null,
-  chapters: [],
-  chapterContent: null,
   passwords: [],
   notes: [],
+  stats: null,
 
   bootstrap: async () => {
     if (get().bootstrapped) return
     if (!window.toolbox) {
       set({
-        loading: false as unknown as never,
-        error: '本地桥接未就绪：请通过桌面应用窗口运行（electron-vite dev）'
+        loading: false,
+        error: '本地桥接未就绪：请通过桌面应用窗口运行（npm run dev）'
       })
       return
     }
-    set({ loading: true as unknown as never })
+    set({ loading: true })
 
     try {
       const bridge = window.toolbox
-      const [settings, existingConversations] = await Promise.all([
-        bridge.settings.get(),
-        bridge.chat.listConversations()
-      ])
+      const [settings, existing, books, groups, passwords, notes, appInfo] =
+        await Promise.all([
+          bridge.settings.get(),
+          bridge.chat.listConversations(),
+          bridge.books.list(),
+          bridge.groups.list(),
+          bridge.passwords.list(),
+          bridge.notes.list(),
+          bridge.app.info()
+        ])
 
-      let conversations = existingConversations
+      let conversations = existing
       if (conversations.length === 0) {
         conversations = [await bridge.chat.createConversation()]
       }
-
       const activeConversationId = conversations[0]?.id ?? null
       const messages = activeConversationId
         ? await bridge.chat.listMessages(activeConversationId)
         : []
 
-      const [books, passwords, notes] = await Promise.all([
-        bridge.books.list(),
-        bridge.passwords.list(),
-        bridge.notes.list()
-      ])
-
       set({
         bootstrapped: true,
-        loading: false as unknown as never,
+        loading: false,
         settings,
         conversations,
         activeConversationId,
         messages,
         books,
+        groups,
         passwords,
-        notes
+        notes,
+        appInfo
       })
     } catch (error) {
-      set({ loading: false as unknown as never, error: toErrorMessage(error) })
+      set({ loading: false, error: toErrorMessage(error) })
     }
   },
 
   setView: (view) => set({ view }),
+  clearError: () => set({ error: null }),
 
+  // ---------- AI 对话 ----------
   refreshConversations: async () => {
     const conversations = await window.toolbox.chat.listConversations()
-    set((state) => ({
-      conversations,
-      activeConversationId:
-        state.activeConversationId &&
-        conversations.some((item) => item.id === state.activeConversationId)
-          ? state.activeConversationId
-          : conversations[0]?.id ?? null
-    }))
+    set({ conversations })
   },
 
   selectConversation: async (id) => {
@@ -207,9 +222,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       return
     }
     if (remaining.length > 0) {
-      const nextId = remaining[0].id
-      const messages = await window.toolbox.chat.listMessages(nextId)
-      set({ conversations: remaining, activeConversationId: nextId, messages })
+      const messages = await window.toolbox.chat.listMessages(remaining[0].id)
+      set({
+        conversations: remaining,
+        activeConversationId: remaining[0].id,
+        messages
+      })
       return
     }
     const conversation = await window.toolbox.chat.createConversation()
@@ -242,11 +260,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   stopGeneration: async () => {
     const { activeConversationId } = get()
     if (!activeConversationId) return
-    try {
-      await window.toolbox.chat.stop(activeConversationId)
-    } catch (error) {
-      set({ error: toErrorMessage(error) })
-    }
+    await window.toolbox.chat.stop(activeConversationId)
   },
 
   appendDelta: (event) =>
@@ -293,69 +307,24 @@ export const useAppStore = create<AppState>((set, get) => ({
           : state.streaming
     })),
 
+  // ---------- 书架 ----------
   refreshBooks: async () => {
-    if (!window.toolbox) {
-      set({ error: '本地桥接未就绪：请通过桌面应用窗口运行（electron-vite dev）' })
-      return
-    }
-    const books = await window.toolbox.books.list()
-    set({ books })
+    if (!window.toolbox) return
+    set({ books: await window.toolbox.books.list() })
+  },
+
+  refreshGroups: async () => {
+    if (!window.toolbox) return
+    set({ groups: await window.toolbox.groups.list() })
   },
 
   importBook: async () => {
     const book = await window.toolbox.books.import()
-    if (book) {
-      set((state) => ({ books: [book, ...state.books] }))
-    }
+    if (book) set((state) => ({ books: [book, ...state.books] }))
   },
 
-  openReader: async (bookId) => {
-    set({ view: 'reading', activeBookId: bookId, chapters: [], chapterContent: null })
-  },
-
-  loadBook: async (bookId) => {
-    const [chapters, progress] = await Promise.all([
-      window.toolbox.books.listChapters(bookId),
-      window.toolbox.books.progressGet(bookId)
-    ])
-    const startIdx = progress?.chapterIdx ?? 0
-    const target = chapters[Math.min(startIdx, Math.max(chapters.length - 1, 0))]
-    const content = target ? await window.toolbox.books.chapterContent(target.id) : null
-    set({ chapters, chapterContent: content })
-    if (target && progress) {
-      // 恢复进度时保留原始偏移
-      window.setTimeout(() => {
-        const element = document.querySelector('.reader-page')
-        if (element) element.scrollTop = progress.offsetRatio * element.scrollHeight * 0.9
-      }, 0)
-    }
-  },
-
-  gotoChapter: async (idx) => {
-    const { chapters, activeBookId } = get()
-    if (idx < 0 || idx >= chapters.length || !activeBookId) return
-    const chapterMeta = chapters[idx]
-    const content = await window.toolbox.books.chapterContent(chapterMeta.id)
-    set({ chapterContent: content })
-    void window.toolbox.books
-      .progressSave(activeBookId, idx, 0)
-      .catch(() => undefined)
-    const refreshed = get().books.map((book) =>
-      book.id === activeBookId
-        ? {
-            ...book,
-            progress: {
-              chapterIdx: idx,
-              offsetRatio: 0,
-              updatedAtMs: Date.now()
-            }
-          }
-        : book
-    )
-    set({ books: refreshed })
-  },
-
-  closeReader: () => set({ view: 'shelf', chapterContent: null, chapters: [] }),
+  openReader: (bookId) => set({ view: 'reading', activeBookId: bookId }),
+  closeReader: () => set({ view: 'shelf', activeBookId: null }),
 
   deleteBook: async (bookId) => {
     await window.toolbox.books.delete(bookId)
@@ -365,45 +334,78 @@ export const useAppStore = create<AppState>((set, get) => ({
     }))
   },
 
+  reorderBooks: async (ids) => {
+    await window.toolbox.books.reorder(ids)
+    set({ books: await window.toolbox.books.list() })
+  },
+
+  updateBookMeta: async (id, meta) => {
+    const updated = await window.toolbox.books.updateMeta(id, meta)
+    set((state) => ({ books: state.books.map((item) => (item.id === id ? updated : item)) }))
+  },
+
+  setCover: async (bookId) => {
+    await window.toolbox.books.setCover(bookId)
+    const books = await window.toolbox.books.list()
+    set({ books })
+  },
+
+  setBooksGroup: async (ids, groupId) => {
+    await window.toolbox.books.setGroup(ids, groupId)
+    set({ books: await window.toolbox.books.list() })
+  },
+
+  createGroup: async (name) => {
+    const group = await window.toolbox.groups.create(name)
+    set((state) => ({ groups: [group, ...state.groups] }))
+    return group
+  },
+
+  renameGroup: async (id, name) => {
+    await window.toolbox.groups.rename(id, name)
+    set({ groups: await window.toolbox.groups.list() })
+  },
+
+  deleteGroup: async (id) => {
+    await window.toolbox.groups.delete(id)
+    set({ groups: await window.toolbox.groups.list() })
+  },
+
+  // ---------- 密码箱 ----------
   refreshPasswords: async () => {
     if (!window.toolbox) return
-    const passwords = await window.toolbox.passwords.list()
-    set({ passwords })
+    set({ passwords: await window.toolbox.passwords.list() })
   },
 
   savePasswordEntry: async (input) => {
     await window.toolbox.passwords.save(input)
-    const passwords = await window.toolbox.passwords.list()
-    set({ passwords })
+    set({ passwords: await window.toolbox.passwords.list() })
   },
 
   deletePasswordEntry: async (id) => {
     await window.toolbox.passwords.delete(id)
-    set((state) => ({ passwords: state.passwords.filter((entry) => entry.id !== id) }))
+    set((state) => ({ passwords: state.passwords.filter((item) => item.id !== id) }))
   },
 
   togglePasswordFavorite: async (id, isFavorite) => {
     await window.toolbox.passwords.setFavorite(id, isFavorite)
     set((state) => ({
-      passwords: state.passwords.map((entry) =>
-        entry.id === id ? { ...entry, isFavorite } : entry
+      passwords: state.passwords.map((item) =>
+        item.id === id ? { ...item, isFavorite } : item
       )
     }))
   },
 
-  importPasswords: async () => {
-    const result = await window.toolbox.passwords.import()
-    if (result && result.imported > 0) {
-      const passwords = await window.toolbox.passwords.list()
-      set({ passwords })
-    }
-    return result
+  savePasswordDrafts: async (drafts) => {
+    const imported = await window.toolbox.passwords.importSave(drafts)
+    set({ passwords: await window.toolbox.passwords.list() })
+    return imported
   },
 
+  // ---------- 记事本 ----------
   refreshNotes: async () => {
     if (!window.toolbox) return
-    const notes = await window.toolbox.notes.list()
-    set({ notes })
+    set({ notes: await window.toolbox.notes.list() })
   },
 
   saveNote: async (input) => {
@@ -416,7 +418,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteNote: async (id) => {
     await window.toolbox.notes.delete(id)
-    set((state) => ({ notes: state.notes.filter((note) => note.id !== id) }))
+    set((state) => ({ notes: state.notes.filter((item) => item.id !== id) }))
   },
 
   importNote: async () => {
@@ -427,20 +429,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   exportNote: async (id) => window.toolbox.notes.export(id),
 
-  loadSettings: async () => {
-    const settings = await window.toolbox.settings.get()
-    set({ settings })
+  // ---------- 统计 ----------
+  refreshStats: async () => {
+    if (!window.toolbox) return
+    set({ stats: await window.toolbox.stats.summary() })
   },
 
+  // ---------- 设置 ----------
   saveSettings: async (input) => {
     const settings = await window.toolbox.settings.save(input)
     set({ settings })
     return settings
   },
 
-  copyText: async (text) => window.toolbox.system.copyText(text),
-
-  clearError: () => set({ error: null })
+  copyText: async (text) => window.toolbox.system.copyText(text)
 }))
 
 function upsertConversation(

@@ -1,6 +1,11 @@
 export const IPC = {
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
+
+  appInfo: 'app:info',
+  configGet: 'config:get',
+  configSet: 'config:set',
+
   conversationList: 'conversation:list',
   conversationCreate: 'conversation:create',
   conversationRename: 'conversation:rename',
@@ -8,6 +13,7 @@ export const IPC = {
   messageList: 'message:list',
   chatSend: 'chat:send',
   chatStop: 'chat:stop',
+
   booksList: 'books:list',
   booksImport: 'books:import',
   booksChapters: 'books:chapters',
@@ -15,16 +21,41 @@ export const IPC = {
   booksProgressGet: 'books:progress:get',
   booksProgressSave: 'books:progress:save',
   booksDelete: 'books:delete',
+  booksReorder: 'books:reorder',
+  booksUpdateMeta: 'books:update-meta',
+  booksSetCover: 'books:set-cover',
+  booksSetGroup: 'books:set-group',
+  booksSearch: 'books:search',
+
+  groupsList: 'groups:list',
+  groupsCreate: 'groups:create',
+  groupsRename: 'groups:rename',
+  groupsDelete: 'groups:delete',
+
+  bookmarksList: 'bookmarks:list',
+  bookmarksToggle: 'bookmarks:toggle',
+  bookmarksDelete: 'bookmarks:delete',
+
+  statsSummary: 'stats:summary',
+  statsFlush: 'stats:flush',
+
   passwordList: 'password:list',
   passwordSave: 'password:save',
   passwordDelete: 'password:delete',
   passwordSetFavorite: 'password:set-favorite',
-  passwordImport: 'password:import',
+  passwordImportFixed: 'password:import:fixed',
+  passwordImportAi: 'password:import:ai',
+  passwordImportSave: 'password:import:save',
+
   notesList: 'notes:list',
   notesSave: 'notes:save',
   notesDelete: 'notes:delete',
   notesImport: 'notes:import',
   notesExport: 'notes:export',
+
+  backgroundPick: 'background:pick',
+  backgroundClear: 'background:clear',
+
   systemCopy: 'system:copy'
 } as const
 
@@ -33,4 +64,9 @@ export const CHAT_EVENT = {
   completed: 'chat:event:completed',
   error: 'chat:event:error',
   stopped: 'chat:event:stopped'
+} as const
+
+export const WINDOW_EVENT = {
+  blur: 'window:event:blur',
+  focus: 'window:event:focus'
 } as const

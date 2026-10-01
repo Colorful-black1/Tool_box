@@ -3,13 +3,14 @@ import { join } from 'node:path'
 import { BrowserWindow, Menu, app, safeStorage } from 'electron'
 
 import { DB_FILE_NAME } from '../shared/constants'
+import type { SafeStorageAdapter } from '../shared/safe-storage'
 import { registerIpcHandlers } from './ipc/register-ipc'
 import { AiGateway } from './services/ai-gateway/ai-gateway'
 import { ToolboxStore } from './services/chat-store/chat-store'
-import { ImportService } from './services/library/import-service'
 import { SafeStorageSecretBox } from './services/crypto/safe-storage-secret-box'
+import { ImportService } from './services/library/import-service'
+import { PasswordAiService } from './services/password/password-ai-service'
 import { SettingsService } from './services/settings/settings-service'
-import type { SafeStorageAdapter } from '../shared/safe-storage'
 
 const safeStorageAdapter = safeStorage as SafeStorageAdapter
 
@@ -22,6 +23,8 @@ function createMainWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#080b16',
     autoHideMenuBar: true,
+    title: '私人百宝箱',
+    icon: join(app.getAppPath(), 'assets/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -49,8 +52,12 @@ function initializeServices(): void {
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
   const aiGateway = new AiGateway(settings, store)
   const importService = new ImportService()
+  const passwordAi = new PasswordAiService(
+    join(app.getAppPath(), 'assets/prompts'),
+    (system, user) => aiGateway.complete(system, user)
+  )
 
-  registerIpcHandlers({ settings, store, aiGateway, importService })
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi })
 
   app.on('quit', () => {
     store.close()

@@ -1,21 +1,25 @@
 import { useEffect } from 'react'
 import type { JSX } from 'react'
 
+import { BookshelfPage } from './components/bookshelf/bookshelf-page'
 import { ChatPanel } from './components/chat-panel'
 import { ConversationSidebar } from './components/conversation-sidebar'
-import { NotesPage } from './components/notes'
-import { PasswordBoxPage } from './components/password-box'
-import { ReaderPage, ReadingView } from './components/reader'
-import { SettingsPage } from './routes/settings-page'
-import { SideRail } from './components/shell'
+import { NotesPage } from './components/notes/notes-page'
+import { PasswordBoxPage } from './components/password/password-box-page'
+import { Reader } from './components/reader/reader'
+import { SideRail, TopBar } from './components/shell'
+import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
+import { SettingsPage } from './routes/settings-page'
 import type { AppView } from './stores/app-store'
 import { useAppStore } from './stores/app-store'
+import { useConfigStore } from './stores/config-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
   reading: { title: '沉浸阅读', subtitle: 'READING · 与群星同行' },
+  stats: { title: '阅读统计', subtitle: 'STATS · 旅程的刻度' },
   passwords: { title: '密码宝匣', subtitle: 'PASSWORD VAULT · 秘语封存于此' },
   notes: { title: '星笺手记', subtitle: 'NOTES · 星语落笔成笺' },
   settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
@@ -24,6 +28,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
 const RAIL_ITEMS: Array<{ view: AppView; label: string; icon: string }> = [
   { view: 'chat', label: '对话', icon: 'chat' },
   { view: 'shelf', label: '书架', icon: 'book' },
+  { view: 'stats', label: '统计', icon: 'stats' },
   { view: 'passwords', label: '密码箱', icon: 'lock' },
   { view: 'notes', label: '记事本', icon: 'note' },
   { view: 'settings', label: '设置', icon: 'settings' }
@@ -34,10 +39,16 @@ export default function App(): JSX.Element {
   const setView = useAppStore((state) => state.setView)
   const loading = useAppStore((state) => state.loading)
   const error = useAppStore((state) => state.error)
+  const activeBookId = useAppStore((state) => state.activeBookId)
+  const books = useAppStore((state) => state.books)
+  const closeReader = useAppStore((state) => state.closeReader)
+  const openReader = useAppStore((state) => state.openReader)
+  const loadConfig = useConfigStore((state) => state.load)
 
   useEffect(() => {
+    void loadConfig()
     void useAppStore.getState().bootstrap()
-  }, [])
+  }, [loadConfig])
 
   useEffect(() => {
     const bridge = window.toolbox?.chat
@@ -52,32 +63,38 @@ export default function App(): JSX.Element {
   }, [])
 
   const meta = PAGE_META[view] ?? PAGE_META.chat
+  const activeBook = books.find((item) => item.id === activeBookId)
 
   return (
     <>
       <Starfield />
       <div className="app-shell">
-        <SideRail view={view} onChange={(next) => setView(next as AppView)} items={RAIL_ITEMS} />
+        <SideRail
+          view={view}
+          onChange={setView}
+          items={RAIL_ITEMS}
+        />
         <div className="main">
-          <header className="topbar">
-            <div>
-              <h1 className="page-title">{meta.title}</h1>
-              <p className="page-sub">{meta.subtitle}</p>
-            </div>
-          </header>
+          <TopBar title={meta.title} subtitle={meta.subtitle} />
 
-          <main className="viewport" data-view={view}>
+          <main className="viewport">
             {loading ? (
               <div aria-busy="true" aria-label="加载中">
                 <div className="loading-skeleton" />
                 <div className="loading-skeleton" />
                 <div className="loading-skeleton" />
               </div>
+            ) : view === 'reading' && activeBookId ? (
+              <Reader
+                bookId={activeBookId}
+                bookTitle={activeBook?.title ?? '阅读'}
+                onBack={closeReader}
+              />
             ) : (
               <>
                 {error ? (
                   <div className="status-banner" role="alert">
-                    {error}
+                    <span>{error}</span>
                     <button
                       type="button"
                       className="btn-ghost"
@@ -87,14 +104,17 @@ export default function App(): JSX.Element {
                     </button>
                   </div>
                 ) : null}
+
                 {view === 'chat' ? (
                   <div className="chat-layout view-enter">
                     <ConversationSidebar />
                     <ChatPanel />
                   </div>
                 ) : null}
-                {view === 'shelf' ? <ReaderPage /> : null}
-                {view === 'reading' ? <ReadingView /> : null}
+                {view === 'shelf' ? <BookshelfPage /> : null}
+                {view === 'stats' ? (
+                  <StatsPage onOpenBook={(bookId) => openReader(bookId)} />
+                ) : null}
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}

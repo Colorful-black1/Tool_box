@@ -1,7 +1,12 @@
- /**
- * 密码批量导入文本解析器（移植自 novel_read 的固定格式解析）。
- * 规则：条目之间空行分隔；每行「标签: 值」；支持中英文标签与全半角冒号；
- * 无法识别的行计入 skipped。
+/**
+ * 密码批量导入文本解析器（移植自 novel_read services/password_text_parser.dart）。
+ *
+ * 规则：
+ * - 条目之间空行分隔（\n\s*\n）
+ * - 行内「标签: 值」，冒号全半角均可，大小写不敏感
+ * - 标签集顺序敏感：长标签在前，避免「网站名」被「网站」截断
+ * - 名称缺失时依次回退 account → 「未命名条目」
+ * - 无法识别的行累加到 skipped
  */
 
 export interface ParsedPasswordEntry {
@@ -17,30 +22,14 @@ export interface ParseOutcome {
   skipped: number
 }
 
-const LABEL_MAP: Record<string, keyof ParsedPasswordEntry> = {
-  '名称': 'title',
-  '标题': 'title',
-  '网站': 'url',
-  '网址': 'url',
-  '地址': 'url',
-  '链接': 'url',
-  'url': 'url',
-  'site': 'url',
-  '账号': 'account',
-  '用户名': 'account',
-  '用户': 'account',
-  'account': 'account',
-  'username': 'account',
-  'user': 'account',
-  '密码': 'password',
-  'password': 'password',
-  'pass': 'password',
-  'pwd': 'password',
-  '备注': 'remark',
-  '说明': 'remark',
-  'remark': 'remark',
-  'note': 'remark'
-}
+/** 顺序敏感：同一目标字段的标签按长度降序排列 */
+const LABEL_MAP: Array<{ labels: string[]; field: keyof ParsedPasswordEntry }> = [
+  { labels: ['网站名', '网站名称', 'name', 'title', '名称', '标题', '网站'], field: 'title' },
+  { labels: ['网址', 'url', 'website', 'site', '链接', '地址'], field: 'url' },
+  { labels: ['用户名', '账号', '账户', 'username', 'account', 'user', 'login'], field: 'account' },
+  { labels: ['password', 'passwd', 'password', '密码'], field: 'password' },
+  { labels: ['remark', 'note', '备注', '说明', '描述'], field: 'remark' }
+]
 
 export function parsePasswordText(text: string): ParseOutcome {
   const blocks = text
@@ -53,15 +42,19 @@ export function parsePasswordText(text: string): ParseOutcome {
   let skipped = 0
 
   for (const block of blocks) {
+    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
     const entry = emptyEntry()
-    let recognizedAny = false
+    let recognized = false
+    let bareTitle = ''
 
-    for (const line of block.split('\n')) {
-      const raw = line.trim()
-      if (!raw) continue
-
-      const parsed = parseKeyValue(raw)
+    for (const line of lines) {
+      const parsed = parseKeyValue(line)
       if (!parsed) {
+        // 无标签的单行块 → 视为条目名称（兼容「淘宝」这种纯标题格式）
+        if (lines.length === 1 && !recognized) {
+          bareTitle = line
+          continue
+        }
         skipped += 1
         continue
       }
@@ -72,16 +65,21 @@ export function parsePasswordText(text: string): ParseOutcome {
         continue
       }
 
-      if (parsed.value || field === 'remark') {
-        entry[field] = parsed.value
-        recognizedAny = true
-      }
+      entry[field] = parsed.value
+      recognized = true
     }
 
-    if (recognizedAny && (entry.title || entry.account || entry.password)) {
-      entries.push(entry)
-    } else if (recognizedAny) {
-      skipped += 1
+    if (!entry.title) entry.title = bareTitle
+    if (!entry.title) entry.title = entry.account
+    if (!entry.title) entry.title = '未命名条目'
+
+    const hasAnyValue = Boolean(entry.account || entry.password || entry.url || entry.remark)
+    if (recognized || bareTitle) {
+      if (hasAnyValue || bareTitle) {
+        entries.push(entry)
+      } else {
+        skipped += 1
+      }
     } else {
       skipped += 1
     }
@@ -91,25 +89,29 @@ export function parsePasswordText(text: string): ParseOutcome {
 }
 
 function parseKeyValue(line: string): { label: string; value: string } | null {
-  const separators = [':', '：']
-  for (const sep of separators) {
-    const idx = line.indexOf(sep)
-    if (idx <= 0) continue
-    const label = line.slice(0, idx).trim().toLowerCase()
-    const value = line.slice(idx + sep.length).trim()
-    if (!label) continue
-    return { label, value }
-  }
-  return null
+  const idx = findSeparator(line)
+  if (idx <= 0) return null
+  const label = line.slice(0, idx).trim().toLowerCase()
+  if (!label) return null
+  return { label, value: line.slice(idx + 1).trim() }
+}
+
+function findSeparator(line: string): number {
+  const ascii = line.indexOf(':')
+  const full = line.indexOf('：')
+  if (ascii < 0) return full
+  if (full < 0) return ascii
+  return Math.min(ascii, full)
 }
 
 function resolveField(label: string): keyof ParsedPasswordEntry | null {
   const normalized = label.toLowerCase().replace(/[\s_-]/g, '')
-  const direct = LABEL_MAP[label]
-  if (direct) return direct
-
-  for (const key of Object.keys(LABEL_MAP)) {
-    if (key.replace(/[\s_-]/g, '').toLowerCase() === normalized) return LABEL_MAP[key]
+  for (const group of LABEL_MAP) {
+    for (const candidate of group.labels) {
+      if (candidate.toLowerCase().replace(/[\s_-]/g, '') === normalized) {
+        return group.field
+      }
+    }
   }
   return null
 }

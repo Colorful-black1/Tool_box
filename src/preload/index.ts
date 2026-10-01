@@ -9,15 +9,13 @@ import type {
   ChatSendRequest,
   ChatStoppedEvent,
   NoteSaveInput,
+  PasswordDraft,
   PasswordInput,
   ReadingProgressInput
 } from '../shared/types'
 import type { ToolboxBridge } from '../shared/bridge'
 
-function subscribe<T>(
-  channel: string,
-  listener: (payload: T) => void
-): () => void {
+function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const wrapped = (_event: unknown, payload: T): void => {
     listener(payload)
   }
@@ -28,22 +26,26 @@ function subscribe<T>(
 }
 
 const bridge: ToolboxBridge = {
+  app: {
+    info: () => ipcRenderer.invoke(IPC.appInfo)
+  },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
     save: (input: AiConfigInput) => ipcRenderer.invoke(IPC.settingsSave, input)
+  },
+  config: {
+    get: () => ipcRenderer.invoke(IPC.configGet),
+    set: (patch: Record<string, unknown>) => ipcRenderer.invoke(IPC.configSet, patch)
   },
   chat: {
     listConversations: () => ipcRenderer.invoke(IPC.conversationList),
     createConversation: () => ipcRenderer.invoke(IPC.conversationCreate),
     renameConversation: (id: string, title: string) =>
       ipcRenderer.invoke(IPC.conversationRename, id, title),
-    deleteConversation: (id: string) =>
-      ipcRenderer.invoke(IPC.conversationDelete, id),
-    listMessages: (conversationId: string) =>
-      ipcRenderer.invoke(IPC.messageList, conversationId),
+    deleteConversation: (id: string) => ipcRenderer.invoke(IPC.conversationDelete, id),
+    listMessages: (conversationId: string) => ipcRenderer.invoke(IPC.messageList, conversationId),
     send: (request: ChatSendRequest) => ipcRenderer.invoke(IPC.chatSend, request),
-    stop: (conversationId: string) =>
-      ipcRenderer.invoke(IPC.chatStop, conversationId),
+    stop: (conversationId: string) => ipcRenderer.invoke(IPC.chatStop, conversationId),
     onDelta: (listener: (event: ChatDeltaEvent) => void) =>
       subscribe<ChatDeltaEvent>(CHAT_EVENT.delta, listener),
     onCompleted: (listener: (event: ChatCompletedEvent) => void) =>
@@ -55,18 +57,43 @@ const bridge: ToolboxBridge = {
   },
   books: {
     list: () => ipcRenderer.invoke(IPC.booksList),
+    search: (query: string) => ipcRenderer.invoke(IPC.booksSearch, query),
     import: () => ipcRenderer.invoke(IPC.booksImport),
     listChapters: (bookId: string) => ipcRenderer.invoke(IPC.booksChapters, bookId),
     chapterContent: (chapterId: string) =>
       ipcRenderer.invoke(IPC.booksChapterContent, chapterId),
     progressGet: (bookId: string) => ipcRenderer.invoke(IPC.booksProgressGet, bookId),
-    progressSave: (bookId: string, chapterIdx: number, offsetRatio: number) =>
-      ipcRenderer.invoke(IPC.booksProgressSave, {
-        bookId,
-        chapterIdx,
-        offsetRatio
-      } satisfies ReadingProgressInput),
-    delete: (bookId: string) => ipcRenderer.invoke(IPC.booksDelete, bookId)
+    progressSave: (input: ReadingProgressInput) =>
+      ipcRenderer.invoke(IPC.booksProgressSave, input),
+    delete: (bookId: string) => ipcRenderer.invoke(IPC.booksDelete, bookId),
+    reorder: (orderedIds: string[]) => ipcRenderer.invoke(IPC.booksReorder, orderedIds),
+    updateMeta: (id: string, meta: { title?: string; author?: string }) =>
+      ipcRenderer.invoke(IPC.booksUpdateMeta, id, meta),
+    setCover: (id: string) => ipcRenderer.invoke(IPC.booksSetCover, id),
+    setGroup: (ids: string[], groupId: string | null) =>
+      ipcRenderer.invoke(IPC.booksSetGroup, ids, groupId)
+  },
+  groups: {
+    list: () => ipcRenderer.invoke(IPC.groupsList),
+    create: (name: string) => ipcRenderer.invoke(IPC.groupsCreate, name),
+    rename: (id: string, name: string) => ipcRenderer.invoke(IPC.groupsRename, id, name),
+    delete: (id: string) => ipcRenderer.invoke(IPC.groupsDelete, id)
+  },
+  bookmarks: {
+    list: (bookId: string) => ipcRenderer.invoke(IPC.bookmarksList, bookId),
+    toggle: (input: {
+      bookId: string
+      chapterIdx: number
+      pageIdx: number
+      pageIdxRatio: number
+      snippet: string
+    }) => ipcRenderer.invoke(IPC.bookmarksToggle, input),
+    delete: (id: string) => ipcRenderer.invoke(IPC.bookmarksDelete, id)
+  },
+  stats: {
+    summary: () => ipcRenderer.invoke(IPC.statsSummary),
+    flush: (input: { durationMs: number; charCount: number }) =>
+      ipcRenderer.invoke(IPC.statsFlush, input)
   },
   passwords: {
     list: () => ipcRenderer.invoke(IPC.passwordList),
@@ -75,7 +102,10 @@ const bridge: ToolboxBridge = {
     delete: (id: string) => ipcRenderer.invoke(IPC.passwordDelete, id),
     setFavorite: (id: string, isFavorite: boolean) =>
       ipcRenderer.invoke(IPC.passwordSetFavorite, id, isFavorite),
-    import: () => ipcRenderer.invoke(IPC.passwordImport)
+    importFixed: () => ipcRenderer.invoke(IPC.passwordImportFixed),
+    importAi: () => ipcRenderer.invoke(IPC.passwordImportAi),
+    importSave: (drafts: PasswordDraft[]) =>
+      ipcRenderer.invoke(IPC.passwordImportSave, drafts)
   },
   notes: {
     list: () => ipcRenderer.invoke(IPC.notesList),
@@ -83,6 +113,10 @@ const bridge: ToolboxBridge = {
     delete: (id: string) => ipcRenderer.invoke(IPC.notesDelete, id),
     import: () => ipcRenderer.invoke(IPC.notesImport),
     export: (id: string) => ipcRenderer.invoke(IPC.notesExport, id)
+  },
+  background: {
+    pick: () => ipcRenderer.invoke(IPC.backgroundPick),
+    clear: () => ipcRenderer.invoke(IPC.backgroundClear)
   },
   system: {
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text)

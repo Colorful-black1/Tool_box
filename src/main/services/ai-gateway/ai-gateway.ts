@@ -1,4 +1,4 @@
-import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { AIMessageChunk } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 
@@ -73,6 +73,33 @@ export class AiGateway {
 
   stop(conversationId: string): void {
     this.active.get(conversationId)?.abort()
+  }
+
+  /** 非流式一次性对话：供密码箱 AI 识别等内部工具复用同一份配置与错误映射 */
+  async complete(system: string, user: string): Promise<string> {
+    const content = validateChatInput(user)
+    const config = await this.settings.getAiConfig()
+    const model = new ChatOpenAI({
+      apiKey: config.apiKey,
+      model: config.model,
+      temperature: 0,
+      timeout: CHAT_TIMEOUT_MS,
+      maxRetries: 1,
+      configuration: { baseURL: normalizeOpenAiBaseUrl(config.baseUrl) }
+    })
+
+    try {
+      const reply = await model.invoke([
+        new SystemMessage(system),
+        new HumanMessage(content)
+      ])
+      const text = typeof reply.content === 'string' ? reply.content : ''
+      if (!text.trim()) throw new AiGatewayError('AI 未返回内容')
+      return text
+    } catch (error) {
+      if (error instanceof AiGatewayError) throw error
+      throw new AiGatewayError(describeAiError(error, config.apiKey), error)
+    }
   }
 
   private async streamResponse(input: {

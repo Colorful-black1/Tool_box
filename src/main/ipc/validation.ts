@@ -15,3 +15,31 @@ export function requireString(
   }
   return trimmed
 }
+
+export function requireNonNegativeInt(value: unknown, name: string): number {
+  const num = typeof value === 'string' ? Number(value) : value
+  if (typeof num !== 'number' || !Number.isInteger(num) || num < 0) {
+    throw new Error(`${name}无效`)
+  }
+  return num
+}
+
+export function requireRatio(value: unknown, name: string): number {
+  const num = typeof value === 'string' ? Number(value) : value
+  if (typeof num !== 'number' || Number.isNaN(num)) {
+    throw new Error(`${name}无效`)
+  }
+  return Math.min(1, Math.max(0, num))
+}
+
+export function requireStringArray(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`${name}必须是数组`)
+  return value.map((item, index) => requireString(item, `${name}[${index}]`))
+}
+
+export function assertObject(value: unknown, name: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${name}无效`)
+  }
+  return value as Record<string, unknown>
+}
