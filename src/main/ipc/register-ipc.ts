@@ -4,8 +4,8 @@ import { basename, extname, join } from 'node:path'
 
 import { BACKGROUNDS_DIR, COVERS_DIR } from '../../shared/constants'
 import { CHAT_EVENT, IPC } from '../../shared/ipc-contract'
+import { AI_PROVIDER_IDS } from '../../shared/types'
 import type {
-  AiConfigInput,
   ChatSendRequest,
   NoteSaveInput,
   PasswordDraft,
@@ -20,6 +20,8 @@ import { PasswordAiService } from '../services/password/password-ai-service'
 import type { SettingsService } from '../services/settings/settings-service'
 import {
   assertObject,
+  optionalString,
+  requireEnum,
   requireNonNegativeInt,
   requireRatio,
   requireString,
@@ -52,10 +54,37 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     return store.configSet(assertObject(patch, '配置'))
   })
 
-  // ---------- AI 配置 ----------
+  // ---------- AI 配置（多档案） ----------
   ipcMain.handle(IPC.settingsGet, () => settings.getView())
+
   ipcMain.handle(IPC.settingsSave, (_event, input: unknown) => {
-    return settings.save(assertObject(input, '设置内容') as unknown as AiConfigInput)
+    const body = assertObject(input, '设置内容')
+    return settings.save({
+      id: optionalString(body.id, '配置 ID', { maxLength: 64 }),
+      name: requireString(body.name, '配置名称', { maxLength: 24 }),
+      provider: requireEnum(body.provider, '供应商', AI_PROVIDER_IDS),
+      baseUrl: requireString(body.baseUrl, '接口地址', { maxLength: 200 }),
+      model: requireString(body.model, '模型名称', { maxLength: 80 }),
+      apiKey: optionalString(body.apiKey, 'API Key', { maxLength: 512 })
+    })
+  })
+
+  ipcMain.handle(IPC.settingsRemove, (_event, id: unknown) => {
+    return settings.remove(requireString(id, '配置 ID', { maxLength: 64 }))
+  })
+
+  ipcMain.handle(IPC.settingsActivate, (_event, id: unknown) => {
+    return settings.activate(requireString(id, '配置 ID', { maxLength: 64 }))
+  })
+
+  ipcMain.handle(IPC.settingsModelsFetch, (_event, input: unknown) => {
+    const body = assertObject(input, '模型参数')
+    return settings.fetchModels({
+      profileId: optionalString(body.profileId, '配置 ID', { maxLength: 64 }),
+      provider: requireEnum(body.provider, '供应商', AI_PROVIDER_IDS),
+      baseUrl: requireString(body.baseUrl, '接口地址', { maxLength: 200 }),
+      apiKey: optionalString(body.apiKey, 'API Key', { maxLength: 512 })
+    })
   })
 
   // ---------- AI 对话 ----------

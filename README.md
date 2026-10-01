@@ -6,10 +6,19 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 | 模块 | 说明 |
 | --- | --- |
-| AI 对话 | 用户配置 OpenAI 兼容接口（`baseUrl` / `model` / `apiKey`），LangChain.js 流式对话、多会话、停止生成 |
+| AI 对话 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；LangChain.js 流式对话、多会话、停止生成 |
 | 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计 |
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入；重复检测、拼音分组、字母索引 |
 | 记事本 | Markdown 编辑与预览、导入导出 `.md` |
+
+### AI 供应商配置
+
+设置页采用**档案制**：每套档案独立保存供应商、接口地址、模型与 API Key，列表点选即可切换「使用中」的那套，AI 对话与密码箱识别都走当前启用档案。
+
+- 选择内置供应商会自动填入官方端点与推荐模型；下拉里没有的服务商选「自定义」手填 `baseUrl` 即可。
+- 点「获取模型」调用供应商的 `GET {baseUrl}/models` 拉取实时列表并以下拉呈现；**拉取失败时自动降级为该供应商的内置推荐模型**并提示原因，不会阻断配置流程。
+- 旧版本（单套配置）的 `ai-settings.json` 会自动迁移为唯一档案，并按 `baseUrl` 反查补全供应商，升级不丢数据。
+- **OpenCode Go 特殊要求**：该网关要求客户端带自有 `User-Agent`，并为每个会话发送稳定的 `x-opencode-session`，否则返回 400。应用已自动注入这两个头（会话 ID 取会话 ID，逐轮稳定），无需手动配置。
 
 ## 技术栈
 
@@ -46,15 +55,50 @@ npm run format        # Prettier
 - `asarUnpack: ["**/*.node"]` —— `better-sqlite3` 的原生二进制不能进 asar，否则运行时报错找不到模块。
 - `files` 只收 `out/`、`assets/`、`package.json`；`assets/prompts/password_import.txt` 在运行期通过 `app.getAppPath()` 读取，必须打进包内。
 - 应用图标为 `assets/icon.png`（512×512，electron-builder 自动转 `.ico`）。
-- 国内网络建议先设置镜像再打包：
 
-```bash
-ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ^
-ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ ^
+安装包为 `perMachine: false`（免管理员权限）、`oneClick: false`（带安装向导，可自选安装目录），并创建桌面与开始菜单快捷方式。
+
+### 国内镜像
+
+首次打包需要下载 Electron 运行时与 nsis / winCodeSign / 7-zip 等打包工具，国内网络建议先设置镜像环境变量。
+
+PowerShell（仅当前会话生效）：
+
+```powershell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+$env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
 npm run dist
 ```
 
-安装包为 `perMachine: false`（免管理员权限）、`oneClick: false`（带安装向导，可自选安装目录），并创建桌面与开始菜单快捷方式。
+PowerShell（永久生效，需重开终端）：
+
+```powershell
+setx ELECTRON_MIRROR "https://npmmirror.com/mirrors/electron/"
+setx ELECTRON_BUILDER_BINARIES_MIRROR "https://npmmirror.com/mirrors/electron-builder-binaries/"
+```
+
+cmd：
+
+```cmd
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+npm run dist
+```
+
+bash / Git Bash：
+
+```bash
+export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+npm run dist
+```
+
+| 变量 | 作用 |
+| --- | --- |
+| `ELECTRON_MIRROR` | Electron 运行时二进制（约 130 MB / 次） |
+| `ELECTRON_BUILDER_BINARIES_MIRROR` | nsis、winCodeSign、7-zip 等打包工具 |
+
+仅首次打包需要下载，之后走本地缓存（`%LOCALAPPDATA%\electron\Cache`、`%LOCALAPPDATA%\electron-builder\Cache`），清掉缓存才会重新拉取。
 
 ## 目录
 
@@ -86,7 +130,7 @@ src/
 
 ## 安全说明
 
-- AI `apiKey`：AES-GCM 加密后写入 `ai-settings.json`，主密钥由系统安全区（DPAPI）保管。
+- AI `apiKey`：AES-GCM 加密后写入 `ai-settings.json`，主密钥由系统安全区（DPAPI）保管；多套档案各自独立加密，渲染层只能读到 `hasApiKey` 布尔值。
 - 密码箱：`account` / `password` / `remark` 加密落库，`title` / `url` 明文以便搜索；主密钥绑定本机，整库拷走无法解密。
 - 渲染进程无 Node 权限，仅通过 preload 暴露的白名单 IPC 访问数据。
 

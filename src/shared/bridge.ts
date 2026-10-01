@@ -1,6 +1,8 @@
 import type {
-  AiConfigInput,
   AiConfigView,
+  AiFetchModelsInput,
+  AiModelListResult,
+  AiProfileInput,
   AppInfo,
   BookGroup,
   BookSummary,
@@ -30,8 +32,15 @@ export interface ToolboxBridge {
     info(): Promise<AppInfo>
   }
   settings: {
+    /** 全部档案 + 当前启用档案 */
     get(): Promise<AiConfigView>
-    save(input: AiConfigInput): Promise<AiConfigView>
+    /** 新建或更新档案（id 留空为新建），返回最新视图 */
+    save(input: AiProfileInput): Promise<AiConfigView>
+    remove(id: string): Promise<AiConfigView>
+    /** 切换启用档案 */
+    activate(id: string): Promise<AiConfigView>
+    /** 拉取供应商模型列表；apiKey 留空时用档案已保存的 Key */
+    fetchModels(input: AiFetchModelsInput): Promise<AiModelListResult>
   }
   config: {
     get(): Promise<Record<string, unknown> | null>

@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import { CHAT_EVENT, IPC } from '../shared/ipc-contract'
 import type {
-  AiConfigInput,
+  AiFetchModelsInput,
+  AiProfileInput,
   ChatCompletedEvent,
   ChatDeltaEvent,
   ChatErrorEvent,
@@ -31,7 +32,11 @@ const bridge: ToolboxBridge = {
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
-    save: (input: AiConfigInput) => ipcRenderer.invoke(IPC.settingsSave, input)
+    save: (input: AiProfileInput) => ipcRenderer.invoke(IPC.settingsSave, input),
+    remove: (id: string) => ipcRenderer.invoke(IPC.settingsRemove, id),
+    activate: (id: string) => ipcRenderer.invoke(IPC.settingsActivate, id),
+    fetchModels: (input: AiFetchModelsInput) =>
+      ipcRenderer.invoke(IPC.settingsModelsFetch, input)
   },
   config: {
     get: () => ipcRenderer.invoke(IPC.configGet),

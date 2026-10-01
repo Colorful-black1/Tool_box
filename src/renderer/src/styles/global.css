@@ -443,6 +443,129 @@ textarea,
   padding: 22px 26px;
 }
 
+/* ============ AI 配置：档案列表 + 编辑表单 ============ */
+
+.settings-layout-wide {
+  max-width: 1040px;
+}
+
+.settings-split {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.profile-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-rail-empty,
+.settings-empty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+.settings-empty p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-mid);
+}
+
+.profile-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid rgba(232, 201, 138, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-mid);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.profile-item:hover {
+  border-color: rgba(232, 201, 138, 0.38);
+}
+
+.profile-item.active {
+  border-color: var(--gold);
+  background: rgba(232, 201, 138, 0.1);
+}
+
+.profile-item-name {
+  font-size: 13px;
+  color: var(--text-hi);
+}
+
+.profile-item-meta {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.profile-item-badge {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  padding: 1px 6px;
+  border: 1px solid rgba(232, 201, 138, 0.4);
+  border-radius: 6px;
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+
+.field-select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-hi);
+  font-size: 13px;
+  font-family: var(--sans);
+  outline: none;
+  transition: all 0.24s;
+  cursor: pointer;
+}
+
+.field-select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 13px rgba(232, 201, 138, 0.18);
+}
+
+.field-select option {
+  background: #131a30;
+  color: var(--text-hi);
+}
+
+.field-row-head .field-label {
+  margin-bottom: 0;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .settings-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ============ 工具条 ============ */
 
 .toolbar-row {

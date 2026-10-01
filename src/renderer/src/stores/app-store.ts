@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 
 import type {
-  AiConfigInput,
   AiConfigView,
+  AiFetchModelsInput,
+  AiModelListResult,
+  AiProfileInput,
   AppInfo,
   BookGroup,
   BookSummary,
@@ -108,7 +110,10 @@ interface AppState {
   refreshStats(): Promise<void>
 
   // 设置
-  saveSettings(input: AiConfigInput): Promise<AiConfigView>
+  saveProfile(input: AiProfileInput): Promise<AiConfigView>
+  removeProfile(id: string): Promise<AiConfigView>
+  activateProfile(id: string): Promise<AiConfigView>
+  fetchModels(input: AiFetchModelsInput): Promise<AiModelListResult>
   copyText(text: string): Promise<void>
 }
 
@@ -436,11 +441,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // ---------- 设置 ----------
-  saveSettings: async (input) => {
+  saveProfile: async (input) => {
     const settings = await window.toolbox.settings.save(input)
     set({ settings })
     return settings
   },
+
+  removeProfile: async (id) => {
+    const settings = await window.toolbox.settings.remove(id)
+    set({ settings })
+    return settings
+  },
+
+  activateProfile: async (id) => {
+    const settings = await window.toolbox.settings.activate(id)
+    set({ settings })
+    return settings
+  },
+
+  fetchModels: (input) => window.toolbox.settings.fetchModels(input),
 
   copyText: async (text) => window.toolbox.system.copyText(text)
 }))

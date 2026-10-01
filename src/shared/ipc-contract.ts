@@ -1,6 +1,9 @@
 export const IPC = {
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
+  settingsRemove: 'settings:remove',
+  settingsActivate: 'settings:activate',
+  settingsModelsFetch: 'settings:models:fetch',
 
   appInfo: 'app:info',
   configGet: 'config:get',

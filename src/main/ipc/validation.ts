@@ -37,6 +37,28 @@ export function requireStringArray(value: unknown, name: string): string[] {
   return value.map((item, index) => requireString(item, `${name}[${index}]`))
 }
 
+/** 枚举 / 白名单校验：动态排序、供应商 id 等外部可控的固定选项必须走这里 */
+export function requireEnum<T extends string>(
+  value: unknown,
+  name: string,
+  allowed: readonly T[]
+): T {
+  if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
+    throw new Error(`${name}无效`)
+  }
+  return value as T
+}
+
+/** 可选字符串：未传或空串返回 undefined，其余走 requireString 校验 */
+export function optionalString(
+  value: unknown,
+  name: string,
+  options: { maxLength?: number } = {}
+): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  return requireString(value, name, { maxLength: options.maxLength })
+}
+
 export function assertObject(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`${name}无效`)
