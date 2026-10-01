@@ -243,6 +243,9 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
   schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
 * 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，
   因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
+* 改动数据层后必须跑 `npm run mobile:verify:data`：它用 esbuild + Electron 把真实数据层
+  跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL。
+  这套验证抓到过「建表语句里混入 ALTER TABLE 导致新库重复列」的真机首启崩溃。
 * `transaction.ts` 单独成文件只为切断原生模块的运行期引用，勿合并回 `database.ts`。
 * 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
 * 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。

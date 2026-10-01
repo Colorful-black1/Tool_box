@@ -5,12 +5,13 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
+    "android": "expo start --android",
     "android:native": "expo run:android",
-    "ios": "expo run:ios",
+    "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "export:android": "expo export --platform android"
+    "export:android": "expo export --platform android",
+    "verify:data": "node verify/run.cjs"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.4.0",

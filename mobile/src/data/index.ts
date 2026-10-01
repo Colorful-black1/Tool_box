@@ -4,6 +4,8 @@
 
 export { openDatabase, databaseDirectory, databaseFilePath } from './database'
 export { transact } from './transaction'
+export { migrateUp, readUserVersion } from './migrate'
+export type { SqlExecutor } from './migrate'
 export { SCHEMA_VERSION } from './schema'
 export { SecureStoreSecretBox } from './secret-box'
 export type { SecretBox } from './secret-box'

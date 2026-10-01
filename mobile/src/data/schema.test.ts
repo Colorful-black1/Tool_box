@@ -71,12 +71,18 @@ describe('手机端 schema 与桌面端对齐', () => {
 })
 
 describe('迁移分段', () => {
-  it('版本越高，需要执行的语句越少（v1/v2/v3 三段 DDL + 7 条列补丁）', async () => {
-    const { collectMigrationSql } = await import('./schema')
+  it('建表语句随版本递增，且不含列补丁', async () => {
+    const { collectMigrationSql, COLUMN_PATCHES_V3 } = await import('./schema')
 
-    expect(collectMigrationSql(0)).toHaveLength(10)
-    expect(collectMigrationSql(1)).toHaveLength(9)
-    expect(collectMigrationSql(2)).toHaveLength(8)
+    // 补丁必须由 migrateUp 单独执行：v2 的建表语句已含 author 等列，
+    // 若补丁也混进建表列表，新库会因重复列而迁移失败。
+    expect(collectMigrationSql(0)).toHaveLength(3)
+    expect(collectMigrationSql(1)).toHaveLength(2)
+    expect(collectMigrationSql(2)).toHaveLength(1)
+    for (const sql of collectMigrationSql(0)) {
+      expect(sql).not.toContain('ALTER TABLE')
+    }
+    expect(COLUMN_PATCHES_V3.length).toBeGreaterThan(0)
   })
 
   it('已是 v3 或更高则不再执行任何语句', async () => {

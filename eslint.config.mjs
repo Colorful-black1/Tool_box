@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['out', 'dist', 'node_modules', 'release', 'scripts', 'mobile/dist'] },
+  { ignores: ['out', 'dist', 'node_modules', 'release', 'scripts', 'mobile/dist', '**/.out/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -20,14 +20,30 @@ export default tseslint.config(
     }
   },
   {
-    // CommonJS 配置文件：eslint.config.cjs / metro.config.js 等本身就是 CJS
-    files: ['**/*.cjs', '**/*.config.js'],
+    // 验证装置：跑在 Electron 主进程（Node），但也用 Web 的 btoa/atob/TextEncoder
+    files: ['mobile/verify/**/*.ts'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+        crypto: 'readonly',
+        __dirname: 'readonly'
+      }
+    }
+  },
+  {
+    // CommonJS 配置文件：eslint.config.cjs / metro.config.js / verify/run.cjs 等本身就是 CJS
+    files: ['**/*.cjs', '**/*.config.js', '**/run.cjs'],
     languageOptions: {
       globals: {
         module: 'readonly',
         require: 'readonly',
         exports: 'readonly',
         process: 'readonly',
+        console: 'readonly',
         __dirname: 'readonly'
       }
     },

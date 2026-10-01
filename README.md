@@ -146,12 +146,30 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 改动桌面端 schema 或信封格式后，需重新生成这两个 fixture。
 
 ```bash
-npm run mobile:typecheck   # 手机端类型校验
-npm run mobile:bundle     # 跑 Metro 打包，无需真机即可验证跨目录引用
-npm run mobile:start      # 启动 Expo Dev Server
+npm run mobile:typecheck      # 手机端类型校验
+npm run mobile:bundle        # 跑 Metro 打包，无需真机即可验证跨目录引用
+npm run mobile:verify:data   # 数据层端到端验证（真实 SQLite + 真实 AES-GCM）
+npm run mobile:start         # 启动 Expo Dev Server
 ```
 
 `shared-bridge.test.ts` 在 vitest 里校验复用面：桌面端若删改某个导出，手机端会立刻失败，而不是等真机运行时才发现。
+
+### 数据层验证（为什么需要单独一条命令）
+
+手机端数据层依赖三个原生模块（`expo-sqlite` / `expo-crypto` / `expo-secure-store`），**vitest 装不了**，光靠单测无法覆盖 DDL、迁移与全部业务 SQL。
+
+`mobile/verify/` 用 esbuild 把真实数据层打成 Node 包，只 shim 掉这三个原生绑定，再用 Electron 跑（`better-sqlite3` 是 Electron ABI）：
+
+- schema / migrate / MobileStore / secret-box 全部是**真实代码**，不重写不模拟
+- SQLite 是真实 SQLite，AES-256-GCM 走 Node WebCrypto（与 expo-crypto 的 Web 实现同源）
+- 覆盖：建库、三段迁移、迁移幂等、v2→v4 旧库升级、全部业务 SQL、加密往返（含密文被篡改应失败）、级联删除、错误路径
+
+```bash
+npm run mobile:verify:data
+# 通过 54 项，失败 0 项
+```
+
+**这套验证覆盖不到的部分**：真机上的原生绑定行为（expo-sqlite 的实际实现、系统钥匙串 Keychain/Keystore、解密失败时的降级路径）。这些只能在真机上验。
 
 ### 在手机上跑起来
 

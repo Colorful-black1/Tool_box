@@ -19,7 +19,8 @@
     "mobile:start": "npm run start --prefix mobile",
     "mobile:android": "npm run android --prefix mobile",
     "mobile:typecheck": "npm run typecheck --prefix mobile",
-    "mobile:bundle": "npm run export:android --prefix mobile"
+    "mobile:bundle": "npm run export:android --prefix mobile",
+    "mobile:verify:data": "npm run verify:data --prefix mobile"
   },
   "engines": {
     "node": ">=20"

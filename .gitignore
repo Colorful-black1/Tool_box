@@ -14,3 +14,6 @@ release/
 # OS
 .DS_Store
 Thumbs.db
+
+# 手机端验证装置的构建产物
+mobile/verify/.out/

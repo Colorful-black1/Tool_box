@@ -151,17 +151,18 @@ export const COLUMN_PATCHES_V3: Array<{ table: string; column: string; ddl: stri
 ]
 
 /**
- * 按当前版本取出需要执行的 DDL 段。
- * 与桌面端同样的「current < N 分段、幂等可重入」策略。
+ * 按当前版本取出需要执行的**建表 / 建索引**语句。
+ *
+ * 只含 DDL，不含 COLUMN_PATCHES_V3 的 ALTER —— v2 的建表语句里已带上了
+ * author / cover_path 等列，补丁仅用于升级「v2 早期版本」的旧库。
+ * 补丁由 migrateUp 单独执行（先查列是否存在再 ALTER），与桌面端做法一致。
+ * 若把 ALTER 也放进这里，新库会因重复列而直接失败。
  */
 export function collectMigrationSql(current: number): string[] {
   const statements: string[] = []
   if (current < 1) statements.push(SCHEMA_V1)
   if (current < 2) statements.push(SCHEMA_V2)
-  if (current < 3) {
-    statements.push(SCHEMA_V3)
-    statements.push(...COLUMN_PATCHES_V3.map((patch) => patch.ddl))
-  }
+  if (current < 3) statements.push(SCHEMA_V3)
   return statements
 }
 
