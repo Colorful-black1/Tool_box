@@ -29,11 +29,32 @@ npm run rebuild       # 重建 better-sqlite3 到 Electron ABI（首次必做）
 npm run dev           # 开发模式（Electron 窗口）
 npm run build         # 构建主进程 / preload / renderer
 npm run preview       # 预览构建产物
+npm run pack          # 打包免安装目录（release/win-unpacked，快速验证）
+npm run dist          # 打包 Windows 安装包（release/私人百宝箱 Setup x.x.x.exe）
 npm run typecheck     # TypeScript 校验
 npm run lint          # ESLint
 npm run test          # Vitest 单元测试
 npm run format        # Prettier
 ```
+
+## 打包（electron-builder + NSIS）
+
+打包配置在 `package.json` 的 `build` 字段。`npm run pack` / `npm run dist` 都会自动调用 `@electron/rebuild` 把 `better-sqlite3` 重编译到 Electron ABI，无需手动 `npm run rebuild`。
+
+要点：
+
+- `asarUnpack: ["**/*.node"]` —— `better-sqlite3` 的原生二进制不能进 asar，否则运行时报错找不到模块。
+- `files` 只收 `out/`、`assets/`、`package.json`；`assets/prompts/password_import.txt` 在运行期通过 `app.getAppPath()` 读取，必须打进包内。
+- 应用图标为 `assets/icon.png`（512×512，electron-builder 自动转 `.ico`）。
+- 国内网络建议先设置镜像再打包：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ^
+ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ ^
+npm run dist
+```
+
+安装包为 `perMachine: false`（免管理员权限）、`oneClick: false`（带安装向导，可自选安装目录），并创建桌面与开始菜单快捷方式。
 
 ## 目录
 
@@ -72,5 +93,6 @@ src/
 ## 已知限制
 
 - 仅 Windows 桌面端；移动端（React Native / Expo）未实现。
+- 安装包未做代码签名，首次安装 Windows SmartScreen 可能提示「未知发布者」。
 - 局域网同步、PC 摸鱼（老板键 / 伪装皮肤）、启动锁尚未迁移。
 - 密码箱 AI 识别需先在「设置 → AI 配置」中配置接口。

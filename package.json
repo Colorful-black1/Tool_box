@@ -2,6 +2,7 @@
   "name": "tool-box",
   "version": "0.1.0",
   "private": true,
+  "author": "Tool_box",
   "description": "AI-first local toolbox",
   "main": "./out/main/index.js",
   "scripts": {
@@ -12,10 +13,39 @@
     "lint": "eslint .",
     "test": "vitest run",
     "format": "prettier --write .",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --win nsis"
   },
   "engines": {
     "node": ">=20"
+  },
+  "build": {
+    "appId": "com.toolbox.app",
+    "productName": "私人百宝箱",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "assets/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "私人百宝箱"
+    }
   },
   "dependencies": {
     "@langchain/core": "^1.2.13",
@@ -35,6 +65,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.6.1",
     "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
