@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#080b16",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#080b16"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.toolbox.mobile"

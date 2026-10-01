@@ -18,6 +18,5 @@ const config = getDefaultConfig(projectRoot)
  */
 config.watchFolders = [sharedSourceDir]
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')]
-config.resolver.disableHierarchicalLookup = true
 
 module.exports = config

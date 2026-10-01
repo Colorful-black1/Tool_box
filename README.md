@@ -138,11 +138,53 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 
 ```bash
 npm run mobile:typecheck   # 手机端类型校验
-npm run mobile:bundle     # 跑 Metro 打包（无需真机，验证跨目录引用能否解析）
-npm run mobile:start      # 启动 Expo Dev Server，手机装 Expo Go 扫码
+npm run mobile:bundle     # 跑 Metro 打包，无需真机即可验证跨目录引用
+npm run mobile:start      # 启动 Expo Dev Server
 ```
 
 `shared-bridge.test.ts` 在 vitest 里校验复用面：桌面端若删改某个导出，手机端会立刻失败，而不是等真机运行时才发现。
+
+### 在手机上跑起来
+
+当前进度是 **M0**：只有底部导航与 5 个占位页，**还没有任何可用功能**，数据层与各模块界面在 M1–M5 实现。
+
+1. 手机装 **Expo Go**（应用商店搜 Expo Go）。
+2. 手机与电脑连同一个 Wi-Fi。
+3. 电脑执行 `npm run mobile:start`，终端会显示二维码。
+4. 手机 Expo Go 扫二维码即可。
+
+若 Expo Go 提示「SDK 版本不支持」，说明手机端 Expo Go 版本落后于本项目的 SDK 57，改用自建开发版：`cd mobile && npx expo run:android`（需要 Android Studio + Android SDK + JDK 17）。
+
+### 打包成 APK
+
+两条路，按是否愿意折腾本地环境选：
+
+**A. EAS 云端构建（推荐，无需本地装 Android Studio）**
+
+```bash
+cd mobile
+npx eas-cli login          # 需要免费 Expo 账号
+npx eas-cli build --profile preview --platform android
+```
+
+- `preview` profile 用 `distribution: internal` + `buildType: apk`，产出**可直接安装的 APK**，适合自用侧载。
+- 构建完成会给一个下载链接，APK 传手机「允许安装未知来源应用」后点击安装即可。
+- 首次构建会询问是否在 `app.json` 写入 `extra.eas.projectId`，同意即可。
+- `production` profile 产出 AAB，用于 Google Play 上架。
+
+**B. 本地构建（需要 Android Studio + SDK + JDK 17）**
+
+```bash
+cd mobile
+npx expo prebuild --platform android   # 生成 android/ 原生工程（已生成过可跳过）
+npx eas-cli build --profile preview --platform android --local
+```
+
+或直接用 Gradle 打 debug 包：`cd android && gradlew.bat assembleDebug`，产物在 `android/app/build/outputs/apk/debug/`。
+
+> `android/` 是生成目录，已在 `.gitignore` 中，改 `app.json` 后需重新 `expo prebuild` 让原生配置同步。
+
+**iOS 说明**：只能在 macOS 上构建，且上架 App Store 需要付费的 Apple 开发者账号。纯自用可走 TestFlight 或 Ad Hoc 侧载。
 
 ## 数据表（schema v4）
 
