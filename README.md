@@ -26,7 +26,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 - React 19 + TypeScript strict + Tailwind CSS
 - Zustand
 - LangChain.js（`@langchain/core` + `@langchain/openai`）
-- better-sqlite3（SQLite，schema v3）
+- better-sqlite3（SQLite，schema v4）
 - Electron `safeStorage`（Windows DPAPI）保管 AI Key 与密码箱主密钥
 - Vitest
 
@@ -124,9 +124,11 @@ src/
 └── shared/               双进程共享类型、IPC 协议、常量
 ```
 
-## 数据表（schema v3）
+## 数据表（schema v4）
 
 `conversations`、`messages`、`books`、`chapters`、`reading_progress`、`bookmarks`、`book_groups`、`reading_stats`、`password_entries`、`notes`、`kv`
+
+封面与背景图片只在库里存 `covers/`、`backgrounds/` 下的**文件名**，绝对路径在运行期按 userData 目录还原 —— 换机或目录搬迁后不会失效。
 
 ## 安全说明
 

@@ -178,7 +178,8 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     const target = join(userDataDir, COVERS_DIR, `cover_${bookId}_${Date.now()}${extname(source)}`)
     mkdirSync(join(userDataDir, COVERS_DIR), { recursive: true })
     copyFileSync(source, target)
-    store.setBookCover(bookId, target)
+    // 库内只存文件名，绝对路径由数据层按 userData 目录还原
+    store.setBookCover(bookId, basename(target))
   })
 
   ipcMain.handle(IPC.booksSetGroup, (_event, ids: unknown, groupId: unknown) => {

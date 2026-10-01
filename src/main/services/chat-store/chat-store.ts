@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 
 import Database from 'better-sqlite3'
 
-import { DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
+import { COVERS_DIR, DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
 import type {
   BookGroup,
   BookSummary,
@@ -27,7 +27,7 @@ import type { SecretBox } from '../crypto/secret-box'
 import { pinyinFirstLetter } from '../library/pinyin-util'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 interface ConversationRow {
   id: string
@@ -81,15 +81,19 @@ const DECRYPT_FAIL_NOTE = '【解密失败：密钥不可用或数据损坏】'
  * - v1 AI 会话与消息
  * - v2 小说（书/章节/进度）、密码箱、记事本
  * - v3 kv 配置表、书籍作者/封面/排序/分组、书签、阅读统计
+ * - v4 封面路径改为相对文件名（只存 covers/ 下的文件名）
  */
 export class ToolboxStore {
   private readonly db: Database.Database
+  /** 封面目录：与数据库文件同级，因此可由 dbPath 直接推导 */
+  private readonly coversDir: string
 
   constructor(
     dbPath: string,
     private readonly secretBox: SecretBox
   ) {
     mkdirSync(dirname(dbPath), { recursive: true })
+    this.coversDir = join(dirname(dbPath), COVERS_DIR)
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('foreign_keys = ON')
@@ -255,7 +259,7 @@ export class ToolboxStore {
       .all(keyword, `%${keyword.toLowerCase()}%`, `%${keyword.toLowerCase()}%`) as Array<
       BookRow & { cover_path: string; sort_index: number; group_id: string | null }
     >
-    return rows.map(toBookSummary)
+    return rows.map((row) => toBookSummary(row, this.coversDir))
   }
 
   importBook(input: {
@@ -303,7 +307,7 @@ export class ToolboxStore {
       )
       .get(bookId) as BookRow & { cover_path: string; sort_index: number; group_id: string | null }
     if (!row) throw new Error('书籍导入失败')
-    return toBookSummary(row)
+    return toBookSummary(row, this.coversDir)
   }
 
   updateBookMeta(
@@ -330,8 +334,12 @@ export class ToolboxStore {
     return this.getBook(id)
   }
 
+  /** 只接受 covers/ 下的文件名（传绝对路径会自动收敛），返回前拼回绝对路径供渲染层使用 */
   setBookCover(id: string, coverPath: string): void {
-    const result = this.db.prepare(`UPDATE books SET cover_path = ? WHERE id = ?`).run(coverPath, id)
+    const fileName = toCoverFileName(coverPath)
+    const result = this.db
+      .prepare(`UPDATE books SET cover_path = ? WHERE id = ?`)
+      .run(fileName, id)
     if (result.changes === 0) throw new Error('书籍不存在')
   }
 
@@ -366,7 +374,7 @@ export class ToolboxStore {
       | (BookRow & { cover_path: string; sort_index: number; group_id: string | null })
       | undefined
     if (!row) throw new Error('书籍不存在')
-    return toBookSummary(row)
+    return toBookSummary(row, this.coversDir)
   }
 
   listChapters(bookId: string): ChapterMeta[] {
@@ -942,6 +950,29 @@ export class ToolboxStore {
       }
     }
 
+    if (current < 4) {
+      // v3 → v4：封面路径由绝对路径收敛为 covers/ 下的文件名。
+      // 绝对路径会在换机、目录搬迁后失效；文件名 + 运行时拼接则始终有效。
+      // 顺带清理指向已丢失文件的封面，避免书架出现破图。已是文件名的行跳过 → 幂等。
+      const rows = this.db
+        .prepare(`SELECT id, cover_path FROM books WHERE cover_path != ''`)
+        .all() as Array<{ id: string; cover_path: string }>
+      const update = this.db.prepare(`UPDATE books SET cover_path = ? WHERE id = ?`)
+
+      this.db.transaction(() => {
+        for (const row of rows) {
+          const fileName = toCoverFileName(row.cover_path)
+          if (!fileName) continue
+          if (!existsSync(join(this.coversDir, fileName))) {
+            // 封面文件已丢失：置空，让书架回落到占位图而不是显示破图
+            update.run('', row.id)
+            continue
+          }
+          if (fileName !== row.cover_path) update.run(fileName, row.id)
+        }
+      })()
+    }
+
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
   }
 
@@ -978,14 +1009,16 @@ function toConversation(row: ConversationRow): ConversationSummary {
 }
 
 function toBookSummary(
-  row: BookRow & { cover_path: string; sort_index: number; group_id: string | null }
+  row: BookRow & { cover_path: string; sort_index: number; group_id: string | null },
+  coversDir: string
 ): BookSummary {
   return {
     id: row.id,
     title: row.title,
     author: row.author,
     chapterCount: row.chapter_count ?? 0,
-    coverPath: row.cover_path,
+    // 库里只存文件名，这里拼回绝对路径，渲染层无需感知存储细节
+    coverPath: row.cover_path ? join(coversDir, row.cover_path) : '',
     sortIndex: row.sort_index,
     groupId: row.group_id,
     createdAtMs: row.created_at_ms,
@@ -1016,6 +1049,16 @@ function todayKey(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${now.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * 封面路径归一：绝对路径 / 带分隔符的相对路径 → 纯文件名。
+ * 已是纯文件名时原样返回，保证迁移可重入。
+ */
+export function toCoverFileName(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+  return basename(trimmed.replaceAll('\\', '/'))
 }
 
 export { DECRYPT_FAIL_NOTE, firstLetterOf, pinyinFirstLetter }
