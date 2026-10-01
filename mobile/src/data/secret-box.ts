@@ -29,13 +29,27 @@ export interface SecretBox {
   decrypt(cipherText: string): Promise<SecretPayload>
 }
 
+/** 任意字符串的加解密（AI API Key 用）；与密码箱负载形状无关，故单独一个接口 */
+export interface SecretStringBox {
+  encryptText(plainText: string): Promise<string>
+  decryptText(cipherText: string): Promise<string>
+  /** 设备是否支持安全存储；不支持时保存密钥应直接报错 */
+  assertAvailable(): Promise<void>
+}
+
 /** expo-crypto 的取值方法返回 Uint8Array | string，这里统一收敛成字节数组 */
 function asBytes(value: Uint8Array | string): Uint8Array {
   return typeof value === 'string' ? base64ToBytes(value) : value
 }
 
-export class SecureStoreSecretBox implements SecretBox {
+export class SecureStoreSecretBox implements SecretBox, SecretStringBox {
   private cachedKey: AESEncryptionKey | null = null
+
+  /**
+   * @param storeKey 钥匙串里的键名。密码箱与 AI 配置各用一把，生命周期互不影响：
+   *   密码箱主密钥丢失会导致密码永久不可解，不该让「删除 AI 配置」牵连它。
+   */
+  constructor(private readonly storeKey: string = MASTER_KEY_STORE_KEY) {}
 
   async encrypt(payload: SecretPayload): Promise<string> {
     const key = await this.masterKey()
@@ -61,7 +75,7 @@ export class SecureStoreSecretBox implements SecretBox {
   private async masterKey(): Promise<AESEncryptionKey> {
     if (this.cachedKey) return this.cachedKey
 
-    const stored = await SecureStore.getItemAsync(MASTER_KEY_STORE_KEY)
+    const stored = await SecureStore.getItemAsync(this.storeKey)
     if (stored) {
       const raw = base64ToBytes(stored)
       if (raw.length !== MASTER_KEY_BYTE_LENGTH) throw new Error('主密钥损坏，无法解密密码箱')
@@ -71,11 +85,46 @@ export class SecureStoreSecretBox implements SecretBox {
 
     const key = await AESEncryptionKey.generate()
     const raw = await key.bytes()
-    await SecureStore.setItemAsync(MASTER_KEY_STORE_KEY, bytesToBase64(raw), {
+    await SecureStore.setItemAsync(this.storeKey, bytesToBase64(raw), {
       keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY
     })
     this.cachedKey = key
     return key
+  }
+
+  /** 把任意字符串按 UTF-8 加密；信封格式与密码箱一致 */
+  async encryptText(plainText: string): Promise<string> {
+    const key = await this.masterKey()
+    const sealed = await Crypto.aesEncryptAsync(new TextEncoder().encode(plainText), key)
+
+    return packEnvelope({
+      iv: asBytes(await sealed.iv('bytes')),
+      tag: asBytes(await sealed.tag('bytes')),
+      data: asBytes(await sealed.ciphertext({ encoding: 'bytes' }))
+    })
+  }
+
+  async decryptText(cipherText: string): Promise<string> {
+    const { iv, tag, data } = unpackEnvelope(cipherText)
+    const opened = await Crypto.aesDecryptAsync(
+      AESSealedData.fromParts(iv, data, tag),
+      await this.masterKey(),
+      { output: 'bytes' }
+    )
+    return new TextDecoder().decode(typeof opened === 'string' ? base64ToBytes(opened) : opened)
+  }
+
+  /**
+   * 设备是否支持安全存储。
+   * 没有 keychain / keystore 时写入会失败，所以保存密钥前先探一次，
+   * 给出可读提示，而不是等到写入时才报错。
+   */
+  async assertAvailable(): Promise<void> {
+    try {
+      await this.masterKey()
+    } catch {
+      throw new Error('当前设备不支持安全加密存储，无法保存密钥')
+    }
   }
 }
 

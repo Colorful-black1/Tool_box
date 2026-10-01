@@ -58,6 +58,10 @@ export {
   validateChatInput
 } from '../../src/main/services/ai-gateway/errors'
 
+// 模型列表的纯解析器：兼容 OpenAI / Gemini / 裸数组三种返回结构。
+// 只复用解析部分，不复用同文件的 fetchModelIds —— 那个用了 AbortSignal.timeout，RN 没有。
+export { extractModelIds } from '../../src/main/services/ai-gateway/model-fetcher'
+
 // 纯解析器：章节 / 密码文本 / 拼音首字母
 export { parseChapters } from '../../src/main/services/library/chapter-parser'
 export { parsePasswordText } from '../../src/main/services/library/password-text-parser'

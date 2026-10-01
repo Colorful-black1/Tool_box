@@ -121,6 +121,24 @@ export class MobileStore {
     return next
   }
 
+  /** 通用 kv 读写：AI 档案等按 key 存放的配置复用这张表，不必各自建表 */
+  async kvGet(key: string): Promise<string | null> {
+    const row = await this.db.getFirstAsync<{ value: string }>(
+      `SELECT value FROM kv WHERE key = ?`,
+      key
+    )
+    return row?.value ?? null
+  }
+
+  async kvSet(key: string, value: string): Promise<void> {
+    await this.db.runAsync(
+      `INSERT INTO kv (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      key,
+      value
+    )
+  }
+
   // ==================== AI 会话 ====================
 
   async listConversations(): Promise<ConversationSummary[]> {

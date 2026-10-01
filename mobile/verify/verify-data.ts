@@ -11,8 +11,17 @@ import { ShimDatabase } from './shims/expo-sqlite'
 import { migrateUp, readUserVersion } from '../src/data/migrate'
 import { MobileStore } from '../src/data/store'
 import { SecureStoreSecretBox } from '../src/data/secret-box'
+import { AI_SETTINGS_MASTER_KEY } from '../src/data/constants'
 import { SCHEMA_VERSION } from '../src/data/schema'
 import { unpackEnvelope } from '../src/data/secret-envelope'
+import { AiSettingsService } from '../src/ai/ai-settings'
+import { AiGateway } from '../src/ai/ai-gateway'
+import type { ChatEventSink } from '../src/ai/ai-gateway'
+import { buildChatHeaders as buildMobileChatHeaders } from '../src/ai/provider-headers'
+import {
+  buildProviderHeaders as buildDesktopHeaders,
+  requiresCustomUserAgent as desktopNeedsCustomUa
+} from '../../src/main/services/ai-gateway/provider-headers'
 
 /**
  * 输出目录由 run.cjs 通过 VERIFY_OUT_DIR 传入。
@@ -61,6 +70,15 @@ async function throws(run: () => Promise<unknown>): Promise<boolean> {
 
 const DB_PATH = join(DB_DIR, 'toolbox.db')
 
+/** 轮询等待后台流到达终态 */
+async function waitUntil(predicate: () => boolean, timeoutMs = 5000): Promise<boolean> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) return true
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  return predicate()
+}
 async function main(): Promise<void> {
   // ---------- 1. 建库与迁移 ----------
   section('1. 建库与迁移')
@@ -305,6 +323,209 @@ async function main(): Promise<void> {
   section('7. 收尾')
   await store.deleteConversation(conversation.id)
   check('删除会话', (await store.listConversations()).length === 0)
+
+  // ---------- 8. AI 链路 ----------
+  section('8. AI 链路（真实 AES-GCM + 真实 SQLite）')
+
+  // 交叉校验：手机端与桌面端对「哪些供应商要会话头」的判定必须一致，
+  // 否则同一份配置在两端表现会分叉。
+  const providers = ['deepseek', 'glm', 'mimo', 'openai', 'opencode-go', 'kimi', 'qwen', 'siliconflow', 'custom'] as const
+  const urls = [
+    'https://api.deepseek.com/v1',
+    'https://opencode.ai/zen/go/v1',
+    'https://opencode.ai/zen/v1',
+    'https://opencode.ai/v1',
+    'https://my-proxy.example.com/v1'
+  ]
+  let headerMismatch = 0
+  for (const provider of providers) {
+    for (const baseUrl of urls) {
+      // 桌面端的 requiresSessionHeader 未导出，用 buildProviderHeaders 是否含该头来等价判断
+      const desktopNeedsSession = Object.hasOwn(
+        buildDesktopHeaders({ provider, baseUrl, sessionId: 's' }),
+        'x-opencode-session'
+      )
+      const mobile = buildMobileChatHeaders({
+        provider,
+        baseUrl,
+        apiKey: 'sk-x',
+        sessionId: 's'
+      })
+      if (desktopNeedsSession !== Object.hasOwn(mobile, 'x-opencode-session')) headerMismatch += 1
+      // 需要会话头的供应商两端都必须改写 UA
+      if (desktopNeedsCustomUa({ provider, baseUrl, sessionId: 's' }) !== Object.hasOwn(mobile, 'User-Agent')) {
+        headerMismatch += 1
+      }
+    }
+  }
+  check('会话头与 User-Agent 判定与桌面端完全一致', headerMismatch === 0)
+
+  const goHeaders = buildDesktopHeaders({ provider: 'opencode-go', baseUrl: 'https://opencode.ai/zen/go/v1', sessionId: 'sess-1' })
+  const goMobile = buildMobileChatHeaders({
+    provider: 'opencode-go',
+    baseUrl: 'https://opencode.ai/zen/go/v1',
+    apiKey: 'sk-x',
+    sessionId: 'sess-1'
+  })
+  check(
+    'OpenCode Go 会话头两端取值相同',
+    goHeaders['x-opencode-session'] === 'sess-1' && goMobile['x-opencode-session'] === 'sess-1'
+  )
+  check('手机端用自有 User-Agent', goMobile['User-Agent'] === 'tool-box-mobile')
+
+  const plainHeaders = buildMobileChatHeaders({
+    provider: 'deepseek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    apiKey: 'sk-x',
+    sessionId: 's'
+  })
+  check('普通供应商不带额外头', plainHeaders['x-opencode-session'] === undefined)
+
+  // AI 配置：Key 必须真加密落库
+  const aiBox = new SecureStoreSecretBox(AI_SETTINGS_MASTER_KEY)
+  const aiSettings = new AiSettingsService(store, aiBox, () => randomUUID())
+
+  const aiView = await aiSettings.save({
+    name: '验证档案',
+    provider: 'deepseek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4-pro',
+    apiKey: 'sk-verify-key-123456'
+  })
+  check('AI 档案已保存', aiView.profiles.length === 1)
+  check('脱敏视图只暴露 hasApiKey', aiView.profiles[0]?.hasApiKey === true)
+
+  const storedAi = await store.kvGet('ai_settings')
+  check('AI 配置落库不含明文 Key', !(storedAi ?? '').includes('sk-verify-key-123456'))
+
+  // apiKeyCipher 是被 JSON.stringify 转义过的嵌套 JSON 字符串，必须解析后校验字段
+  let envelopeOk: boolean
+  try {
+    const parsed = JSON.parse(storedAi ?? '{}') as {
+      profiles?: Array<{ apiKeyCipher?: string }>
+    }
+    const cipher = parsed.profiles?.[0]?.apiKeyCipher ?? ''
+    const envelope = JSON.parse(cipher) as Record<string, unknown>
+    const iv = envelope['iv']
+    const tag = envelope['tag']
+    const data = envelope['data']
+    envelopeOk =
+      envelope['v'] === 1 &&
+      typeof iv === 'string' &&
+      iv.length > 0 &&
+      typeof tag === 'string' &&
+      tag.length > 0 &&
+      typeof data === 'string' &&
+      data.length > 0
+  } catch {
+    envelopeOk = false
+  }
+  check('AI Key 以标准 AES-GCM 信封落库', envelopeOk)
+
+  const activeConfig = await aiSettings.getActiveConfig()
+  check('启用档案能解出明文 Key', activeConfig.apiKey === 'sk-verify-key-123456')
+
+  // 流式对话：真 SSE 文本喂进去，验证落库与增量
+  const sseText =
+    `data: ${JSON.stringify({ choices: [{ delta: { content: '流' } }] })}\n\n` +
+    `data: ${JSON.stringify({ choices: [{ delta: { content: '式' } }] })}\n\n` +
+    `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n` +
+    `data: ${JSON.stringify({ choices: [{ delta: { content: '回复' } }] })}\n\n` +
+    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n` +
+    'data: [DONE]\n\n'
+
+  const fakeFetch = (): Promise<Response> => {
+    const bytes = new TextEncoder().encode(sseText)
+    let index = 0
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => {
+            if (index >= bytes.length) return Promise.resolve({ done: true, value: undefined })
+            const value = bytes.slice(index, index + 5)
+            index += 5
+            return Promise.resolve({ done: false, value })
+          },
+          cancel: () => Promise.resolve()
+        })
+      }
+    } as unknown as Response)
+  }
+
+  const aiConversation = await store.createConversation()
+  const gateway = new AiGateway(aiSettings, store, fakeFetch, 5000)
+  const deltas: string[] = []
+  const state = { completed: false, stopped: false }
+  let errored = ''
+  const sink: ChatEventSink = {
+    onDelta: (event) => deltas.push(event.delta),
+    onCompleted: () => {
+      state.completed = true
+    },
+    onError: (event) => {
+      errored = event.message
+    },
+    onStopped: () => {}
+  }
+
+  await gateway.send(aiConversation.id, '请自检', sink)
+  const streamDone = await waitUntil(() => state.completed || errored !== '')
+  check('后台流到达终态', streamDone)
+  check('流式增量按序到达', deltas.join('') === '流式回复')
+  check('空增量被跳过', deltas.length === 3)
+  check('流正常完成', state.completed && errored === '')
+  check('网关已释放该会话', !gateway.isStreaming(aiConversation.id))
+
+  const aiMessages = await store.listMessages(aiConversation.id)
+  check('user 与 assistant 都已落库', aiMessages.length === 2)
+  check(
+    'assistant 内容为完整累积结果',
+    aiMessages[1]?.role === 'assistant' && aiMessages[1]?.content === '流式回复'
+  )
+  check('首轮自动把内容设为标题', (await store.getConversation(aiConversation.id))?.title === '请自检')
+
+  // 停止语义：active 释放且不落库 assistant
+  const stopConversation = await store.createConversation()
+  const hangFetch = (): Promise<Response> => {
+    const bytes = new TextEncoder().encode(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '半句' } }] })}\n\n`
+    )
+    let index = 0
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => {
+            if (index >= bytes.length) return Promise.resolve({ done: true, value: undefined })
+            const value = bytes.slice(index, index + 3)
+            index += 3
+            return Promise.resolve({ done: false, value })
+          },
+          cancel: () => Promise.resolve()
+        })
+      }
+    } as unknown as Response)
+  }
+
+  const stopGateway = new AiGateway(aiSettings, store, hangFetch, 5000)
+  await stopGateway.send(stopConversation.id, '要停止', {
+    onDelta: () => {},
+    onCompleted: () => {},
+    onError: (event) => say(`  意外错误：${event.message}`),
+    onStopped: () => {
+      state.stopped = true
+    }
+  })
+  stopGateway.stop(stopConversation.id)
+  check('停止后到达终态', await waitUntil(() => state.stopped))
+  check('用户停止走 stopped 而非 error', state.stopped)
+  check('停止后不落库 assistant 消息', (await store.listMessages(stopConversation.id)).length === 1)
+  check('停止后 active 已释放', !stopGateway.isStreaming(stopConversation.id))
+
+  // 收尾：验证全部跑完再关库
   db.close()
 
   console.log(`\n通过 ${passed} 项，失败 ${failed} 项`)

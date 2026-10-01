@@ -13,6 +13,13 @@ export const BACKGROUNDS_DIR = 'backgrounds'
 /** 密码箱主密钥在 SecureStore 中的键名 */
 export const MASTER_KEY_STORE_KEY = 'password-master-key'
 
+/**
+ * AI 配置（API Key）在 SecureStore 中的键名。
+ * 与密码箱主密钥分开：密码箱密钥丢失会让密码永久不可解，
+ * 不应让 AI 配置的生命周期牵连它。
+ */
+export const AI_SETTINGS_MASTER_KEY = 'ai-settings-key'
+
 /** AI 对话相关限制，与 shared/constants.ts 对齐 */
 export const CHAT_TIMEOUT_MS = 120_000
 export const MAX_INPUT_CHARS = 60_000
