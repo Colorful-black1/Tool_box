@@ -102,6 +102,8 @@ npm run dist
 
 ## 目录
 
+> 待办、真机验收清单与环境注意事项见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
+
 ```text
 src/
 ├── main/                 Electron 主进程
