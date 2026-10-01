@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { colors, fonts } from './src/theme'
+import { BootGate, ServicesProvider } from './src/runtime/services'
 import { ChatScreen } from './src/screens/chat-screen'
 import { NotesScreen } from './src/screens/notes-screen'
 import { PasswordScreen } from './src/screens/password-screen'
@@ -20,27 +21,31 @@ const Tab = createBottomTabNavigator()
 export default function App(): ReactNode {
   return (
     <SafeAreaProvider>
-      <NavigationContainer theme={navigationTheme}>
-        <Tab.Navigator
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: styles.tabBar,
-            tabBarActiveTintColor: colors.gold,
-            tabBarInactiveTintColor: colors.textDim,
-            tabBarLabelStyle: styles.tabLabel
-          }}
-        >
-          <Tab.Screen name="Chat" component={ChatScreen} options={{ title: '对话' }} />
-          <Tab.Screen name="Shelf" component={ShelfScreen} options={{ title: '书架' }} />
-          <Tab.Screen
-            name="Passwords"
-            component={PasswordScreen}
-            options={{ title: '密码箱' }}
-          />
-          <Tab.Screen name="Notes" component={NotesScreen} options={{ title: '记事本' }} />
-          <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: '设置' }} />
-        </Tab.Navigator>
-      </NavigationContainer>
+      <ServicesProvider>
+        <BootGate>
+          <NavigationContainer theme={navigationTheme}>
+            <Tab.Navigator
+              screenOptions={{
+                headerShown: false,
+                tabBarStyle: styles.tabBar,
+                tabBarActiveTintColor: colors.gold,
+                tabBarInactiveTintColor: colors.textDim,
+                tabBarLabelStyle: styles.tabLabel
+              }}
+            >
+              <Tab.Screen name="Chat" component={ChatScreen} options={{ title: '对话' }} />
+              <Tab.Screen name="Shelf" component={ShelfScreen} options={{ title: '书架' }} />
+              <Tab.Screen
+                name="Passwords"
+                component={PasswordScreen}
+                options={{ title: '密码箱' }}
+              />
+              <Tab.Screen name="Notes" component={NotesScreen} options={{ title: '记事本' }} />
+              <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: '设置' }} />
+            </Tab.Navigator>
+          </NavigationContainer>
+        </BootGate>
+      </ServicesProvider>
     </SafeAreaProvider>
   )
 }
