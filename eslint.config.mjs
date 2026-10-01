@@ -3,11 +3,12 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['out', 'dist', 'node_modules', 'release', 'scripts'] },
+  { ignores: ['out', 'dist', 'node_modules', 'release', 'scripts', 'mobile/dist'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['src/renderer/src/**/*.{ts,tsx}'],
+    // 渲染层与手机端都是 React，两套 hooks 规则共用
+    files: ['src/renderer/src/**/*.{ts,tsx}', 'mobile/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks
     },
@@ -19,14 +20,19 @@ export default tseslint.config(
     }
   },
   {
-    files: ['*.cjs'],
+    // CommonJS 配置文件：eslint.config.cjs / metro.config.js 等本身就是 CJS
+    files: ['**/*.cjs', '**/*.config.js'],
     languageOptions: {
       globals: {
         module: 'readonly',
         require: 'readonly',
         exports: 'readonly',
-        process: 'readonly'
+        process: 'readonly',
+        __dirname: 'readonly'
       }
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off'
     }
   },
   {

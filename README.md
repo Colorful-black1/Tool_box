@@ -109,7 +109,7 @@ src/
 │   ├── ipc/              IPC 注册与入参校验
 │   └── services/
 │       ├── ai-gateway/   LangChain 流式对话与错误映射
-│       ├── chat-store/   统一 SQLite 数据层（v3）
+│       ├── chat-store/   统一 SQLite 数据层（v4）
 │       ├── crypto/       safeStorage 主密钥 + AES-GCM
 │       ├── library/      编码探测、章节解析、密码文本解析、拼音
 │       ├── password/     密码箱 AI 识别
@@ -122,7 +122,27 @@ src/
 │       ├── stores/       app / config / reader
 │       └── styles/       设计系统（对齐 index.html 星轨风格）
 └── shared/               双进程共享类型、IPC 协议、常量
+mobile/                   React Native + Expo 手机端（独立包，见下）
 ```
+
+## 手机端（React Native + Expo）
+
+`mobile/` 是独立 npm 包（未接入 workspaces，依赖装在 `mobile/node_modules`），与桌面端**共用仓库根 `src/` 下的纯逻辑**，桌面端代码零改动。
+
+| 项 | 说明 |
+| --- | --- |
+| 复用方式 | `mobile/metro.config.js` 把 `../src` 纳入 `watchFolders`；所有跨目录引用集中在 `mobile/src/shared-bridge.ts` 一个文件 |
+| 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
+| 需重写 | 数据层（`expo-sqlite`）、加密（`expo-crypto` + `expo-secure-store`）、AI 客户端（自写 SSE，不用 LangChain）、全部界面 |
+| 数据 | **与桌面端各自独立**，主密钥绑定设备，密码箱密文不互通 |
+
+```bash
+npm run mobile:typecheck   # 手机端类型校验
+npm run mobile:bundle     # 跑 Metro 打包（无需真机，验证跨目录引用能否解析）
+npm run mobile:start      # 启动 Expo Dev Server，手机装 Expo Go 扫码
+```
+
+`shared-bridge.test.ts` 在 vitest 里校验复用面：桌面端若删改某个导出，手机端会立刻失败，而不是等真机运行时才发现。
 
 ## 数据表（schema v4）
 
@@ -138,7 +158,8 @@ src/
 
 ## 已知限制
 
-- 仅 Windows 桌面端；移动端（React Native / Expo）未实现。
+- 桌面端仅 Windows；手机端（`mobile/`）尚在 M0 阶段，只有导航骨架与占位页面。
+- 手机端与桌面端数据互相独立，密码箱密文不互通。
 - 安装包未做代码签名，首次安装 Windows SmartScreen 可能提示「未知发布者」。
 - 局域网同步、PC 摸鱼（老板键 / 伪装皮肤）、启动锁尚未迁移。
 - 密码箱 AI 识别需先在「设置 → AI 配置」中配置接口。

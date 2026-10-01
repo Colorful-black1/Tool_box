@@ -15,7 +15,11 @@
     "format": "prettier --write .",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --win nsis"
+    "dist": "npm run build && electron-builder --win nsis",
+    "mobile:start": "npm run start --prefix mobile",
+    "mobile:android": "npm run android --prefix mobile",
+    "mobile:typecheck": "npm run typecheck --prefix mobile",
+    "mobile:bundle": "npm run export:android --prefix mobile"
   },
   "engines": {
     "node": ">=20"

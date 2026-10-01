@@ -16,9 +16,13 @@
 npm run dev         # 开发模式（Electron 窗口）
 npm run build       # 构建 main / preload / renderer
 npm run typecheck   # tsc --noEmit
-npm run lint        # ESLint
+npm run lint        # ESLint（同时覆盖 src 与 mobile）
 npm run test        # Vitest 单元测试
 npm run rebuild     # 重建 better-sqlite3 到 Electron ABI（改依赖后必做）
+
+npm run mobile:typecheck   # 手机端（Expo）类型校验
+npm run mobile:bundle     # 跑 Metro 打包，无需真机即可验证跨目录引用
+npm run mobile:start      # 手机端开发（Expo Go 扫码）
 ```
 
 ---
@@ -226,6 +230,19 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
 * 数据加载全部经 `window.toolbox`；`window.toolbox` 未就绪时要有降级提示。
 * 样式优先复用 `styles/global.css` 的既有设计系统类（`.btn-ghost`、`.status-banner` 等）。
 * 老板键、伪装皮肤、启动锁、局域网同步等可选能力需先确认需求；`shared/constants.ts` 中 `SYNC_*` / `WINDOW_IPC` 是**未实现的遗留常量**，不要当作可用功能。
+
+---
+
+# 手机端规范（`mobile/`）
+
+* React Native + Expo，**独立 npm 包**：依赖装在 `mobile/node_modules`，不接入根 workspaces。
+  原因是 workspaces 会重排根 `node_modules`，可能覆盖 `better-sqlite3` 的 Electron ABI 构建。
+* **跨目录复用只经 `mobile/src/shared-bridge.ts` 一个文件**。新增复用目标时先确认它没有
+  `import 'node:*'` / `'electron'` / `better-sqlite3`；手机端只有这一处允许出现 `../../src`。
+* 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
+* 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。
+* 手机端数据与桌面端互相独立，主密钥绑定设备，密码箱密文不互通 —— 不要在 UI 上暗示可同步。
+* 验证跑 `npm run mobile:typecheck` 与 `npm run mobile:bundle`（后者无需真机即可证明跨目录引用能解析）。
 
 ---
 
