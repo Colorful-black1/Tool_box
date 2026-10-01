@@ -2,6 +2,7 @@ export type ChatRole = 'user' | 'assistant'
 
 /** 主进程内部使用：含明文 Key，绝不跨 IPC 传输 */
 export interface AiConfig {
+  provider: AiProviderId
   baseUrl: string
   model: string
   apiKey: string

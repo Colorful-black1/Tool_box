@@ -16,6 +16,7 @@ import type {
 } from '../../../shared/types'
 import { AiGatewayError, normalizeOpenAiBaseUrl } from '../ai-gateway/errors'
 import { fetchModelIds } from '../ai-gateway/model-fetcher'
+import { buildProviderHeaders, CLIENT_USER_AGENT, requiresCustomUserAgent } from '../ai-gateway/provider-headers'
 
 /** 落盘结构 v2：多套档案 + 当前启用项 */
 interface StoredSettings {
@@ -74,6 +75,7 @@ export class SettingsService {
       throw new AiGatewayError('当前启用的配置缺少接口地址或模型名称，请补全后再试')
     }
     return {
+      provider: profile.provider,
       baseUrl: profile.baseUrl,
       model: profile.model,
       apiKey: this.decryptKey(profile)
@@ -169,7 +171,7 @@ export class SettingsService {
     if (!apiKey) throw new AiGatewayError('请先填写或保存 API Key')
 
     try {
-      const models = await fetchModelIds({ baseUrl, apiKey })
+      const models = await fetchModelIds({ baseUrl, apiKey, headers: this.modelListHeaders(input) })
       return { models, source: 'remote' }
     } catch (error) {
       const preset = findAiProvider(input.provider)
@@ -181,6 +183,19 @@ export class SettingsService {
         source: 'preset',
         message: `未能连接供应商接口（${reason}），已列出内置推荐模型`
       }
+    }
+  }
+
+  /** 部分供应商（如 OpenCode Go）对模型列表同样要求客户端标识与稳定会话 ID */
+  private modelListHeaders(input: AiFetchModelsInput): Record<string, string> {
+    const headerInput = {
+      provider: input.provider,
+      baseUrl: input.baseUrl,
+      sessionId: input.profileId ?? 'tool-box-model-list'
+    }
+    return {
+      ...buildProviderHeaders(headerInput),
+      ...(requiresCustomUserAgent(headerInput) ? { 'User-Agent': CLIENT_USER_AGENT } : {})
     }
   }
 

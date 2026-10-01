@@ -10,6 +10,8 @@ const MAX_ERROR_BODY = 512
 export interface FetchModelIdsInput {
   baseUrl: string
   apiKey: string
+  /** 供应商要求的额外请求头（如 OpenCode Go 的会话 ID） */
+  headers?: Record<string, string>
 }
 
 /**
@@ -28,7 +30,8 @@ export async function fetchModelIds(input: FetchModelIdsInput): Promise<string[]
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
         Accept: 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...input.headers
       },
       signal: AbortSignal.timeout(MODELS_TIMEOUT_MS)
     })

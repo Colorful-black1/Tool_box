@@ -4,6 +4,7 @@ import { ChatOpenAI } from '@langchain/openai'
 
 import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
 import type {
+  AiConfig,
   ChatCompletedEvent,
   ChatDeltaEvent,
   ChatErrorEvent,
@@ -15,6 +16,7 @@ import type {
 } from '../../../shared/types'
 import { validateChatInput } from './errors'
 import { AiGatewayError, describeAiError, normalizeOpenAiBaseUrl } from './errors'
+import { buildProviderHeaders, processSessionIdForSingleCall, requiresCustomUserAgent, withPinnedUserAgent } from './provider-headers'
 import type { SettingsService } from '../settings/settings-service'
 import type { ToolboxStore } from '../chat-store/chat-store'
 
@@ -85,7 +87,7 @@ export class AiGateway {
       temperature: 0,
       timeout: CHAT_TIMEOUT_MS,
       maxRetries: 1,
-      configuration: { baseURL: normalizeOpenAiBaseUrl(config.baseUrl) }
+      configuration: buildClientConfig(config, processSessionIdForSingleCall())
     })
 
     try {
@@ -105,11 +107,7 @@ export class AiGateway {
   private async streamResponse(input: {
     conversationId: string
     history: ChatMessage[]
-    config: {
-      baseUrl: string
-      model: string
-      apiKey: string
-    }
+    config: AiConfig
     controller: AbortController
     sink: ChatEventSink
   }): Promise<void> {
@@ -123,9 +121,8 @@ export class AiGateway {
         temperature: 0.7,
         timeout: CHAT_TIMEOUT_MS,
         maxRetries: 1,
-        configuration: {
-          baseURL: normalizeOpenAiBaseUrl(config.baseUrl)
-        }
+        // 会话 ID 逐轮稳定，OpenCode Go 依赖它做路由与 prompt 缓存
+        configuration: buildClientConfig(config, conversationId)
       })
 
       const stream = await model.stream(toLangChainMessages(history), {
@@ -183,8 +180,35 @@ export class AiGateway {
   }
 }
 
-function toLangChainMessages(messages: ChatMessage[]) {
-  return messages.map((message) =>
+/**
+ * 组装 OpenAI 客户端配置：端点规范化 + 供应商要求的额外请求头。
+ * 无额外头时不下发空的 defaultHeaders / fetch，避免覆盖 SDK 默认值。
+ */
+function buildClientConfig(
+  config: AiConfig,
+  sessionId: string
+): {
+  baseURL: string
+  defaultHeaders?: Record<string, string>
+  fetch?: typeof fetch
+} {
+  const input = { provider: config.provider, baseUrl: config.baseUrl, sessionId }
+  const headers = buildProviderHeaders(input)
+  const baseURL = normalizeOpenAiBaseUrl(config.baseUrl)
+  if (Object.keys(headers).length === 0) return { baseURL }
+
+  return {
+    baseURL,
+    defaultHeaders: headers,
+    // fetch 必须挂在 ClientOptions 顶层（SDK 用 this.fetch 发请求）；
+    // 不能塞进 fetchOptions.headers —— 那会整体替换已构建的请求头
+    ...(requiresCustomUserAgent(input)
+      ? { fetch: withPinnedUserAgent(globalThis.fetch) }
+      : {})
+  }
+}
+
+function toLangChainMessages(messages: ChatMessage[]) {  return messages.map((message) =>
     message.role === 'user'
       ? new HumanMessage(message.content)
       : new AIMessage(message.content)
