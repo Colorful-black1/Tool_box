@@ -1,0 +1,11 @@
+# shell 脚本必须保持 LF。
+#
+# 本仓库全局 core.autocrlf=true（见 C:\Program Files\Git\etc\gitconfig），
+# 检出时会把 LF 转成 CRLF。对 .sh 是致命的：shebang 会变成
+# `#!/usr/bin/env sh\r`，Git Bash 直接报 `bad interpreter: No such file or directory`。
+# 显式声明 eol=lf 让 git 在检出时不做转换，Windows / Linux / macOS 拿到的是同一份字节。
+*.sh text eol=lf
+
+# 文本文件统一按 LF 存进仓库，检出时再按各平台的 core.autocrlf 决定要不要转。
+# 这样仓库里不会混入 CRLF 差异，diff 干净。
+* text=auto
