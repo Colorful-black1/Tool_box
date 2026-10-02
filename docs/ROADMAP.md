@@ -167,6 +167,7 @@ npm run mobile:start
 > **为什么不用桌面端的 `decodeText`**：它签名是 `decodeText(bytes: Buffer)`，
 > 且 GBK 分支依赖 Node 的 `TextDecoder('gbk')`（需完整 ICU）。手机端没有 Buffer，
 > 所以 `text-decoder.ts` 自己手写 UTF-16 解码与 UTF-8 合法性校验（纯函数，可单测）。
+
 > **⚠️ 章节偏移必须先归一再切片（两端都踩过的数据损坏 bug）**：`parseChapters`
 > 内部会把 `\r\n` 归一成 `\n` 再切分，返回的 `start`/`end` 是**归一后那份文本**里的
 > 下标。原先两端都拿它去切仍带 `\r` 的原文，于是每章正文按前面累计的 `\r` 数量
@@ -183,8 +184,9 @@ npm run mobile:start
 - [x] 复用桌面端 `parsePasswordText` 做固定格式文本批量导入（带预览与重复标记）
 - [x] 复制账号 / 密码到剪贴板
 - [x] AI 识别：新增 `AiGateway.complete()`（非流式）+ `password-recognizer.ts`
-- 文件：`mobile/src/ui/passwords/` + `mobile/src/ai/complete-chat.ts`、
-  `password-recognizer.ts`
+- [x] 批量导入支持**选择文件**（两种 tab 都可），此前只能往输入框里粘贴
+- 文件：`mobile/src/ui/passwords/`（`password-import-screen` / `password-file` /
+  `password-groups`）+ `mobile/src/ai/complete-chat.ts`、`password-recognizer.ts`
 
 **本轮的取舍与已知限制**
 
@@ -202,6 +204,17 @@ npm run mobile:start
   占位文本。编辑页直接拦住并提示「删除后重建」。
   要支持「只改元数据、保留原密文」，得给数据层加一条局部更新路径。
 - **剪贴板用 core `Clipboard`**（已 `@deprecated`），见第 2 节第 20 项。
+- **选文件后直接解析，不灌进输入框**：手机上粘贴长文本本就是主要痛点，
+  灌进 `TextInput` 反而让人以为还得再点一次按钮。读文件与转文本抽在
+  `password-file.ts`（`File.size` 预检 + 复用书籍的 `text-decoder`），
+  所以 GBK 文件得到和书籍一样的明确报错，而不是满屏乱码。
+  `File.size` 在部分 SAF provider 上是 0，预检只当作快速失败，
+  真正兜底是字节长度判定。
+- **文件导入的 AI 通道超限报错而非截断**（与粘贴通道不同）：文件里的内容用户
+  多半没逐字看过，静默截掉一半再让人确认导入风险更大。长度校验放在
+  `assertRecognizable`，在调模型之前就拦住，不白花一次 `complete`。
+- **两端能力互补，未强行对齐**：PC 端密码导入只能选文件、不能粘贴；
+  手机端两者都有。按需求本轮 PC 端不改。
 
 ---
 

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { File } from 'expo-file-system'
 
 import { GlassCard } from '../../components/placeholder-screen'
 import { Banner, Chip, GhostButton, PrimaryButton } from '../../components/ui'
@@ -20,12 +21,14 @@ import { useServices } from '../../runtime/services'
 import { useKeyboardInset } from '../keyboard'
 import {
   RECOGNIZE_SYSTEM_PROMPT,
+  assertRecognizable,
   buildRecognitionPrompt,
   parseRecognitionResult
 } from '../../ai/password-recognizer'
 import type { PasswordDraft } from '../../shared-bridge'
 import { parsePasswordText } from '../../shared-bridge'
 import { duplicateKey } from './password-groups'
+import { readPickedTextFile } from './password-file'
 import { colors, fonts, radius, spacing } from '../../theme'
 
 type Tab = 'format' | 'ai'
@@ -80,23 +83,72 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
     )
   }
 
+  /** 两条通道（粘贴 / 选文件）共用的正文产出：把识别结果落成草稿预览 */
+  const applyRecognized = async (source: string): Promise<void> => {
+    const trimmed = assertRecognizable(source)
+    const raw = await gateway.complete({
+      system: RECOGNIZE_SYSTEM_PROMPT,
+      prompt: buildRecognitionPrompt(trimmed)
+    })
+    const parsed = parseRecognitionResult(raw)
+    if (parsed.length === 0) {
+      setError('AI 没识别出可导入的条目，换一段描述更明确的文本试试。')
+      return
+    }
+    setDrafts(parsed)
+    setMessage(`AI 识别出 ${parsed.length} 条`)
+  }
+
   const recognize = async (): Promise<void> => {
     reset()
     setBusy(true)
     try {
-      const raw = await gateway.complete({
-        system: RECOGNIZE_SYSTEM_PROMPT,
-        prompt: buildRecognitionPrompt(text)
-      })
-      const parsed = parseRecognitionResult(raw)
-      if (parsed.length === 0) {
-        setError('AI 没识别出可导入的条目，换一段描述更明确的文本试试。')
-        return
-      }
-      setDrafts(parsed)
-      setMessage(`AI 识别出 ${parsed.length} 条`)
+      await applyRecognized(text)
     } catch (recognizeError) {
       setError(recognizeError instanceof Error ? recognizeError.message : 'AI 识别失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 从文件导入（两种 tab 都有）。
+   *
+   * 选完直接解析 / 识别，**不把内容灌进输入框** —— 手机上手动粘贴长文本本就是
+   * 主要痛点，灌进 TextInput 反而让人以为还得再点一次按钮。
+   *
+   * 按格式走纯本地解析，AI 通道则先经 `assertRecognizable` 判长度：
+   * 文件里的内容用户多半没逐字看过，静默截断一半再让人确认导入风险更大，
+   * 所以超限直接报错要求拆分。
+   */
+  const importFromFile = async (): Promise<void> => {
+    reset()
+    setBusy(true)
+    try {
+      const picked = await File.pickFileAsync()
+      if (picked.canceled) return
+
+      const content = await readPickedTextFile(picked.result)
+      setMessage(`已读取 ${picked.result.name}`)
+
+      if (tab === 'format') {
+        const outcome = parsePasswordText(content)
+        if (outcome.entries.length === 0) {
+          setError(`${picked.result.name} 里没解析出任何条目。每条之间空一行，行内写「标签: 值」。`)
+          setMessage('')
+          return
+        }
+        setDrafts(outcome.entries)
+        setMessage(
+          `从 ${picked.result.name} 解析出 ${outcome.entries.length} 条` +
+            (outcome.skipped > 0 ? `，跳过 ${outcome.skipped} 行无法识别的内容` : '')
+        )
+        return
+      }
+
+      await applyRecognized(content)
+    } catch (fileError) {
+      setError(fileError instanceof Error ? fileError.message : '读取文件失败')
     } finally {
       setBusy(false)
     }
@@ -138,8 +190,8 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
       >
         <Text style={styles.hint}>
           {tab === 'format'
-            ? '每条之间空一行，行内写「标签: 值」。支持 网站名/网址/用户名/密码/备注 等中文或英文标签。'
-            : '直接粘贴聊天记录、表格转储或笔记，交给模型抽取。会调用一次非流式补全，请先在设置页启用一套 AI 配置。'}
+            ? '每条之间空一行，行内写「标签: 值」。支持 网站名/网址/用户名/密码/备注 等中文或英文标签。也可以直接选一个 .txt / .md 文件。'
+            : '直接粘贴聊天记录、表格转储或笔记，也可以选一个文本文件，交给模型抽取。会调用一次非流式补全，请先在设置页启用一套 AI 配置。'}
         </Text>
 
         <TextInput
@@ -149,7 +201,7 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
             setText(next)
             if (drafts) reset()
           }}
-          placeholder={tab === 'format' ? SAMPLE : '把杂乱文本粘贴到这里'}
+          placeholder={tab === 'format' ? `${SAMPLE}\n\n也可以直接选文件` : '把杂乱文本粘贴到这里'}
           placeholderTextColor={colors.textDim}
           multiline
           autoCapitalize="none"
@@ -158,7 +210,9 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
           accessibilityLabel="待导入文本"
         />
 
+        {/* 两个 tab 都能选文件：粘贴长文本在手机上很痛苦，文件是更现实的入口 */}
         <View style={styles.actions}>
+          <GhostButton label="选择文件" onPress={() => void importFromFile()} disabled={busy} />
           {tab === 'format' ? (
             <>
               <GhostButton label="填入示例" onPress={() => setText(SAMPLE)} />
@@ -232,7 +286,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontFamily: fonts.mono
   },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  // 三个按钮在窄屏会换行：wrap 让它们落到第二行而不是被压扁
+  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.sm },
   preview: { gap: spacing.sm },
   previewTitle: { fontSize: 13, color: colors.textMid, marginBottom: spacing.xs },
   previewRow: { gap: 1 },

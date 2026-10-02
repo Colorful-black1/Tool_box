@@ -28,7 +28,13 @@ export const RECOGNIZE_SYSTEM_PROMPT = [
   '所有字段都必须是字符串。无法确认的条目直接跳过，不要编造密码。'
 ].join('\n')
 
-/** 构造用户提示词；文本超长时截断并告知，避免模型从中间开始漏读 */
+/**
+ * 构造用户提示词。
+ *
+ * 超长文本会**截断**并在末尾说明，让模型知道自己只看到了一部分 ——
+ * 这是从粘贴框手输时的既有行为。而文件导入走 `assertRecognizable` 先报错，
+ * 因为文件里的内容用户多半没逐字看过，静默截掉一半再让人确认导入风险更大。
+ */
 export function buildRecognitionPrompt(text: string): string {
   const trimmed = text.trim()
   if (!trimmed) throw new Error('待识别文本不能为空')
@@ -37,6 +43,23 @@ export function buildRecognitionPrompt(text: string): string {
       ? `${trimmed.slice(0, MAX_RECOGNIZE_CHARS)}\n（原文过长，以上为前 ${MAX_RECOGNIZE_CHARS} 字）`
       : trimmed
   return `请从下面这段文本里抽取密码条目：\n\n${clipped}`
+}
+
+/**
+ * 走 AI 通道前的前置校验：先判能不能识别，再花钱调模型。
+ *
+ * 单独拆出来是为了让「从文件读文本 → 识别」这条路径能在 vitest 里测到
+ * 上面这些边界（纯逻辑），不必拉起真机的系统文件选择器。
+ */
+export function assertRecognizable(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('待识别文本不能为空')
+  if (trimmed.length > MAX_RECOGNIZE_CHARS) {
+    throw new Error(
+      `文本 ${trimmed.length} 字超过单次识别上限 ${MAX_RECOGNIZE_CHARS} 字，请拆分后分批识别`
+    )
+  }
+  return trimmed
 }
 
 /**

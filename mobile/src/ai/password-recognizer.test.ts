@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_RECOGNIZE_CHARS,
   RECOGNIZE_SYSTEM_PROMPT,
+  assertRecognizable,
   buildRecognitionPrompt,
   extractJsonValue,
   parseRecognitionResult
@@ -21,6 +22,33 @@ describe('buildRecognitionPrompt', () => {
     const prompt = buildRecognitionPrompt('x'.repeat(MAX_RECOGNIZE_CHARS + 500))
     expect(prompt).toContain('原文过长')
     expect(prompt.length).toBeLessThan(MAX_RECOGNIZE_CHARS + 200)
+  })
+})
+
+// 文件导入走这条：用户没逐字看过文件内容，静默截一半再让人确认导入风险更大，
+// 所以超限直接报错要求拆分，而不是像粘贴那样截断。
+describe('assertRecognizable', () => {
+  it('返回去掉首尾空白的文本', () => {
+    expect(assertRecognizable('  GitHub: a/b\n')).toBe('GitHub: a/b')
+  })
+
+  it('空文本报错', () => {
+    expect(() => assertRecognizable('   \n  ')).toThrow(/不能为空/)
+  })
+
+  it('恰好等于上限放行', () => {
+    expect(assertRecognizable('x'.repeat(MAX_RECOGNIZE_CHARS))).toHaveLength(MAX_RECOGNIZE_CHARS)
+  })
+
+  it('超限报错并给出实际字数与上限', () => {
+    const tooLong = 'x'.repeat(MAX_RECOGNIZE_CHARS + 1)
+    expect(() => assertRecognizable(tooLong)).toThrow(/4000 字/)
+    expect(() => assertRecognizable(tooLong)).toThrow(/请拆分后分批识别/)
+  })
+
+  it('空白不计入长度判定（先 trim 再比）', () => {
+    const padded = `   ${'x'.repeat(MAX_RECOGNIZE_CHARS)}   `
+    expect(() => assertRecognizable(padded)).not.toThrow()
   })
 })
 
