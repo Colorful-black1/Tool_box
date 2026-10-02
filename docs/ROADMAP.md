@@ -246,10 +246,22 @@ npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node-gyp rebuild
 `postinstall` 一起跳过，导致 `electron/dist` 不存在、`npm run dev` 起不来。
 `esbuild` 的 install 脚本只做二进制校验，也一并补上。
 
-**`npm run rebuild` 现在是反效果的**：它会触发源码编译，在没有 MSVC 的机器上
-必然失败；即使成功，`lib/binding.js` 也是**先找 `prebuilds/` 再找
-`build/Release`**，编译产物会被直接忽略。同理 `npm run pack` / `dist`
-若内置了 `@electron/rebuild` 步骤，在这台机器上也会失败 —— 需要先确认。
+**`npm run rebuild` 现在是反效果的**，已于 2026-10-01 从常用命令里移除，并在
+`package.json` 的 `build` 字段加上 **`npmRebuild: false`** 让打包也跳过它
+（`app-builder-lib/out/packager.js` 里 `config.npmRebuild === false` 会在调用
+`installOrRebuild` 之前直接 return）。原因有两条，任一条都足以否掉重编译：
+
+1. 它会触发源码编译，在没有 MSVC 的机器上必然失败；
+2. **即使成功也没有用** —— `lib/binding.js` 先找 `prebuilds/` 再找
+   `build/Release`，编译产物会被直接忽略。
+
+已实测（无 Python、无 MSVC 的全新机器）：
+
+| 命令                    | 结果                                                |
+| ----------------------- | --------------------------------------------------- |
+| `npm run pack`          | 成功，`prebuilds/win32-x64.node` 进 `app.asar.unpacked` |
+| `npm run dist`          | 成功，产出 124.7 MB 的 NSIS 安装包                   |
+| 打包产物加载 better-sqlite3 | `ASAR_LOAD_OK sqlite=3.53.4`（用打包后的 Electron 以 `ELECTRON_RUN_AS_NODE=1` 直接 require asar 内的模块验证） |
 
 ### 手机端
 

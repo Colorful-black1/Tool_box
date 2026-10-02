@@ -18,12 +18,29 @@ npm run build       # 构建 main / preload / renderer
 npm run typecheck   # tsc --noEmit
 npm run lint        # ESLint（同时覆盖 src 与 mobile）
 npm run test        # Vitest 单元测试
-npm run rebuild     # 重建 better-sqlite3 到 Electron ABI（改依赖后必做）
 
 npm run mobile:typecheck   # 手机端（Expo）类型校验
 npm run mobile:bundle     # 跑 Metro 打包，无需真机即可验证跨目录引用
 npm run mobile:start      # 手机端开发（Expo Go 扫码）
 ```
+
+首次安装（或换机器）走这套，**不要跑 `npm run rebuild`**：
+
+```bash
+npm install --ignore-scripts
+node node_modules/electron/install.js          # 补跑被跳过的 Electron 运行时下载
+node node_modules/esbuild/install.js
+node node_modules/vite/node_modules/esbuild/install.js
+npm install --prefix mobile                    # 手机端独立包，故意不接 workspaces
+```
+
+原因：`better-sqlite3@13` 用 **Node-API 预编译**（`prebuilds/win32-x64.node` 随包
+发布，`lib/binding.js` 不校验 ABI，Node/Electron 通吃），**不需要按 ABI 编译**。
+而 npm 11 的 arborist 只要看到 `binding.gyp` 就会合成 `install: node-gyp rebuild`
+（`@npmcli/arborist/lib/install-scripts.js`），在没装 MSVC 的机器上必失败；
+即使编译成功，`prebuilds/` 优先于 `build/Release`，产物也永远加载不到。
+打包同理，已用 `build.npmRebuild: false` 跳过。详见 `README.md` 与
+`docs/ROADMAP.md` 第 5 节。
 
 ---
 
@@ -65,7 +82,7 @@ npm run mobile:start      # 手机端开发（Expo Go 扫码）
 
 编译、测试、`npm run dev` 都是高成本操作，按改动规模评估，禁止无意义编译。
 
-**必须验证**（任一命中）：改主进程服务或 IPC handler / 改数据层或 SQL / 跨进程多模块（shared + preload + renderer）/ 新增类接口类型 / 改依赖版本（改完 `npm run rebuild`）/ 改配置文件（`electron.vite.config.ts`、`tailwind.config.cjs`、`tsconfig.json` 等）/ 改加解密与密钥逻辑 / 改文件 ≥ 5 个 / 改动 ≥ 500 行。
+**必须验证**（任一命中）：改主进程服务或 IPC handler / 改数据层或 SQL / 跨进程多模块（shared + preload + renderer）/ 新增类接口类型 / 改依赖版本（改完要确认 `npm run dev` 与 `npm run pack` 仍正常）/ 改配置文件（`package.json` 的 `build` 段、`electron.vite.config.ts`、`tailwind.config.cjs`、`tsconfig.json` 等）/ 改加解密与密钥逻辑 / 改文件 ≥ 5 个 / 改动 ≥ 500 行。
 
 顺序：`npm run typecheck` → `npm run lint` → `npm run test`。
 

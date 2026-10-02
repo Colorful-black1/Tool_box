@@ -33,8 +33,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 ## 常用命令
 
 ```bash
-npm install
-npm run rebuild       # 重建 better-sqlite3 到 Electron ABI（首次必做）
+npm install --ignore-scripts   # 见下方「为什么不是普通 npm install」
 npm run dev           # 开发模式（Electron 窗口）
 npm run build         # 构建主进程 / preload / renderer
 npm run preview       # 预览构建产物
@@ -46,12 +45,42 @@ npm run test          # Vitest 单元测试
 npm run format        # Prettier
 ```
 
+> ⚠️ **不要跑 `npm run rebuild`。** 它在这台机器上必然失败，且对当前依赖毫无作用 ——
+> 原因见下一节。要点已经写在 `docs/ROADMAP.md` 第 5 节。
+
+### 为什么不是普通 `npm install`
+
+`better-sqlite3@13` 的 npm 包里同时有 `binding.gyp` 和 `prebuilds/*.node`。
+npm 11 的 `@npmcli/arborist` **只要看到磁盘上有 `binding.gyp` 就会合成一条
+`install: node-gyp rebuild`**（`arborist/lib/install-scripts.js`），于是在没装
+MSVC 的机器上直接失败：
+
+```text
+gyp ERR! find Python - THIS VERSION OF PYTHON IS NOT SUPPORTED
+```
+
+所以用 `--ignore-scripts`，再手动补跑被一并跳过的安装脚本（Electron 的
+`postinstall` 负责下载运行时二进制，不补的话 `npm run dev` 起不来）：
+
+```bash
+node node_modules/electron/install.js          # 下载 Electron 运行时
+node node_modules/esbuild/install.js           # 校验 esbuild 原生二进制
+node node_modules/vite/node_modules/esbuild/install.js
+```
+
 ## 打包（electron-builder + NSIS）
 
-打包配置在 `package.json` 的 `build` 字段。`npm run pack` / `npm run dist` 都会自动调用 `@electron/rebuild` 把 `better-sqlite3` 重编译到 Electron ABI，无需手动 `npm run rebuild`。
+打包配置在 `package.json` 的 `build` 字段。
 
 要点：
 
+- **`npmRebuild: false`** —— 跳过 `@electron/rebuild`。
+  better-sqlite3 13 起改用 **Node-API 预编译**：`prebuilds/win32-x64.node`
+  直接随 npm 包发布，且 `lib/binding.js` 只按 `process.platform-arch` 选文件、
+  **不校验 ABI**，Node 与 Electron 通吃。所以既不需要重编译，重编译出来的
+  `build/Release/*.node` 反而会被排在预编译之后**永远加载不到**。
+  加上这个开关后，打包不再需要 Python 与 MSVC 编译工具链。
+  （代价：日后若新增**确实需要**按 ABI 编译的原生依赖，得先把这个开关去掉。）
 - `asarUnpack: ["**/*.node"]` —— `better-sqlite3` 的原生二进制不能进 asar，否则运行时报错找不到模块。
 - `files` 只收 `out/`、`assets/`、`package.json`；`assets/prompts/password_import.txt` 在运行期通过 `app.getAppPath()` 读取，必须打进包内。
 - 应用图标为 `assets/icon.png`（512×512，electron-builder 自动转 `.ico`）。

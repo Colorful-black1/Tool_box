@@ -28,13 +28,21 @@
   "build": {
     "appId": "com.toolbox.app",
     "productName": "私人百宝箱",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
     "files": [
       "out/**",
       "assets/**",
-      "package.json"
+      "package.json",
+      "!node_modules/better-sqlite3/prebuilds/darwin-*.node",
+      "!node_modules/better-sqlite3/prebuilds/linux-*.node",
+      "!node_modules/better-sqlite3/prebuilds/linuxmusl-*.node",
+      "!node_modules/better-sqlite3/prebuilds/win32-arm64.node",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**",
+      "!node_modules/better-sqlite3/binding.gyp"
     ],
     "asarUnpack": [
       "**/*.node"
