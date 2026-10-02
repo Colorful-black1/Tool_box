@@ -80,8 +80,22 @@ describe('buildImportedBook', () => {
     )
   })
 
-  it('超大文件在解析前就被拦下', () => {
-    expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(/MB/)
+  it('超大文件在解析前就被拦下，且提示带上实际体积', () => {
+    expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(
+      new RegExp(`超过 ${MAX_BOOK_BYTES / 1024 / 1024}MB`)
+    )
+    expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(
+      /32\.0MB/
+    )
+  })
+
+  it('刚过上限一点也会被拦下', () => {
+    expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(/请拆分后再导入/)
+  })
+
+  // 边界：恰好等于上限必须放行（判定用的是 > 而非 >=），否则 32MB 整的书会被误杀
+  it('恰好等于上限不因体积被拦下', () => {
+    expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES))).not.toThrow()
   })
 
   // 回归：parseChapters 的偏移属于它归一后那份文本，切片必须用同一份字符串。

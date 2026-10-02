@@ -1,5 +1,5 @@
 /**
- * 书籍 TXT 的字节流解码（手机端）。
+ * 书籍 / 文本文件的字节流解码（手机端）。
  *
  * 为什么不能直接复用桌面端 `src/main/services/library/encoding.ts`：
  * 那个函数签名是 `decodeText(bytes: Buffer)`，且 GBK 分支依赖 Node 的
@@ -35,8 +35,18 @@ export class UnsupportedTextEncodingError extends Error {
   }
 }
 
-/** 单本导入的体积上限：超出多半是误选了大文件，先拦住免得直接把内存撑爆 */
-export const MAX_BOOK_BYTES = 12 * 1024 * 1024
+/**
+ * 单个文件的体积上限：32MB。
+ *
+ * 为什么留上限而不彻底删掉：手机端整条链路都在 Hermes 堆里，一次导入的峰值
+ * 大约是文件体积的 2.3 倍（字节流 + 解码后的全文 + 章节副本）。不设限的话，
+ * 超大文件会直接被系统 OOM killer 杀掉进程，用户看到的是「闪退」而不是报错，
+ * 反而更难排查。桌面端没有这个限制 —— 它在 Node 主进程里，且书籍正文入库后即释放。
+ *
+ * 从 12MB 放宽到 32MB：足以覆盖绝大多数单本网络小说（百万字 UTF-8 约 3MB），
+ * 也留出了「多本合集」的空间，同时仍远低于 OOM 阈值。
+ */
+export const MAX_BOOK_BYTES = 32 * 1024 * 1024
 
 const UTF8_BOM = [0xef, 0xbb, 0xbf] as const
 const UTF16LE_BOM = [0xff, 0xfe] as const
@@ -45,10 +55,20 @@ const UTF16BE_BOM = [0xfe, 0xff] as const
 /** UTF-16 探测的取样字节数：只看开头足够判断，也不浪费时间扫全文 */
 const UTF16_SNIFF_BYTES = 256
 
+/**
+ * 体积超限的用户提示。
+ *
+ * 导出是因为调用方需要在**读进内存之前**就拦一次：`File.size` 是同步可读的，
+ * 而 `decodeBookText` 要等 `arrayBuffer()` 整个读完才发现超限 —— 32MB 的
+ * 白读一趟在真机上既慢又占内存。两处共用同一句文案，免得用户看到两种说法。
+ */
+export function formatSizeError(size: number): string {
+  const limit = Math.round(MAX_BOOK_BYTES / 1024 / 1024)
+  return `文件 ${formatMegabytes(size)} 超过 ${limit}MB 上限，请拆分后再导入`
+}
+
 export function decodeBookText(bytes: Uint8Array): DecodedText {
-  if (bytes.length > MAX_BOOK_BYTES) {
-    throw new Error(`文件超过 ${Math.round(MAX_BOOK_BYTES / 1024 / 1024)}MB，请拆分后再导入`)
-  }
+  if (bytes.length > MAX_BOOK_BYTES) throw new Error(formatSizeError(bytes.length))
 
   const bom = detectBom(bytes)
   if (bom) {
@@ -241,4 +261,10 @@ function inRange(bytes: Uint8Array, index: number, min: number, max: number): bo
 function startsWith(bytes: Uint8Array, prefix: readonly number[]): boolean {
   if (bytes.length < prefix.length) return false
   return prefix.every((byte, index) => bytes[index] === byte)
+}
+
+/** 字节数 → 人类可读体积；小于 1MB 时给 KB，避免 0MB 这种没信息量的提示 */
+function formatMegabytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }

@@ -36,6 +36,7 @@ import { GlassCard } from '../../components/placeholder-screen'
 import { ScreenHeader } from '../../components/screen'
 import { Chip, ChipRow, GhostButton, PrimaryButton, PromptModal } from '../../components/ui'
 import { buildImportedBook } from '../../data/book-import'
+import { MAX_BOOK_BYTES, formatSizeError } from '../../data/text-decoder'
 import { useServices } from '../../runtime/services'
 import type { BookGroup, BookSummary } from '../../shared-bridge'
 import { SORT_OPTIONS, sortBooks } from './bookshelf-sort'
@@ -167,8 +168,15 @@ export function BookshelfScreen({
       const picked = await File.pickFileAsync()
       if (picked.canceled) return
 
-      const bytes = new Uint8Array(await picked.result.arrayBuffer())
-      const book = buildImportedBook(picked.result.name, bytes)
+      const file = picked.result
+      // 先看 File 报的大小再决定要不要读进内存：超限时直接拦下，
+      // 避免把几十 MB 的 ArrayBuffer 白读一遍才发现超限。
+      if (file.size > MAX_BOOK_BYTES) {
+        throw new Error(formatSizeError(file.size))
+      }
+
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const book = buildImportedBook(file.name, bytes)
       await store.importBook({ title: book.title, author: '', chapters: book.chapters })
       await reload()
       setError('')

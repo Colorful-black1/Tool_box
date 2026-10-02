@@ -146,6 +146,7 @@ npm run mobile:start
 - [x] 阅读统计：今日 / 累计时长与字数 + 最近 7 天
 - [x] 字体、字号、行距、主题（`READER_THEMES`）、夜间模式、翻页方式
 - [x] 复用桌面端 `parseChapters`（已通过 `shared-bridge` 桥接）
+- [x] 导入体积上限 12MB → 32MB，并在**读进内存前**用 `File.size` 先拦一次
 - 文件：`mobile/src/ui/reader/`（`bookshelf-screen` / `book-reader-screen` /
   `reader-settings-sheet` / `reading-stats-screen`）+ 纯逻辑 `paginate.ts`、
   `bookshelf-sort.ts` + 数据侧 `text-decoder.ts`、`book-import.ts`、`reader-config.ts`
@@ -159,6 +160,7 @@ npm run mobile:start
 | 书籍封面 | **未做**，路径保持空 | 需要 `expo-image-picker`；`store.setBookCover` 已就绪，接上 UI 即可 |
 | TXT 编码 | UTF-8 / UTF-16LE / UTF-16BE | Hermes 的 `TextDecoder` 只可靠支持 UTF-8；GBK/ANSI **明确报错**提示转存，不静默乱码 |
 | 分页方式 | 估算每页容量，不做测量后切页 | 测量→二分→重排的异步竞态多；误差只影响页面尾部留白 |
+| 导入体积上限 | 12MB → **32MB**，保留上限 | 峰值约为文件体积 2.3 倍（字节流 + 解码全文 + 章节副本）。无上限时 Android 会被 OOM killer 直接杀进程，用户只看到闪退；桌面端在 Node 主进程且正文入库即释放，没有这个约束 |
 | `pageMode: 'cover'` | 归一到 `'horizontal'` | 桌面端的覆盖层翻页依赖图片层与手势层，手机端没实现 |
 | 字体选项 | 用 `serif` / `sans-serif` / `monospace` | 不复用桌面端 `FONT_OPTIONS`（SimSun 等是 Windows 字体名，Android/iOS 不存在，写进去只会静默回退，用户点了像没反应） |
 

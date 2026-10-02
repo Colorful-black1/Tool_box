@@ -4,6 +4,7 @@ import {
   MAX_BOOK_BYTES,
   UnsupportedTextEncodingError,
   decodeBookText,
+  formatSizeError,
   decodeUtf16,
   detectBom,
   isValidUtf8,
@@ -128,9 +129,47 @@ describe('decodeBookText', () => {
     expect(() => decodeBookText(new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(/MB/)
   })
 
+  it('超限提示同时给出上限与实际体积，便于判断该不该拆分', () => {
+    const oversized = 40 * 1024 * 1024
+    expect(() => decodeBookText(new Uint8Array(oversized))).toThrow(/32MB/)
+    expect(() => decodeBookText(new Uint8Array(oversized))).toThrow(/40\.0MB/)
+    expect(() => decodeBookText(new Uint8Array(oversized))).toThrow(/请拆分后再导入/)
+  })
+
+  // 边界：恰好等于上限必须放行（用 > 而不是 >= 比较），否则 32MB 整的书会被误杀
+  it('恰好等于上限不报体积错误', () => {
+    expect(() => decodeBookText(new Uint8Array(MAX_BOOK_BYTES))).not.toThrow()
+  })
+
   it('emoji 等 4 字节码点正常解码', () => {
     const result = decodeBookText(utf8('第 🌌 一章'))
     expect(result.text).toBe('第 🌌 一章')
+  })
+})
+
+describe('formatSizeError', () => {
+  // 这条文案在「读进内存前」和「读完发现超限」两处都会出现，措辞必须一致
+  it('给出上限与实际体积', () => {
+    expect(formatSizeError(40 * 1024 * 1024)).toBe('文件 40.0MB 超过 32MB 上限，请拆分后再导入')
+  })
+
+  it('小于 1MB 时用 KB，避免显示成 0MB', () => {
+    expect(formatSizeError(512 * 1024)).toContain('512KB')
+  })
+
+  it('1MB 以下向上取整到至少 1KB', () => {
+    expect(formatSizeError(10)).toBe('文件 1KB 超过 32MB 上限，请拆分后再导入')
+  })
+
+  it('与 decodeBookText 实际抛出的文案完全一致', () => {
+    const oversized = 33 * 1024 * 1024
+    let thrown = ''
+    try {
+      decodeBookText(new Uint8Array(oversized))
+    } catch (error) {
+      thrown = (error as Error).message
+    }
+    expect(thrown).toBe(formatSizeError(oversized))
   })
 })
 
