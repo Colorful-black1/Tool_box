@@ -18,8 +18,24 @@ const CHAPTER_RE =
 const PSEUDO_SPLIT_SIZE = 50_000
 const TINY_BODY_CHARS = 12
 
+/**
+ * 章节切分前必须先把 CRLF 归一，且**必须用归一后的那一份文本去按区间取正文**。
+ *
+ * `parseChapters` 返回的 `start` / `end` 是归一后文本里的字符下标。调用方若拿它
+ * 去切原文（仍是 `\r\n` 的那一份），每章正文会按前面累计的 `\r` 数量整体错位：
+ * Windows 记事本默认就存 CRLF，所以这不是边缘情况。实测两章的 TXT 里，
+ * 第二章正文会吞掉标题尾部（「…转折」）并被截掉尾巴。
+ *
+ * 导出它就是为了让调用方与 `parseChapters` 共用同一份字符串，从而对上偏移。
+ * 只处理 `\r\n` → `\n`，不碰单独的 `\r`（老 Mac 换行已绝迹）。
+ */
+export function normalizeChapterText(text: string): string {
+  // 没有 CRLF 就原样返回：大文件下少一份全文副本很关键（手机端一次导入可达数十 MB）
+  return text.includes('\r\n') ? text.replace(/\r\n/g, '\n') : text
+}
+
 export function parseChapters(text: string): ParsedChapter[] {
-  const normalized = text.replace(/\r\n/g, '\n')
+  const normalized = normalizeChapterText(text)
   if (!normalized.trim()) return []
 
   const marks = Array.from(normalized.matchAll(CHAPTER_RE)).map((match) => ({

@@ -67,6 +67,6 @@ export {
 export { extractModelIds } from '../../src/main/services/ai-gateway/model-fetcher'
 
 // 纯解析器：章节 / 密码文本 / 拼音首字母
-export { parseChapters } from '../../src/main/services/library/chapter-parser'
+export { normalizeChapterText, parseChapters } from '../../src/main/services/library/chapter-parser'
 export { parsePasswordText } from '../../src/main/services/library/password-text-parser'
 export { pinyinFirstLetter } from '../../src/main/services/library/pinyin-util'

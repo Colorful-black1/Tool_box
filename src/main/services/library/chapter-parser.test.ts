@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseChapters } from './chapter-parser'
+import { normalizeChapterText, parseChapters } from './chapter-parser'
 
 describe('parseChapters', () => {
   it('splits chapters by 第X章 headers', () => {
@@ -50,6 +50,30 @@ describe('parseChapters', () => {
 
     expect(chapters).toHaveLength(2)
     expect(chapters[1].start).toBeGreaterThan(chapters[0].start)
+  })
+
+  // 回归：偏移是 parseChapters 内部归一后那份文本的下标。调用方必须用
+  // normalizeChapterText 归一后再切片，否则 CRLF 文本每章正文整体错位。
+  // 之前只断言了 start 的先后顺序，正好放过了这个 bug。
+  it('CRLF 文本的区间能在归一后的文本上取到正确正文', () => {
+    const bodyA = '他推开门，风从走廊尽头灌进来，卷起地上的旧报纸。'
+    const bodyB = '雨下了整夜，屋檐的水线一直没有断过。'
+    const normalized = normalizeChapterText(`第一章 起点\r\n${bodyA}\r\n\r\n第二章 转折\r\n${bodyB}`)
+    const chapters = parseChapters(normalized)
+
+    expect(chapters.map((chapter) => normalized.slice(chapter.start, chapter.end).trim())).toEqual([
+      bodyA,
+      bodyB
+    ])
+  })
+
+  it('normalizeChapterText 幂等，且无 CRLF 时原样返回同一份字符串', () => {
+    const once = normalizeChapterText('第一章 甲\r\n正文')
+    expect(normalizeChapterText(once)).toBe(once)
+
+    const lfOnly = '第一章 甲\n正文'
+    // 全局字符串驻留下引用可能相同，这里只断言内容一致，不强行要求引用相等
+    expect(normalizeChapterText(lfOnly)).toBe(lfOnly)
   })
 
   it('merges chapters whose body is too short into the previous one', () => {

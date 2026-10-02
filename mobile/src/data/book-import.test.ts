@@ -84,8 +84,12 @@ describe('buildImportedBook', () => {
     expect(() => buildImportedBook('big.txt', new Uint8Array(MAX_BOOK_BYTES + 1))).toThrow(/MB/)
   })
 
-  it('Windows 换行不影响章节切分', () => {
+  // 回归：parseChapters 的偏移属于它归一后那份文本，切片必须用同一份字符串。
+  // 之前只断言章节数，正好放过了「正文吞掉标题尾部并被截断」这个 bug。
+  it('Windows 换行下正文不因偏移错位而串行', () => {
     const book = buildImportedBook('crlf.txt', utf8(NOVEL.replace(/\n/g, '\r\n')))
     expect(book.chapters).toHaveLength(2)
+    expect(book.chapters[0]?.body).toBe(BODY_1)
+    expect(book.chapters[1]?.body).toBe(BODY_2)
   })
 })

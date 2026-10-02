@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-import { parseChapters } from './chapter-parser'
+import { normalizeChapterText, parseChapters } from './chapter-parser'
 import { decodeText } from './encoding'
 
 export interface ParsedChapterMeta {
@@ -11,7 +11,6 @@ export interface ParsedChapterMeta {
 
 export interface ParsedBook {
   title: string
-  text: string
   chapters: ParsedChapterMeta[]
 }
 
@@ -24,20 +23,22 @@ export class ImportService {
     }
 
     const { text } = decodeText(bytes)
-    const parsedChapters = parseChapters(text)
+    // parseChapters 返回的偏移是**它自己归一后**那份文本里的下标，
+    // 所以切片也必须在归一后的文本上做，否则 CRLF 书籍每章正文都错位。
+    const normalized = normalizeChapterText(text)
+    const parsedChapters = parseChapters(normalized)
 
     const chapters: ParsedChapterMeta[] =
       parsedChapters.length > 0
         ? parsedChapters.map((chapter) => ({
             idx: chapter.idx,
             title: chapter.title,
-            body: text.slice(chapter.start, chapter.end).trim()
+            body: normalized.slice(chapter.start, chapter.end).trim()
           }))
-        : [{ idx: 0, title: '正文', body: text }]
+        : [{ idx: 0, title: '正文', body: normalized.trim() }]
 
     return {
       title: extractFileName(filePath),
-      text,
       chapters
     }
   }

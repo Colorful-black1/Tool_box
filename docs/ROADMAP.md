@@ -165,6 +165,13 @@ npm run mobile:start
 > **为什么不用桌面端的 `decodeText`**：它签名是 `decodeText(bytes: Buffer)`，
 > 且 GBK 分支依赖 Node 的 `TextDecoder('gbk')`（需完整 ICU）。手机端没有 Buffer，
 > 所以 `text-decoder.ts` 自己手写 UTF-16 解码与 UTF-8 合法性校验（纯函数，可单测）。
+> **⚠️ 章节偏移必须先归一再切片（两端都踩过的数据损坏 bug）**：`parseChapters`
+> 内部会把 `\r\n` 归一成 `\n` 再切分，返回的 `start`/`end` 是**归一后那份文本**里的
+> 下标。原先两端都拿它去切仍带 `\r` 的原文，于是每章正文按前面累计的 `\r` 数量
+> 整体错位——实测第二章正文吞掉标题尾部（「…转折」）并被截断。Windows 记事本默认
+> 就存 CRLF，所以这不是边缘情况。修法是导出 `normalizeChapterText`，让调用方
+> 与 `parseChapters` 共用同一份字符串。
+> 注意**既有库里已导入的书不会自动修复**，偏移在入库时就写死了。
 
 ### M5 密码箱 — 已完成
 
