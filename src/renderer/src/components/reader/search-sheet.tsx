@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { ChapterMeta, ReaderTheme } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { searchChapters } from '../../lib/paginator'
 
 interface SearchSheetProps {
@@ -20,6 +21,8 @@ export function SearchSheet(props: SearchSheetProps): JSX.Element {
   const [typing, setTyping] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [contents, setContents] = useState<Record<number, string>>({})
+
+  useOverlayEscape(props.onClose)
 
   useEffect(() => {
     if (!query.trim()) {

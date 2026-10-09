@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { BookSummary } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 
 interface BookDetailSheetProps {
@@ -21,6 +22,8 @@ export function BookDetailSheet({
   const [author, setAuthor] = useState(book.author)
   const [saving, setSaving] = useState(false)
 
+  useOverlayEscape(onClose)
+
   async function save(): Promise<void> {
     const nextTitle = title.trim()
     if (!nextTitle) return
@@ -34,8 +37,11 @@ export function BookDetailSheet({
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="书籍详情">
-      <div className="glass overlay-card book-detail">
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="书籍详情" onClick={onClose}>
+      <div
+        className="glass overlay-card book-detail"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="book-detail-cover">
           {book.coverPath ? (
             <img

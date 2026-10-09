@@ -90,7 +90,7 @@ export function NotesPage(): JSX.Element {
     <div className="view-enter notes-page">
       <div className="toolbar-row">
         <input
-          className="field-input"
+          className="field-input toolbar-search"
           type="text"
           placeholder="搜索标题或正文"
           value={query}
@@ -173,6 +173,14 @@ export function NotesPage(): JSX.Element {
                     </span>
                   </button>
                   <span className="note-row-time">{formatNoteTime(note.updatedAtMs)}</span>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-danger note-row-delete"
+                    aria-label={`删除 ${note.title || '无标题'}`}
+                    onClick={() => setConfirmId(note.id)}
+                  >
+                    删除
+                  </button>
                 </div>
               )}
             </li>

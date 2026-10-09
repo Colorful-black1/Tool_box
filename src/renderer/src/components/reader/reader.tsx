@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { JSX } from 'react'
+import type { CSSProperties, JSX } from 'react'
 
 import { READER_PADDING_H, READER_PADDING_V } from '../../../../shared/constants'
 import { effectiveReaderTheme } from '../../../../shared/types'
@@ -108,6 +108,14 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
 
   const goPage = useCallback(
     (delta: number) => {
+      // 滚动模式没有页码概念，翻页即沿滚动轴前进/后退一屏
+      if (config.pageMode === 'scroll') {
+        const viewport = viewportRef.current
+        if (viewport) {
+          viewport.scrollBy({ top: delta * viewport.clientHeight, behavior: 'smooth' })
+        }
+        return
+      }
       const next = pageIdx + delta
       if (next >= 0 && next < pageCount) {
         useReaderStore.getState().setPageIdx(next)
@@ -119,32 +127,19 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
       }
       void useReaderStore.getState().goChapter(chapterIdx + 1)
     },
-    [pageIdx, pageCount, chapterIdx]
+    [pageIdx, pageCount, chapterIdx, config.pageMode]
   )
 
-  // 点击分区：左 30% 上一页 / 右 30% 下一页 / 中间 40% 切换菜单
-  // （滚动模式由滚动位置变化翻页，故只处理翻页模式）
+  // 点击分区：三种模式统一为 左 30% 上一页 / 右 30% 下一页 / 中间 40% 切换菜单
   const onTapZone = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      if (config.pageMode === 'scroll') return
       const rect = event.currentTarget.getBoundingClientRect()
       const ratio = (event.clientX - rect.left) / rect.width
       if (ratio < 0.3) goPage(-1)
       else if (ratio > 0.7) goPage(1)
       else setMenuVisible((visible) => !visible)
     },
-    [config.pageMode, goPage]
-  )
-
-  /** 覆盖翻页模式：点击右半区翻到下一页（左侧点击与滚动模式一致） */
-  const onCoverTap = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (config.pageMode !== 'cover') return
-      const rect = event.currentTarget.getBoundingClientRect()
-      const ratio = (event.clientX - rect.left) / rect.width
-      goPage(ratio < 0.35 ? -1 : 1)
-    },
-    [config.pageMode, goPage]
+    [goPage]
   )
 
   useEffect(() => {
@@ -228,8 +223,24 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
   // 绝对定位的测量层/翻页层不继承父级 padding，需各自应用，保证测量宽度与可视宽度一致
   const layerPadding = { padding: `${READER_PADDING_V}px ${READER_PADDING_H}px` }
 
+  // 章节标题在导入时已从正文中剥离（body 从标题行之后开始），
+  // 此处在正文顶部重新呈现；测量层与可视层必须一致，否则分页错位。
+  const chapterHeading = chapter ? (
+    <div className="reader-chapter-heading">{chapter.title}</div>
+  ) : null
+
   return (
-    <div className="reader-shell" style={{ background: theme.background }}>
+    <div
+      className="reader-shell"
+      style={
+        {
+          background: theme.background,
+          // 暴露主题色给菜单层/按钮，保证浅色主题（纸白/米黄等）下浮层对比度
+          '--reader-bg': theme.background,
+          '--reader-fg': theme.foreground
+        } as CSSProperties
+      }
+    >
       <ReaderMenu
         visible={menuVisible}
         title={bookTitle}
@@ -255,7 +266,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
         ref={viewportRef}
         className={`reader-viewport mode-${config.pageMode}`}
         onScroll={config.pageMode === 'scroll' ? onScroll : undefined}
-        onClick={config.pageMode === 'cover' ? onCoverTap : onTapZone}
+        onClick={onTapZone}
       >
         {config.pageMode === 'scroll' ? (
           <div
@@ -263,6 +274,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
             className="reader-content"
             style={{ ...contentStyle, ...layerPadding, color: theme.foreground }}
           >
+            {chapterHeading}
             {chapter?.content}
           </div>
         ) : (
@@ -275,6 +287,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
               aria-hidden="true"
             >
               <div className="reader-content" style={contentStyle}>
+                {chapterHeading}
                 {chapter?.content}
               </div>
             </div>
@@ -289,6 +302,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
                   className="reader-content"
                   style={{ ...contentStyle, color: theme.foreground }}
                 >
+                  {chapterHeading}
                   {chapter?.content}
                 </div>
               </div>

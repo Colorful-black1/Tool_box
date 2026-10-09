@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { Bookmark, ChapterMeta, ReaderTheme } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 
 interface TocSheetProps {
   chapters: ChapterMeta[]
@@ -21,6 +22,8 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [descending, setDescending] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+
+  useOverlayEscape(props.onClose)
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase()

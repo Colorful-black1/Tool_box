@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { PasswordDraft, PasswordImportMode } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 
 interface Props {
@@ -39,6 +40,8 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useOverlayEscape(onClose)
 
   function reset(): void {
     setDrafts([])
@@ -121,8 +124,12 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
       role="dialog"
       aria-modal="true"
       aria-label="批量导入密码"
+      onClick={onClose}
     >
-      <div className="glass overlay-card import-card">
+      <div
+        className="glass overlay-card import-card"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="overlay-head-row">
           <h3 className="panel-title">批量导入</h3>
           <button

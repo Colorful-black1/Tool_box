@@ -1,7 +1,20 @@
 ﻿import { useState } from 'react'
-import type { JSX } from 'react'
+import type { CSSProperties, JSX } from 'react'
 
 import type { ReaderTheme } from '../../../../shared/types'
+
+/**
+ * 主题色 → 半透明遮罩：菜单浮层保留主题色调但透出正文，
+ * 保证浅色主题（纸白/米黄等）下按钮对比度的同时不形成生硬色块。
+ */
+function themeScrim(hex: string, alpha: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return `rgba(26, 26, 26, ${alpha})`
+  const value = Number.parseInt(hex.slice(1), 16)
+  const r = (value >> 16) & 0xff
+  const g = (value >> 8) & 0xff
+  const b = value & 0xff
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
 
 interface ReaderMenuProps {
   visible: boolean
@@ -44,11 +57,13 @@ export function ReaderMenu(props: ReaderMenuProps): JSX.Element {
     setSeeking(false)
   }
 
+  const layerStyle = {
+    background: themeScrim(theme.background, 0.86),
+    color: theme.foreground
+  } satisfies CSSProperties
+
   return (
-    <div
-      className={`reader-menu-layer${visible ? ' show' : ''}`}
-      style={{ background: theme.background, color: theme.foreground }}
-    >
+    <div className={`reader-menu-layer${visible ? ' show' : ''}`} style={layerStyle}>
       <div className="reader-topbar">
         <button
           type="button"

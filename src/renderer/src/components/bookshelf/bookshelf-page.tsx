@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { BookGroup, BookSummary, BookshelfSort } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import { useConfigStore } from '../../stores/config-store'
 import { BookDetailSheet } from './book-detail-sheet'
@@ -140,7 +141,7 @@ export function BookshelfPage(): JSX.Element {
     <div className="view-enter bookshelf-page">
       <div className="toolbar-row">
         <input
-          className="field-input bookshelf-search"
+          className="field-input toolbar-search"
           type="text"
           placeholder="搜索书名 / 作者"
           value={query}
@@ -399,28 +400,48 @@ function BookCard(props: BookCardProps): JSX.Element {
         props.onDrop()
       }}
     >
-      <button type="button" className="book-cover" onClick={props.onOpen}>
-        {book.coverPath ? (
-          <img src={toFileUrl(book.coverPath)} alt={book.title} />
-        ) : (
-          <div className="cover-art" style={{ background: color }}>
-            <span className="cover-title">{book.title}</span>
-          </div>
-        )}
+      <div className="book-cover-wrap">
+        <button type="button" className="book-cover" onClick={props.onOpen}>
+          {book.coverPath ? (
+            <img src={toFileUrl(book.coverPath)} alt={book.title} />
+          ) : (
+            <div className="cover-art" style={{ background: color }}>
+              <span className="cover-title">{book.title}</span>
+            </div>
+          )}
 
-        {props.editing ? (
-          <span
-            className={`select-check${props.selected ? ' on' : ''}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              props.onToggleSelect()
-            }}
-            role="checkbox"
-            aria-checked={props.selected}
-            aria-label={`选择 ${book.title}`}
-          />
+          {props.editing ? (
+            <span
+              className={`select-check${props.selected ? ' on' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onToggleSelect()
+              }}
+              role="checkbox"
+              aria-checked={props.selected}
+              aria-label={`选择 ${book.title}`}
+            />
+          ) : null}
+        </button>
+
+        {!props.editing ? (
+          // 悬浮操作条：与封面按钮平级（避免 button 嵌套），锚定在封面底部
+          <div
+            className="book-hover-actions"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button type="button" className="btn-ghost" onClick={props.onSetCover}>
+              换封面
+            </button>
+            <button type="button" className="btn-ghost" onClick={props.onMove}>
+              移动
+            </button>
+            <button type="button" className="btn-ghost btn-danger" onClick={props.onDelete}>
+              删除
+            </button>
+          </div>
         ) : null}
-      </button>
+      </div>
 
       <div className="book-meta">
         <div className="book-name" title={book.title}>
@@ -448,20 +469,6 @@ function BookCard(props: BookCardProps): JSX.Element {
           </button>
         </div>
       ) : null}
-
-      {props.editing ? null : (
-        <div className="book-hover-actions">
-          <button type="button" className="btn-ghost" onClick={props.onSetCover}>
-            换封面
-          </button>
-          <button type="button" className="btn-ghost" onClick={props.onMove}>
-            移动
-          </button>
-          <button type="button" className="btn-ghost btn-danger" onClick={props.onDelete}>
-            删除
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -473,9 +480,13 @@ function GroupManageDialog(props: {
   onDelete(): Promise<void>
 }): JSX.Element {
   const [name, setName] = useState(props.group.name)
+  useOverlayEscape(props.onClose)
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="分组管理">
-      <div className="glass overlay-card">
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="分组管理" onClick={props.onClose}>
+      <div
+        className="glass overlay-card"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="overlay-head-row">
           <h3 className="panel-title">分组管理</h3>
         </div>
@@ -526,6 +537,7 @@ function MoveToGroupSheet(props: {
 }): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  useOverlayEscape(props.onClose)
 
   return (
     <div className="sheet-backdrop" onClick={props.onClose} role="presentation">

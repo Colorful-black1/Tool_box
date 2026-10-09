@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 
 import type { PasswordEntryView } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import { PasswordImportSheet } from './password-import-sheet'
 
@@ -179,7 +180,7 @@ export function PasswordBoxPage(): JSX.Element {
     <div className="view-enter password-page">
       <div className="toolbar-row">
         <input
-          className="field-input"
+          className="field-input toolbar-search"
           type="text"
           placeholder="搜索名称、网址或账号"
           value={query}
@@ -398,6 +399,8 @@ function PasswordEditor(props: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  useOverlayEscape(props.onClose)
+
   async function submit(): Promise<void> {
     if (!form.title.trim()) {
       setError('名称不能为空')
@@ -415,8 +418,11 @@ function PasswordEditor(props: {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="密码编辑">
-      <div className="glass overlay-card">
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="密码编辑" onClick={props.onClose}>
+      <div
+        className="glass overlay-card"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="overlay-head-row">
           <h3 className="panel-title">{props.initial ? '编辑条目' : '新增条目'}</h3>
         </div>
@@ -543,6 +549,8 @@ function PasswordDetailSheet(props: {
   const { entry } = props
   const [showPassword, setShowPassword] = useState(false)
 
+  useOverlayEscape(props.onClose)
+
   async function copy(label: string, value: string): Promise<void> {
     if (!value) return
     await props.onCopy(value)
@@ -550,8 +558,11 @@ function PasswordDetailSheet(props: {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="条目详情">
-      <div className="glass overlay-card">
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="条目详情" onClick={props.onClose}>
+      <div
+        className="glass overlay-card"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="overlay-head-row">
           <h3 className="panel-title">{entry.title}</h3>
           <button

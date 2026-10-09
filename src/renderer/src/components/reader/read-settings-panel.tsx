@@ -2,6 +2,7 @@
 
 import { FONT_OPTIONS, READER_THEMES } from '../../../../shared/types'
 import type { ReadConfig, ReaderTheme } from '../../../../shared/types'
+import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useConfigStore } from '../../stores/config-store'
 
 interface ReadSettingsPanelProps {
@@ -22,6 +23,8 @@ export function ReadSettingsPanel({
 }: ReadSettingsPanelProps): JSX.Element {
   const config = useConfigStore((state) => state.config)
   const patch = useConfigStore((state) => state.patch)
+
+  useOverlayEscape(onClose)
 
   const set = (partial: Partial<ReadConfig>): void => {
     void patch(partial)

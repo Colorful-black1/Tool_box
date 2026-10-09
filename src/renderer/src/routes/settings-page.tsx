@@ -249,7 +249,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
                   className={`profile-item${profile.id === draft?.id ? ' active' : ''}`}
                   onClick={() => openProfile(profile)}
                 >
-                  <span className="profile-item-name">{profile.name}</span>
+                  <span className="profile-item-name" title={profile.name}>
+                    {profile.name}
+                  </span>
                   <span className="profile-item-meta">
                     {findAiProvider(profile.provider).name} · {profile.model || '未填模型'}
                   </span>
