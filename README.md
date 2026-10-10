@@ -37,7 +37,6 @@ npm install --ignore-scripts   # 见下方「为什么不是普通 npm install�
 npm run dev           # 开发模式（Electron 窗口）
 npm run build         # 构建主进程 / preload / renderer
 npm run preview       # 预览构建产物
-npm run pack          # 打包免安装目录（release/win-unpacked，快速验证）
 npm run dist          # 打包 Windows 安装包（release/私人百宝箱 Setup x.x.x.exe）
 npm run typecheck     # TypeScript 校验
 npm run lint          # ESLint
@@ -70,6 +69,12 @@ node node_modules/vite/node_modules/esbuild/install.js
 
 ## 打包（electron-builder + NSIS）
 
+一条命令出安装包：
+
+```bash
+npm run dist          # → release/私人百宝箱 Setup x.x.x.exe
+```
+
 打包配置在 `package.json` 的 `build` 字段。
 
 要点：
@@ -89,45 +94,17 @@ node node_modules/vite/node_modules/esbuild/install.js
 
 ### 国内镜像
 
-首次打包需要下载 Electron 运行时与 nsis / winCodeSign / 7-zip 等打包工具，国内网络建议先设置镜像环境变量。
+两端打包的下载源都已内置国内镜像，`npm run dist` 与 `npm run android:apk` 会自动走镜像，无需手动设置环境变量：
 
-PowerShell（仅当前会话生效）：
+| 目标 | 镜像内容 | 配置位置 |
+| --- | --- | --- |
+| 桌面端 | Electron 运行时、nsis / winCodeSign / 7-zip 等打包工具 | `package.json` 的 `config` 字段（npm 注入为 `npm_package_config_*` 环境变量） |
+| 手机端 | Gradle 发行包（约 130 MB） | `mobile/android/gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl`（腾讯云） |
+| 手机端 | Gradle 依赖（google / mavenCentral / gradlePluginPortal） | `mobile/gradle-mirror.init.gradle`（阿里云，保留官方源回退） |
 
-```powershell
-$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
-$env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
-npm run dist
-```
+仅首次打包需要下载（Electron 约 130 MB、Gradle 约 130 MB），之后走本地缓存（`%LOCALAPPDATA%\electron\Cache`、`%LOCALAPPDATA%\electron-builder\Cache`、`%USERPROFILE%\.gradle`），清掉缓存才会重新拉取。
 
-PowerShell（永久生效，需重开终端）：
-
-```powershell
-setx ELECTRON_MIRROR "https://npmmirror.com/mirrors/electron/"
-setx ELECTRON_BUILDER_BINARIES_MIRROR "https://npmmirror.com/mirrors/electron-builder-binaries/"
-```
-
-cmd：
-
-```cmd
-set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
-npm run dist
-```
-
-bash / Git Bash：
-
-```bash
-export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
-npm run dist
-```
-
-| 变量 | 作用 |
-| --- | --- |
-| `ELECTRON_MIRROR` | Electron 运行时二进制（约 130 MB / 次） |
-| `ELECTRON_BUILDER_BINARIES_MIRROR` | nsis、winCodeSign、7-zip 等打包工具 |
-
-仅首次打包需要下载，之后走本地缓存（`%LOCALAPPDATA%\electron\Cache`、`%LOCALAPPDATA%\electron-builder\Cache`），清掉缓存才会重新拉取。
+> ⚠️ `mobile/android/` 是 `expo prebuild` 生成的目录。改过 `app.json` 重新 prebuild 后，wrapper 的 `distributionUrl` 会被重置回官方源，需手动改回腾讯云镜像（`mobile/gradle-mirror.init.gradle` 在 `android/` 之外，不受影响）。
 
 ## 目录
 
@@ -215,30 +192,15 @@ npm run mobile:verify:data
 
 ### 打包成 APK
 
-两条路，按是否愿意折腾本地环境选：
-
-**A. EAS 云端构建（推荐，无需本地装 Android Studio）**
+一条命令出安装包（本地 Gradle，release，仅 arm64-v8a）：
 
 ```bash
-cd mobile
-npx eas-cli login          # 需要免费 Expo 账号
-npx eas-cli build --profile preview --platform android
+npm run android:apk --prefix mobile   # → mobile/android/app/build/outputs/apk/release/
 ```
 
-- `preview` profile 用 `distribution: internal` + `buildType: apk`，产出**可直接安装的 APK**，适合自用侧载。
-- 构建完成会给一个下载链接，APK 传手机「允许安装未知来源应用」后点击安装即可。
-- 首次构建会询问是否在 `app.json` 写入 `extra.eas.projectId`，同意即可。
-- `production` profile 产出 AAB，用于 Google Play 上架。
-
-**B. 本地构建（需要 Android Studio + SDK + JDK 17）**
-
-```bash
-cd mobile
-npx expo prebuild --platform android   # 生成 android/ 原生工程（已生成过可跳过）
-npx eas-cli build --profile preview --platform android --local
-```
-
-或直接用 Gradle 打 debug 包：`cd android && gradlew.bat assembleDebug`，产物在 `android/app/build/outputs/apk/debug/`。
+- 前置（仅首次或改过 `app.json` 时）：`cd mobile && npx expo prebuild --platform android` 生成 `android/` 原生工程（已生成可跳过）。
+- 环境：Android Studio + Android SDK + JDK 17，并设好 `ANDROID_HOME` / `JAVA_HOME`（环境变量是终端级的，设完需重开终端）。
+- 安装：`adb install -r <上面的 apk>`。
 
 > `android/` 是生成目录，已在 `.gitignore` 中，改 `app.json` 后需重新 `expo prebuild` 让原生配置同步。
 

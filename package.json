@@ -22,6 +22,12 @@
     "mobile:bundle": "npm run export:android --prefix mobile",
     "mobile:verify:data": "npm run verify:data --prefix mobile"
   },
+  "config": {
+    "electron": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
+    "electron_builder_binaries_mirror": "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  },
   "engines": {
     "node": ">=20"
   },

@@ -159,10 +159,10 @@ build_android() {
 
 	if [ "${1:-}" = '--all' ]; then
 		say '手机端：打包 APK（四个 ABI 全打）'
-		(cd "$MOBILE/android" && "$gradlew" assembleRelease)
+		(cd "$MOBILE/android" && "$gradlew" assembleRelease --init-script "$MOBILE/gradle-mirror.init.gradle")
 	else
 		say '手机端：打包 APK（仅 arm64-v8a）'
-		(cd "$MOBILE/android" && "$gradlew" assembleRelease -PreactNativeArchitectures=arm64-v8a)
+		(cd "$MOBILE/android" && "$gradlew" assembleRelease --init-script "$MOBILE/gradle-mirror.init.gradle" -PreactNativeArchitectures=arm64-v8a)
 	fi
 
 	apk=$(find "$MOBILE/android/app/build/outputs/apk" -name '*.apk' 2>/dev/null | head -n 1)

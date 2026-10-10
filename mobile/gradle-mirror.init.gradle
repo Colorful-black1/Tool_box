@@ -1,0 +1,37 @@
+// Gradle 依赖走国内镜像（阿里云）加速，保留官方源兜底。
+// 用法：gradlew <task> --init-script ../gradle-mirror.init.gradle
+// mobile/package.json 的 android:apk / android:apk:all / android:install 已自动带上该参数。
+//
+// 说明：本项目 android/ 是 expo prebuild 生成的目录（已 gitignore），其中 build.gradle /
+// settings.gradle 的仓库声明会在下次 prebuild 时被覆盖；本文件位于 android/ 之外，
+// 因此以 --init-script 方式注入镜像，不受 prebuild 影响。
+
+beforeSettings { settings ->
+    settings.pluginManagement {
+        repositories {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+            maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+            gradlePluginPortal()
+            google()
+            mavenCentral()
+        }
+    }
+}
+
+allprojects {
+    buildscript {
+        repositories {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+            google()
+            mavenCentral()
+        }
+    }
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}
