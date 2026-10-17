@@ -1,9 +1,20 @@
-import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages'
-import type { AIMessageChunk } from '@langchain/core/messages'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 
-import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
+import {
+  CHAT_TIMEOUT_MS,
+  CONVERSATION_TITLE_MAX_CHARS,
+  DEFAULT_CONVERSATION_TITLE
+} from '../../../shared/constants'
 import type {
+  AgentPermission,
+  AgentToolApprovalInput,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
   AiConfig,
   ChatCompletedEvent,
   ChatDeltaEvent,
@@ -14,25 +25,43 @@ import type {
   ChatStoppedEvent,
   ConversationSummary
 } from '../../../shared/types'
+import { DEFAULT_AGENT_PERMISSION, isAgentPermission } from '../../../shared/types'
+import { ApprovalGate } from '../agent/approval-gate'
+import { runAgent } from '../agent/agent-runner'
+import { createAgentToolSet } from '../agent/tools'
+import type { ImportService } from '../library/import-service'
 import { validateChatInput } from './errors'
 import { AiGatewayError, describeAiError, normalizeOpenAiBaseUrl } from './errors'
 import { buildProviderHeaders, processSessionIdForSingleCall, requiresCustomUserAgent, withPinnedUserAgent } from './provider-headers'
 import type { SettingsService } from '../settings/settings-service'
 import type { ToolboxStore } from '../chat-store/chat-store'
 
+const AGENT_PROMPT_FILE = 'agent_system.txt'
+
 export interface ChatEventSink {
   onDelta(event: ChatDeltaEvent): void
   onCompleted(event: ChatCompletedEvent): void
   onError(event: ChatErrorEvent): void
   onStopped(event: ChatStoppedEvent): void
+  onToolCall(event: AgentToolCallEvent): void
+  onToolResult(event: AgentToolResultEvent): void
+  onToolApprovalRequest(event: AgentToolApprovalRequestEvent): void
 }
 
+/**
+ * AI 网关：负责对话请求编排、Agent 工具循环的事件回推，以及取消语义。
+ * 具体的数据操作能力由 `ai-gateway` 之外的工具注册表提供（见 services/agent）。
+ */
 export class AiGateway {
   private readonly active = new Map<string, AbortController>()
+  private readonly gate = new ApprovalGate()
+  private agentPromptCache: string | null = null
 
   constructor(
     private readonly settings: SettingsService,
-    private readonly chatStore: ToolboxStore
+    private readonly chatStore: ToolboxStore,
+    private readonly importService: ImportService,
+    private readonly promptDir: string
   ) {}
 
   async send(
@@ -59,7 +88,7 @@ export class AiGateway {
     const controller = new AbortController()
     this.active.set(conversationId, controller)
 
-    void this.streamResponse({
+    void this.runAgentTurn({
       conversationId,
       history,
       config,
@@ -75,6 +104,13 @@ export class AiGateway {
 
   stop(conversationId: string): void {
     this.active.get(conversationId)?.abort()
+    // 立刻拒绝该会话挂起的审批，避免工具节点一直等用户回执
+    this.gate.rejectConversation(conversationId)
+  }
+
+  /** 渲染层对写 / 破坏性工具审批的回执 */
+  approveTool(input: AgentToolApprovalInput): void {
+    this.gate.settle(input.callId, input.approved === true)
   }
 
   /** 非流式一次性对话：供密码箱 AI 识别等内部工具复用同一份配置与错误映射 */
@@ -104,7 +140,7 @@ export class AiGateway {
     }
   }
 
-  private async streamResponse(input: {
+  private async runAgentTurn(input: {
     conversationId: string
     history: ChatMessage[]
     config: AiConfig
@@ -112,38 +148,54 @@ export class AiGateway {
     sink: ChatEventSink
   }): Promise<void> {
     const { conversationId, history, config, controller, sink } = input
-    let fullContent = ''
 
     try {
       const model = new ChatOpenAI({
         apiKey: config.apiKey,
         model: config.model,
-        temperature: 0.7,
+        temperature: 0.2,
         timeout: CHAT_TIMEOUT_MS,
         maxRetries: 1,
         // 会话 ID 逐轮稳定，OpenCode Go 依赖它做路由与 prompt 缓存
         configuration: buildClientConfig(config, conversationId)
       })
 
-      const stream = await model.stream(toLangChainMessages(history), {
+      const tools = createAgentToolSet({
+        store: this.chatStore,
+        importService: this.importService
+      })
+
+      const result = await runAgent({
+        conversationId,
+        history,
+        model,
+        systemPrompt: this.agentSystemPrompt(),
+        tools,
+        permission: this.currentPermission(),
+        gate: this.gate,
+        sink: {
+          onToolCall: (event) => sink.onToolCall({ conversationId, ...event }),
+          onToolResult: (event) => sink.onToolResult({ conversationId, ...event }),
+          onToolApprovalRequest: (event) =>
+            sink.onToolApprovalRequest({ conversationId, ...event })
+        },
+        onDelta: (delta) => sink.onDelta({ conversationId, delta }),
         signal: controller.signal
       })
 
-      for await (const chunk of stream) {
-        const delta = extractDelta(chunk)
-        if (!delta) continue
-        fullContent += delta
-        sink.onDelta({ conversationId, delta })
-      }
-
-      if (!fullContent.trim()) {
+      const content = result.content.trim()
+        ? result.content
+        : result.usedTools
+          ? '已完成操作。'
+          : ''
+      if (!content.trim()) {
         throw new AiGatewayError('AI 未返回内容')
       }
 
       const assistantMessage = this.chatStore.appendMessage({
         conversationId,
         role: 'assistant',
-        content: fullContent
+        content
       })
       const conversation = this.requireConversation(conversationId)
       sink.onCompleted({ conversationId, message: assistantMessage, conversation })
@@ -157,8 +209,30 @@ export class AiGateway {
         })
       }
     } finally {
+      this.gate.rejectConversation(conversationId)
       this.active.delete(conversationId)
     }
+  }
+
+  private currentPermission(): AgentPermission {
+    const raw = this.chatStore.configGet()
+    const value = raw?.agentPermission
+    return isAgentPermission(value) ? value : DEFAULT_AGENT_PERMISSION
+  }
+
+  private agentSystemPrompt(): string {
+    if (this.agentPromptCache === null) {
+      try {
+        this.agentPromptCache = readFileSync(
+          join(this.promptDir, AGENT_PROMPT_FILE),
+          'utf8'
+        ).trim()
+      } catch {
+        this.agentPromptCache =
+          '你是「私人百宝箱」的内置 AI 助手，可调用工具管理用户的书架、密码箱与记事本。'
+      }
+    }
+    return this.agentPromptCache
   }
 
   private autoTitle(
@@ -206,28 +280,4 @@ function buildClientConfig(
       ? { fetch: withPinnedUserAgent(globalThis.fetch) }
       : {})
   }
-}
-
-function toLangChainMessages(messages: ChatMessage[]) {  return messages.map((message) =>
-    message.role === 'user'
-      ? new HumanMessage(message.content)
-      : new AIMessage(message.content)
-  )
-}
-
-function extractDelta(chunk: AIMessageChunk): string {
-  const content = chunk.content
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (typeof part === 'object' && part !== null && 'text' in part) {
-        const text = (part as { text?: unknown }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .join('')
 }

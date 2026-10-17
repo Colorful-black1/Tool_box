@@ -4,8 +4,9 @@ import { basename, extname, join } from 'node:path'
 
 import { BACKGROUNDS_DIR, COVERS_DIR } from '../../shared/constants'
 import { CHAT_EVENT, IPC } from '../../shared/ipc-contract'
-import { AI_PROVIDER_IDS } from '../../shared/types'
+import { AGENT_PERMISSION_MODES, AI_PROVIDER_IDS, DEFAULT_AGENT_PERMISSION, isAgentPermission } from '../../shared/types'
 import type {
+  AgentToolApprovalInput,
   ChatSendRequest,
   NoteSaveInput,
   PasswordDraft,
@@ -114,6 +115,27 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   ipcMain.handle(IPC.chatStop, (_event, id: unknown) => {
     aiGateway.stop(requireString(id, '会话 ID'))
+  })
+
+  // ---------- AI 助手 Agent ----------
+  ipcMain.handle(IPC.chatToolApproval, (_event, input: unknown) => {
+    const body = assertObject(input, '审批内容') as unknown as AgentToolApprovalInput
+    aiGateway.approveTool({
+      conversationId: requireString(body.conversationId, '会话 ID'),
+      callId: requireString(body.callId, '调用 ID'),
+      approved: body.approved === true
+    })
+  })
+
+  ipcMain.handle(IPC.agentPermissionGet, () => {
+    const value = store.configGet()?.agentPermission
+    return isAgentPermission(value) ? value : DEFAULT_AGENT_PERMISSION
+  })
+
+  ipcMain.handle(IPC.agentPermissionSet, (_event, permission: unknown) => {
+    const value = requireEnum(permission, 'Agent 权限', AGENT_PERMISSION_MODES)
+    store.configSet({ agentPermission: value })
+    return value
   })
 
   // ---------- 小说 ----------
@@ -360,7 +382,10 @@ function createChatEventSink(sender: Electron.WebContents): ChatEventSink {
     onDelta: (event) => send(CHAT_EVENT.delta, event),
     onCompleted: (event) => send(CHAT_EVENT.completed, event),
     onError: (event) => send(CHAT_EVENT.error, event),
-    onStopped: (event) => send(CHAT_EVENT.stopped, event)
+    onStopped: (event) => send(CHAT_EVENT.stopped, event),
+    onToolCall: (event) => send(CHAT_EVENT.toolCall, event),
+    onToolResult: (event) => send(CHAT_EVENT.toolResult, event),
+    onToolApprovalRequest: (event) => send(CHAT_EVENT.toolApproval, event)
   }
 }
 

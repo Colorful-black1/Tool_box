@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import { CHAT_EVENT, IPC } from '../shared/ipc-contract'
 import type {
+  AgentPermission,
+  AgentToolApprovalInput,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
   AiFetchModelsInput,
   AiProfileInput,
   ChatCompletedEvent,
@@ -58,7 +63,20 @@ const bridge: ToolboxBridge = {
     onError: (listener: (event: ChatErrorEvent) => void) =>
       subscribe<ChatErrorEvent>(CHAT_EVENT.error, listener),
     onStopped: (listener: (event: ChatStoppedEvent) => void) =>
-      subscribe<ChatStoppedEvent>(CHAT_EVENT.stopped, listener)
+      subscribe<ChatStoppedEvent>(CHAT_EVENT.stopped, listener),
+    onToolCall: (listener: (event: AgentToolCallEvent) => void) =>
+      subscribe<AgentToolCallEvent>(CHAT_EVENT.toolCall, listener),
+    onToolResult: (listener: (event: AgentToolResultEvent) => void) =>
+      subscribe<AgentToolResultEvent>(CHAT_EVENT.toolResult, listener),
+    onToolApprovalRequest: (listener: (event: AgentToolApprovalRequestEvent) => void) =>
+      subscribe<AgentToolApprovalRequestEvent>(CHAT_EVENT.toolApproval, listener),
+    approveTool: (input: AgentToolApprovalInput) =>
+      ipcRenderer.invoke(IPC.chatToolApproval, input)
+  },
+  agent: {
+    getPermission: () => ipcRenderer.invoke(IPC.agentPermissionGet),
+    setPermission: (permission: AgentPermission) =>
+      ipcRenderer.invoke(IPC.agentPermissionSet, permission)
   },
   books: {
     list: () => ipcRenderer.invoke(IPC.booksList),

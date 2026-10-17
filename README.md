@@ -6,7 +6,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 | 模块 | 说明 |
 | --- | --- |
-| AI 对话 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；LangChain.js 流式对话、多会话、停止生成 |
+| AI 助手 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；基于 LangChain.js `createAgent` 的 **Agent，可调用工具接管书架 / 分组 / 书签 / 密码箱 / 记事本 / 统计**；**三档权限（只读 / 写操作确认 / 完全访问）**，写与破坏性操作支持人在环审批；流式输出、多会话、停止生成 |
 | 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计 |
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入；重复检测、拼音分组、字母索引 |
 | 记事本 | Markdown 编辑与预览、导入导出 `.md` |
@@ -116,7 +116,8 @@ src/
 │   ├── index.ts          入口：窗口 + 服务装配
 │   ├── ipc/              IPC 注册与入参校验
 │   └── services/
-│       ├── ai-gateway/   LangChain 流式对话与错误映射
+│       ├── agent/        工具注册表 + Agent 循环 + 审批门
+│       ├── ai-gateway/   LangChain Agent 编排、流式事件与错误映射
 │       ├── chat-store/   统一 SQLite 数据层（v4）
 │       ├── crypto/       safeStorage 主密钥 + AES-GCM
 │       ├── library/      编码探测、章节解析、密码文本解析、拼音

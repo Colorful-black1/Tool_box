@@ -47,14 +47,14 @@ function createMainWindow(): BrowserWindow {
 
 function initializeServices(): void {
   const userDataDir = app.getPath('userData')
+  const promptDir = join(app.getAppPath(), 'assets/prompts')
   const settings = new SettingsService(userDataDir, safeStorageAdapter)
   const secretBox = new SafeStorageSecretBox(userDataDir, safeStorageAdapter)
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
-  const aiGateway = new AiGateway(settings, store)
   const importService = new ImportService()
-  const passwordAi = new PasswordAiService(
-    join(app.getAppPath(), 'assets/prompts'),
-    (system, user) => aiGateway.complete(system, user)
+  const aiGateway = new AiGateway(settings, store, importService, promptDir)
+  const passwordAi = new PasswordAiService(promptDir, (system, user) =>
+    aiGateway.complete(system, user)
   )
 
   registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi })

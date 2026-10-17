@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { SafeStorageAdapter } from '../../../shared/safe-storage'
 import type { ToolboxStore } from '../chat-store/chat-store'
+import type { ImportService } from '../library/import-service'
 import { SettingsService } from '../settings/settings-service'
 import { AiGateway } from './ai-gateway'
 
@@ -32,6 +33,7 @@ class FakeSafeStorage implements SafeStorageAdapter {
 
 /** complete() 不触碰数据层，这里只提供类型占位 */
 const storeStub = {} as ToolboxStore
+const importServiceStub = {} as ImportService
 
 describe('AiGateway provider headers', () => {
   let directory: string
@@ -82,7 +84,7 @@ describe('AiGateway provider headers', () => {
       apiKey: 'sk-test'
     })
 
-    const gateway = new AiGateway(settings, storeStub)
+    const gateway = new AiGateway(settings, storeStub, importServiceStub, '')
     const reply = await gateway.complete('system', 'ping')
 
     expect(reply).toBe('pong')
@@ -102,7 +104,7 @@ describe('AiGateway provider headers', () => {
       apiKey: 'sk-test'
     })
 
-    const gateway = new AiGateway(settings, storeStub)
+    const gateway = new AiGateway(settings, storeStub, importServiceStub, '')
     await gateway.complete('system', 'ping')
 
     expect(received).toHaveLength(1)
