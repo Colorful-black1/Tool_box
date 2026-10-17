@@ -1,46 +1,14 @@
 # AGENTS.md
 
 > 约束所有 AI 代理与人类协作者在本仓库中的行为。
-> 技术栈：Electron + electron-vite + React 19 + TypeScript strict + Tailwind + Zustand + LangChain.js + better-sqlite3 + Vitest。
-> 详细目录与功能说明见 `README.md`，本文件只讲协作与改动纪律。
+> 本文件只讲**协作与改动纪律**；技术栈、常用命令、安装步骤、目录结构、功能与已知限制见
+> `README.md`，待办与真机验收清单见 `docs/ROADMAP.md`。
 
 ---
 
 ## 回复约束
 
 每次回复必须以 `(∠・ω＜ )⌒☆` 开头。
-
-## 常用命令
-
-```bash
-npm run dev         # 开发模式（Electron 窗口）
-npm run build       # 构建 main / preload / renderer
-npm run typecheck   # tsc --noEmit
-npm run lint        # ESLint（同时覆盖 src 与 mobile）
-npm run test        # Vitest 单元测试
-
-npm run mobile:typecheck   # 手机端（Expo）类型校验
-npm run mobile:bundle     # 跑 Metro 打包，无需真机即可验证跨目录引用
-npm run mobile:start      # 手机端开发（Expo Go 扫码）
-```
-
-首次安装（或换机器）走这套，**不要跑 `npm run rebuild`**：
-
-```bash
-npm install --ignore-scripts
-node node_modules/electron/install.js          # 补跑被跳过的 Electron 运行时下载
-node node_modules/esbuild/install.js
-node node_modules/vite/node_modules/esbuild/install.js
-npm install --prefix mobile                    # 手机端独立包，故意不接 workspaces
-```
-
-原因：`better-sqlite3@13` 用 **Node-API 预编译**（`prebuilds/win32-x64.node` 随包
-发布，`lib/binding.js` 不校验 ABI，Node/Electron 通吃），**不需要按 ABI 编译**。
-而 npm 11 的 arborist 只要看到 `binding.gyp` 就会合成 `install: node-gyp rebuild`
-（`@npmcli/arborist/lib/install-scripts.js`），在没装 MSVC 的机器上必失败；
-即使编译成功，`prebuilds/` 优先于 `build/Release`，产物也永远加载不到。
-打包同理，已用 `build.npmRebuild: false` 跳过。详见 `README.md` 与
-`docs/ROADMAP.md` 第 5 节。
 
 ---
 
@@ -50,6 +18,7 @@ npm install --prefix mobile                    # 手机端独立包，故意不�
 * 最小改动：只改与需求直接相关的内容。禁止顺手优化、顺手重构、风格统一、大规模格式化（`npm run format` 会波及全仓库）。
 * 保持风格一致：Prettier 无分号、单引号、行宽 100、无尾随逗号。
 * 未经授权不改无关文件、不新增第三方依赖。
+* **不要跑 `npm run rebuild`**（原因见 `README.md`）。
 
 ## 影响分析
 
@@ -84,7 +53,7 @@ npm install --prefix mobile                    # 手机端独立包，故意不�
 
 **必须验证**（任一命中）：改主进程服务或 IPC handler / 改数据层或 SQL / 跨进程多模块（shared + preload + renderer）/ 新增类接口类型 / 改依赖版本（改完要确认 `npm run dev` 与 `npm run pack` 仍正常）/ 改配置文件（`package.json` 的 `build` 段、`electron.vite.config.ts`、`tailwind.config.cjs`、`tsconfig.json` 等）/ 改加解密与密钥逻辑 / 改文件 ≥ 5 个 / 改动 ≥ 500 行。
 
-顺序：`npm run typecheck` → `npm run lint` → `npm run test`。
+顺序：`npm run typecheck` → `npm run lint` → `npm run test`（命令说明见 `README.md`）。
 
 **可跳过**：注释、文档（含本文件）、日志文案、常量描述、类型字段注释、纯样式（`global.css` / Tailwind class）。
 
@@ -96,18 +65,13 @@ npm install --prefix mobile                    # 手机端独立包，故意不�
 
 ## 默认禁止
 
-未经用户明确授权（明确的「可以提交 / 提交吧」等指令）禁止执行：
+未经用户明确授权（明确的「可以提交 / 提交吧」等指令）禁止：
 
-```bash
-git add -A          # 禁止一次性全量暂存，必须显式指定文件
-git commit  git commit --amend  git push  git push --force
-git reset --hard    # 丢弃工作区改动
-git checkout -- .   # 丢弃工作区改动
-git clean -fd  git rebase
-git stash           # 需先说明原因
-```
-
-同样禁止：改 `.gitignore` 让本地产物入库；提交 `node_modules/`、`out/`、`release/`、`.idea/`、`.env` 或任何含密钥的文件；未获授权时建分支、tag、PR；改写已有历史。
+* 暂存与提交：`git add -A`（必须显式指定文件）、`git commit`、`git commit --amend`、`git push`、`git push --force`
+* 丢弃工作区改动：`git reset --hard`、`git checkout -- .`、`git clean -fd`
+* 改写历史：`git rebase`
+* `git stash`（需先说明原因）
+* 改 `.gitignore` 让本地产物入库；提交 `node_modules/`、`out/`、`release/`、`.idea/`、`.env` 或任何含密钥的文件；未获授权时建分支、tag、PR。
 
 ## 提交流程
 
@@ -171,7 +135,7 @@ API Key、Token / Secret、密码箱主密钥与密文信封、AccessKey、完�
 
 # 数据库规范
 
-数据层统一在 `src/main/services/chat-store/chat-store.ts`，版本由 `SCHEMA_VERSION` + `user_version` pragma 管理（当前 v3）。
+数据层统一在 `src/main/services/chat-store/chat-store.ts`，版本由 `SCHEMA_VERSION` + `user_version` pragma 管理（当前 v4）。
 
 **表结构变更**必须提供：
 
@@ -184,6 +148,8 @@ API Key、Token / Secret、密码箱主密钥与密文信封、AccessKey、完�
 **事务**：多表写入包在 `this.db.transaction(...)()` 内；单表单条写入可不包。
 
 **数据删除**：优先归档 / 逻辑删除，谨慎物理删除；需物理删除必须获得明确授权。
+
+**跨端同步**：手机端 schema 改动必须两端同步，并重新生成 `desktop-schema.fixture.json`（见「手机端规范」）。
 
 ---
 
@@ -250,19 +216,44 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
 
 ---
 
+# UI 风格规范（星轨设计系统）
+
+新增或改造界面必须与现有视觉一致，**外观统一优先于实现便利**。判定标准：放进现有页面里看不出是「外来控件」。
+
+## 令牌与配色
+
+* 颜色、字体一律用 `styles/global.css` 的 `:root` 变量：`--bg-deep` `--bg-panel` `--gold` `--gold-dim` `--gold-line` `--cyan` `--pink` `--text-hi` `--text-mid` `--text-dim` `--serif` `--sans` `--mono`。
+* 禁止硬编码十六进制颜色。半透明描边/底纹沿用既有惯用值：`rgba(232, 201, 138, 0.22)`（金线）、`rgba(255, 255, 255, 0.04)`（浅底）、`rgba(14, 18, 34, 0.97)`（弹层底）。
+* 深色底 + 金色描边 + 圆角（按钮 9–10px、弹层 10px、卡片 14px）是本项目的基调。
+
+## 组件复用（禁止重复造轮子）
+
+* **原生 `<select>` 只允许用在设置页表单（`.field-select`）**；其余可见交互控件（对话区、工具条、弹层内）一律用 `components/dropdown.tsx` 的 `Dropdown`（对齐 `.sort-menu` / `.ui-dropdown` 范式），因为原生弹层无法跟随深色主题。
+* 按钮只用既有类：`.btn-gold`（主操作）、`.btn-ghost`（次操作）、`.btn-danger`（危险）、`.icon-btn`（纯图标）；同一行主次分明，一屏内金色主按钮一般不超过一个。
+* 提示/告警用 `.status-banner`（成功加 `.success-banner`）；标签用 `.field-label`，表单控件用 `.field-input` / `.field-select`（设置页专用，非对话区）。
+* 图标统一放 `components/icons.tsx`，`svg` 必须 `stroke="currentColor"` + `aria-hidden="true"`，尺寸由容器 CSS 控制，不要内联 `width/height`。
+* 弹层（菜单、抽屉、Sheet）沿用既有范式：深色面板、`1px` 金线描边、圆角、`box-shadow: 0 10px 30px rgba(0,0,0,0.5)`、`z-index ≥ 30`；Esc 关闭复用 `lib/use-overlay-dismiss.ts`，点击外部关闭用容器 `ref` + `mousedown` 监听。
+
+## 交互与无障碍
+
+* 可点元素必须是 `<button type="button">` 或带 `role`，禁止用 `<div onClick>`。
+* 交互态要齐：`:hover`（提亮/金线）、`:focus`（`outline: none` + 金色描边）、`:disabled`（`opacity: .5` + `cursor: default`）；展开态用 `aria-expanded` 并让 caret 旋转。
+* 文案用简体中文；装饰性英文大写小字（如 `STREAMING`）沿用现有 `letter-spacing` 风格，不要自创字号体系。
+
+## 校验方式
+
+* 改样式后至少目视确认：在 1280×820 下与相邻控件对齐、间距、字号、颜色一致；弹层不溢出窗口、不被 `overflow` 裁切。
+* 能用 Playwright 起静态预览（`out/renderer` + 桩 `window.toolbox`）截图核对最稳妥；纯样式改动可不跑编译。
+
+---
+
 # 手机端规范（`mobile/`）
 
-* React Native + Expo，**独立 npm 包**：依赖装在 `mobile/node_modules`，不接入根 workspaces。
-  原因是 workspaces 会重排根 `node_modules`，可能覆盖 `better-sqlite3` 的 Electron ABI 构建。
-* **跨目录复用只经 `mobile/src/shared-bridge.ts` 一个文件**。新增复用目标时先确认它没有
-  `import 'node:*'` / `'electron'` / `better-sqlite3`；手机端只有这一处允许出现 `../../src`。
-* 数据层在 `mobile/src/data/`：`MobileStore` 方法名与语义刻意对齐桌面端 `ToolboxStore`；
-  schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
-* 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，
-  因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
-* 改动数据层后必须跑 `npm run mobile:verify:data`：它用 esbuild + Electron 把真实数据层
-  跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL。
-  这套验证抓到过「建表语句里混入 ALTER TABLE 导致新库重复列」的真机首启崩溃。
+* React Native + Expo，**独立 npm 包**：依赖装在 `mobile/node_modules`，不接入根 workspaces（重排根 `node_modules` 会危及 `better-sqlite3` 的 ABI 构建）。
+* **跨目录复用只经 `mobile/src/shared-bridge.ts` 一个文件**，这也是手机端唯一允许出现 `../../src` 的地方；新增复用目标前先确认它没有 `import 'node:*'` / `'electron'` / `better-sqlite3`。
+* 数据层在 `mobile/src/data/`：`MobileStore` 方法名与语义刻意对齐桌面端 `ToolboxStore`；schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
+* 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
+* 改数据层后必须跑 `npm run mobile:verify:data`：用 esbuild + Electron 把真实数据层跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL。
 * `transaction.ts` 单独成文件只为切断原生模块的运行期引用，勿合并回 `database.ts`。
 * 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
 * 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。
@@ -298,4 +289,4 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
 
 # 红线规则
 
-禁止：擅自修改业务逻辑 / 数据库结构 / IPC 协议；擅自新增第三方依赖；擅自删除代码；**擅自执行 `git commit` / `git push` / `git commit --amend`**；使用英文写 commit 描述；擅自执行不可逆操作；泄露敏感信息；绕过入参校验；绕过加密存储直接落库明文密码；绕过异常处理吞掉错误；修改无关代码；修改同级 `novel_read` 等其他项目。
+未经授权禁止：修改业务逻辑 / 数据库结构 / IPC 协议；新增第三方依赖；删除代码；执行 `git commit` / `git push` / `git commit --amend`；执行不可逆操作；泄露敏感信息；绕过入参校验；绕过加密存储直接落库明文密码；吞掉错误；用英文写 commit 描述；修改无关代码；修改同级 `novel_read` 等其他项目。
