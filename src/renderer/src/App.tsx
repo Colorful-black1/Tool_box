@@ -48,6 +48,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     void loadConfig()
     void useAppStore.getState().bootstrap()
+    void useAppStore.getState().loadAgentPermission()
   }, [loadConfig])
 
   useEffect(() => {
@@ -57,7 +58,12 @@ export default function App(): JSX.Element {
       bridge.onDelta((event) => useAppStore.getState().appendDelta(event)),
       bridge.onCompleted((event) => useAppStore.getState().completeChat(event)),
       bridge.onError((event) => useAppStore.getState().failChat(event)),
-      bridge.onStopped((event) => useAppStore.getState().stopChat(event))
+      bridge.onStopped((event) => useAppStore.getState().stopChat(event)),
+      bridge.onToolCall((event) => useAppStore.getState().appendToolCall(event)),
+      bridge.onToolResult((event) => useAppStore.getState().completeToolResult(event)),
+      bridge.onToolApprovalRequest((event) =>
+        useAppStore.getState().requestToolApproval(event)
+      )
     ]
     return () => disposers.forEach((dispose) => dispose())
   }, [])

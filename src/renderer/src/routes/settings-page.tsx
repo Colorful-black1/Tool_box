@@ -26,12 +26,6 @@ type SaveStatus =
   | { type: 'success'; message: string }
   | { type: 'error'; message: string }
 
-type ModelStatus =
-  | { type: 'idle' }
-  | { type: 'loading' }
-  | { type: 'ready'; message: string }
-  | { type: 'error'; message: string }
-
 export function SettingsPage(): JSX.Element {
   const settings = useAppStore((state) => state.settings)
 
@@ -53,10 +47,10 @@ interface SettingsFormProps {
   settings: AiConfigView
 }
 
-function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const saveProfile = useAppStore((state) => state.saveProfile)
+function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
+  const saveProfile = useAppStore((state) => state.saveProfile)
   const removeProfile = useAppStore((state) => state.removeProfile)
   const activateProfile = useAppStore((state) => state.activateProfile)
-  const fetchModels = useAppStore((state) => state.fetchModels)
 
   // 草稿是表单的唯一真相源：档案列表高亮直接由 draft.id 推导，
   // 避免用 selectedId 另存一份状态后与草稿不同步。
@@ -64,9 +58,6 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
     toDraft(settings.profiles.find((item) => item.id === settings.activeId) ?? null)
   )
   const [status, setStatus] = useState<SaveStatus>({ type: 'idle' })
-  const [modelStatus, setModelStatus] = useState<ModelStatus>({ type: 'idle' })
-  const [models, setModels] = useState<string[]>([])
-  const [manualModel, setManualModel] = useState(false)
 
   // 当前编辑的档案被外部删除时关闭草稿；新建草稿（id 为 null）不受影响
   useEffect(() => {
@@ -84,16 +75,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
     setDraft((current) => (current ? { ...current, ...partial } : current))
   }
 
-  const resetForm = (): void => {
-    setStatus({ type: 'idle' })
-    setModelStatus({ type: 'idle' })
-    setModels([])
-    setManualModel(false)
-  }
-
   const openProfile = (profile: AiProfileView): void => {
     setDraft(toDraft(profile))
-    resetForm()
+    setStatus({ type: 'idle' })
   }
 
   /** 新建草稿：以首个内置供应商为默认值，Key 留空（id 为 null 表示尚未落盘） */
@@ -107,10 +91,10 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
       model: preset.models[0] ?? '',
       apiKey: ''
     })
-    resetForm()
+    setStatus({ type: 'idle' })
   }
 
-  /** 切换供应商：自动填入官方端点与首个推荐模型，并清掉旧的模型下拉数据 */
+  /** 切换供应商：自动填入官方端点与首个推荐模型（模型仅供默认值，界面不在设置页选择） */
   const pickProvider = (provider: AiProviderId): void => {
     const preset = findAiProvider(provider)
     setDraft((current) =>
@@ -124,37 +108,6 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
           }
         : current
     )
-    setModels([])
-    setManualModel(false)
-    setModelStatus({ type: 'idle' })
-  }
-
-  const onFetchModels = async (): Promise<void> => {
-    if (!draft || modelStatus.type === 'loading') return
-    setModelStatus({ type: 'loading' })
-    try {
-      const result = await fetchModels({
-        profileId: draft.id ?? undefined,
-        provider: draft.provider,
-        baseUrl: draft.baseUrl,
-        apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined
-      })
-      setModels(result.models)
-      setManualModel(false)
-      // 当前模型不在返回列表里（含未填的情况）时回落到第一个，避免下拉显示与实际值不符
-      if (!result.models.includes(draft.model)) {
-        patchDraft({ model: result.models[0] ?? draft.model })
-      }
-      setModelStatus({
-        type: 'ready',
-        message: result.message ?? `已获取 ${result.models.length} 个模型`
-      })
-    } catch (error) {
-      setModelStatus({
-        type: 'error',
-        message: error instanceof Error && error.message ? error.message : '获取模型失败'
-      })
-    }
   }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -253,7 +206,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
                     {profile.name}
                   </span>
                   <span className="profile-item-meta">
-                    {findAiProvider(profile.provider).name} · {profile.model || '未填模型'}
+                    {findAiProvider(profile.provider).name} · {profile.model || '未选模型'}
                   </span>
                   {profile.id === settings.activeId ? (
                     <span className="profile-item-badge">使用中</span>
@@ -321,76 +274,6 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
               </div>
 
               <div>
-                <div className="field-row-head">
-                  <label className="field-label" htmlFor="model-select">
-                    模型名称 · MODEL
-                  </label>
-                  <div className="toolbar-row">
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      disabled={modelStatus.type === 'loading'}
-                      onClick={() => void onFetchModels()}
-                    >
-                      {modelStatus.type === 'loading' ? '获取中' : '获取模型'}
-                    </button>
-                    {models.length > 0 ? (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() => setManualModel((value) => !value)}
-                      >
-                        {manualModel ? '用下拉选择' : '手动输入'}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-
-                {models.length > 0 && !manualModel ? (
-                  <select
-                    id="model-select"
-                    className="field-select"
-                    value={draft.model}
-                    onChange={(event) => patchDraft({ model: event.target.value })}
-                  >
-                    {draft.model && !models.includes(draft.model) ? (
-                      <option value={draft.model}>{draft.model}（当前值）</option>
-                    ) : null}
-                    {models.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    id="model-select"
-                    className="field-input"
-                    type="text"
-                    value={draft.model}
-                    placeholder="deepseek-v4-pro"
-                    autoComplete="off"
-                    spellCheck={false}
-                    onChange={(event) => patchDraft({ model: event.target.value })}
-                  />
-                )}
-
-                {modelStatus.type === 'ready' ? (
-                  <p className="field-hint">{modelStatus.message}</p>
-                ) : null}
-                {modelStatus.type === 'error' ? (
-                  <p className="field-hint" role="alert">
-                    {modelStatus.message}
-                  </p>
-                ) : null}
-                {modelStatus.type === 'idle' ? (
-                  <p className="field-hint">
-                    点「获取模型」从供应商接口拉取可用列表；拉取失败会自动回落到内置推荐模型。
-                  </p>
-                ) : null}
-              </div>
-
-              <div>
                 <label className="field-label" htmlFor="api-key">
                   API Key
                 </label>
@@ -407,7 +290,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {  const sav
                   onChange={(event) => patchDraft({ apiKey: event.target.value })}
                 />
                 <p className="field-hint">
-                  API Key 通过系统安全区加密后保存在本机，不会写入日志。
+                  选好供应商、填入 API Key 即可保存。具体用哪个模型，在「对话」页右下角的下拉里选择。
                 </p>
               </div>
 

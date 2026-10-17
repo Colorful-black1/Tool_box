@@ -1,10 +1,16 @@
 import { create } from 'zustand'
 
 import type {
+  AgentPermission,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
+  AgentToolRisk,
   AiConfigView,
   AiFetchModelsInput,
   AiModelListResult,
   AiProfileInput,
+  AiProfileView,
   AppInfo,
   BookGroup,
   BookSummary,
@@ -21,6 +27,7 @@ import type {
   PasswordInput,
   StatsSummary
 } from '../../../shared/types'
+import { DEFAULT_AGENT_PERMISSION, findAiProvider } from '../../../shared/types'
 
 export type AppView =
   | 'chat'
@@ -36,6 +43,24 @@ interface StreamingState {
   content: string
 }
 
+/** Agent 工具调用在界面上的呈现状态 */
+export interface ToolCallView {
+  callId: string
+  name: string
+  args: string
+  status: 'running' | 'ok' | 'error'
+  summary?: string
+}
+
+/** 待用户批准的写 / 破坏性工具调用 */
+export interface PendingApprovalView {
+  conversationId: string
+  callId: string
+  name: string
+  args: string
+  risk: AgentToolRisk
+}
+
 interface AppState {
   bootstrapped: boolean
   loading: boolean
@@ -48,6 +73,12 @@ interface AppState {
   activeConversationId: string | null
   messages: ChatMessage[]
   streaming: StreamingState | null
+  toolCalls: ToolCallView[]
+  pendingApproval: PendingApprovalView | null
+  agentPermission: AgentPermission
+  /** 对话页模型下拉的可选模型（当前模型 + 供应商推荐 + 拉取结果） */
+  chatModels: string[]
+  chatModelsLoading: boolean
 
   books: BookSummary[]
   groups: BookGroup[]
@@ -73,6 +104,14 @@ interface AppState {
   completeChat(event: ChatCompletedEvent): void
   failChat(event: ChatErrorEvent): void
   stopChat(event: ChatStoppedEvent): void
+
+  // AI 助手 Agent
+  loadAgentPermission(): Promise<void>
+  setAgentPermission(permission: AgentPermission): Promise<void>
+  appendToolCall(event: AgentToolCallEvent): void
+  completeToolResult(event: AgentToolResultEvent): void
+  requestToolApproval(event: AgentToolApprovalRequestEvent): void
+  respondToolApproval(approved: boolean): Promise<void>
 
   // 书架
   refreshBooks(): Promise<void>
@@ -115,6 +154,11 @@ interface AppState {
   activateProfile(id: string): Promise<AiConfigView>
   fetchModels(input: AiFetchModelsInput): Promise<AiModelListResult>
   copyText(text: string): Promise<void>
+
+  // 对话侧模型下拉
+  loadChatModels(): Promise<void>
+  refreshChatModels(): Promise<void>
+  selectModel(model: string): Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -128,6 +172,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeConversationId: null,
   messages: [],
   streaming: null,
+  toolCalls: [],
+  pendingApproval: null,
+  agentPermission: DEFAULT_AGENT_PERMISSION,
+  chatModels: [],
+  chatModelsLoading: false,
   books: [],
   groups: [],
   activeBookId: null,
@@ -181,6 +230,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         notes,
         appInfo
       })
+      void get().loadChatModels()
     } catch (error) {
       set({ loading: false, error: toErrorMessage(error) })
     }
@@ -255,7 +305,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         messages: [...state.messages, result.userMessage],
         conversations: upsertConversation(state.conversations, result.conversation),
-        streaming: { conversationId: activeConversationId, content: '' }
+        streaming: { conversationId: activeConversationId, content: '' },
+        toolCalls: [],
+        pendingApproval: null
       }))
     } catch (error) {
       set({ error: toErrorMessage(error) })
@@ -289,7 +341,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       streaming:
         state.streaming?.conversationId === event.conversationId
           ? null
-          : state.streaming
+          : state.streaming,
+      pendingApproval:
+        state.pendingApproval?.conversationId === event.conversationId
+          ? null
+          : state.pendingApproval
     })),
 
   failChat: (event) =>
@@ -301,7 +357,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       streaming:
         state.streaming?.conversationId === event.conversationId
           ? null
-          : state.streaming
+          : state.streaming,
+      pendingApproval:
+        state.pendingApproval?.conversationId === event.conversationId
+          ? null
+          : state.pendingApproval
     })),
 
   stopChat: (event) =>
@@ -309,8 +369,71 @@ export const useAppStore = create<AppState>((set, get) => ({
       streaming:
         state.streaming?.conversationId === event.conversationId
           ? null
-          : state.streaming
+          : state.streaming,
+      pendingApproval:
+        state.pendingApproval?.conversationId === event.conversationId
+          ? null
+          : state.pendingApproval
     })),
+
+  // ---------- AI 助手 Agent ----------
+  loadAgentPermission: async () => {
+    if (!window.toolbox?.agent) return
+    const permission = await window.toolbox.agent.getPermission()
+    set({ agentPermission: permission })
+  },
+
+  setAgentPermission: async (permission) => {
+    set({ agentPermission: permission })
+    if (!window.toolbox?.agent) return
+    const saved = await window.toolbox.agent.setPermission(permission)
+    set({ agentPermission: saved })
+  },
+
+  appendToolCall: (event) =>
+    set((state) => {
+      if (state.streaming?.conversationId !== event.conversationId) return state
+      return {
+        toolCalls: [
+          ...state.toolCalls,
+          { callId: event.callId, name: event.name, args: event.args, status: 'running' }
+        ]
+      }
+    }),
+
+  completeToolResult: (event) =>
+    set((state) => {
+      if (state.streaming?.conversationId !== event.conversationId) return state
+      return {
+        toolCalls: state.toolCalls.map((call) =>
+          call.callId === event.callId
+            ? { ...call, status: event.ok ? 'ok' : 'error', summary: event.summary }
+            : call
+        )
+      }
+    }),
+
+  requestToolApproval: (event) =>
+    set({
+      pendingApproval: {
+        conversationId: event.conversationId,
+        callId: event.callId,
+        name: event.name,
+        args: event.args,
+        risk: event.risk
+      }
+    }),
+
+  respondToolApproval: async (approved) => {
+    const pending = get().pendingApproval
+    set({ pendingApproval: null })
+    if (!pending) return
+    await window.toolbox.chat.approveTool({
+      conversationId: pending.conversationId,
+      callId: pending.callId,
+      approved
+    })
+  },
 
   // ---------- 书架 ----------
   refreshBooks: async () => {
@@ -444,25 +567,95 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveProfile: async (input) => {
     const settings = await window.toolbox.settings.save(input)
     set({ settings })
+    void get().loadChatModels()
     return settings
   },
 
   removeProfile: async (id) => {
     const settings = await window.toolbox.settings.remove(id)
     set({ settings })
+    void get().loadChatModels()
     return settings
   },
 
   activateProfile: async (id) => {
     const settings = await window.toolbox.settings.activate(id)
     set({ settings })
+    void get().loadChatModels()
     return settings
   },
 
   fetchModels: (input) => window.toolbox.settings.fetchModels(input),
 
-  copyText: async (text) => window.toolbox.system.copyText(text)
+  copyText: async (text) => window.toolbox.system.copyText(text),
+
+  // ---------- 对话侧模型下拉 ----------
+  loadChatModels: async () => {
+    const active = activeProfileOf(get().settings)
+    if (!active) {
+      set({ chatModels: [] })
+      return
+    }
+    set({ chatModels: mergeModels(active.model, [findAiProvider(active.provider).models]) })
+  },
+
+  refreshChatModels: async () => {
+    const active = activeProfileOf(get().settings)
+    if (!active || get().chatModelsLoading) return
+    set({ chatModelsLoading: true })
+    const preset = findAiProvider(active.provider).models
+    try {
+      const result = await window.toolbox.settings.fetchModels({
+        profileId: active.id,
+        provider: active.provider,
+        baseUrl: active.baseUrl
+      })
+      set({ chatModels: mergeModels(active.model, [preset, result.models]) })
+    } catch {
+      // 拉取失败（未配置 Key / 断网等）时回落到「当前模型 + 内置推荐」，不打断使用
+      set({ chatModels: mergeModels(active.model, [preset]) })
+    } finally {
+      set({ chatModelsLoading: false })
+    }
+  },
+
+  selectModel: async (model) => {
+    const active = activeProfileOf(get().settings)
+    if (!active || !model || model === active.model) return
+    try {
+      const settings = await window.toolbox.settings.save({
+        id: active.id,
+        name: active.name,
+        provider: active.provider,
+        baseUrl: active.baseUrl,
+        model
+      })
+      set({ settings, chatModels: mergeModels(model, [get().chatModels]) })
+    } catch (error) {
+      set({ error: toErrorMessage(error) })
+    }
+  }
 }))
+
+function activeProfileOf(settings: AiConfigView | null): AiProfileView | null {
+  if (!settings) return null
+  return settings.profiles.find((item) => item.id === settings.activeId) ?? null
+}
+
+/** 合并模型候选：当前模型优先，其后依次是各候选列表，去重 */
+function mergeModels(current: string, lists: string[][]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const push = (model: string): void => {
+    if (model && !seen.has(model)) {
+      seen.add(model)
+      out.push(model)
+    }
+  }
+  push(current)
+  for (const list of lists) for (const model of list) push(model)
+  return out
+}
 
 function upsertConversation(
   conversations: ConversationSummary[],

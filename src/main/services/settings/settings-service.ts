@@ -86,8 +86,9 @@ export class SettingsService {
   async save(input: AiProfileInput): Promise<AiConfigView> {
     const baseUrl = normalizeOpenAiBaseUrl(input.baseUrl)
     const model = input.model.trim()
+    // 模型允许留空：设置页只负责供应商与 Key，具体模型在对话侧的下拉里选择。
+    // 留空时不会阻断保存，真正发请求前由 getAiConfig 给出可读提示。
     if (!baseUrl) throw new AiGatewayError('接口地址不能为空')
-    if (!model) throw new AiGatewayError('模型名称不能为空')
 
     const stored = await this.read()
     const existing = input.id

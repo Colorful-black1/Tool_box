@@ -2339,6 +2339,254 @@ textarea,
   color: var(--cyan);
 }
 
+.chat-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-head-right .chat-status {
+  margin-left: 0;
+}
+
+/* ---------- 通用下拉（对齐 .sort-menu 的星轨范式） ---------- */
+
+.ui-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.ui-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-mid);
+  font-size: 11.5px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.ui-dropdown-trigger:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  color: var(--text-hi);
+}
+
+.ui-dropdown-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ui-dropdown-trigger[aria-expanded='true'] {
+  border-color: var(--gold);
+  color: var(--text-hi);
+}
+
+.ui-dropdown-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-dropdown-label.placeholder {
+  color: var(--text-dim);
+}
+
+.ui-dropdown-caret {
+  font-size: 9px;
+  color: var(--gold-dim);
+  transition: transform 0.15s;
+}
+
+.ui-dropdown-trigger[aria-expanded='true'] .ui-dropdown-caret {
+  transform: rotate(180deg);
+}
+
+.ui-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 100%;
+  max-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 10px;
+  background: rgba(14, 18, 34, 0.97);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.ui-dropdown-menu.right {
+  right: 0;
+}
+
+.ui-dropdown-menu.left {
+  left: 0;
+}
+
+.ui-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 11px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-mid);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-hi);
+}
+
+.ui-dropdown-item.active {
+  color: var(--gold);
+}
+
+.ui-dropdown-tick {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.ui-dropdown-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-dropdown-empty {
+  padding: 8px 11px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.dropdown-compact .ui-dropdown-label {
+  max-width: 132px;
+}
+
+.dropdown-model .ui-dropdown-label {
+  max-width: 168px;
+  font-family: var(--mono);
+}
+
+/* ---------- Agent 工具调用卡片 ---------- */
+
+.tool-call {
+  margin: 0 0 10px 4px;
+  padding: 8px 12px;
+  border: 1px dashed rgba(127, 231, 255, 0.28);
+  border-left: 2px solid var(--cyan);
+  border-radius: 8px;
+  background: rgba(127, 231, 255, 0.05);
+  font-size: 11.5px;
+}
+
+.tool-call.ok {
+  border-left-color: var(--gold-dim);
+  border-color: rgba(232, 201, 138, 0.22);
+  background: rgba(232, 201, 138, 0.04);
+}
+
+.tool-call.error {
+  border-left-color: var(--pink);
+  border-color: rgba(255, 158, 199, 0.28);
+  background: rgba(255, 158, 199, 0.05);
+}
+
+.tool-call-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tool-call-name {
+  font-family: var(--mono);
+  color: var(--cyan);
+  letter-spacing: 0.5px;
+}
+
+.tool-call.ok .tool-call-name {
+  color: var(--gold-dim);
+}
+
+.tool-call-status {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.tool-call-status.destructive {
+  color: var(--pink);
+}
+
+.tool-call-status.write {
+  color: var(--gold);
+}
+
+.tool-call-args,
+.tool-call-summary {
+  margin-top: 4px;
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+.tool-call-summary {
+  color: var(--text-dim);
+}
+
+.tool-approval {
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(232, 201, 138, 0.4);
+  border-radius: 12px;
+  background: rgba(232, 201, 138, 0.08);
+}
+
+.tool-approval-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+
+.tool-approval-name {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-hi);
+}
+
+.tool-approval-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .message-list {
   flex: 1;
   min-height: 0;
@@ -2477,7 +2725,50 @@ textarea,
 
 .composer-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.model-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 输入框在面板底部，下拉向上展开，避免超出可视区域 */
+.composer-actions .ui-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  color: var(--gold);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .sr-only {
