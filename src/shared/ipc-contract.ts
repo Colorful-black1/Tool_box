@@ -16,6 +16,10 @@ export const IPC = {
   messageList: 'message:list',
   chatSend: 'chat:send',
   chatStop: 'chat:stop',
+  chatToolApproval: 'chat:tool-approval',
+
+  agentPermissionGet: 'agent:permission:get',
+  agentPermissionSet: 'agent:permission:set',
 
   booksList: 'books:list',
   booksImport: 'books:import',
@@ -66,7 +70,10 @@ export const CHAT_EVENT = {
   delta: 'chat:event:delta',
   completed: 'chat:event:completed',
   error: 'chat:event:error',
-  stopped: 'chat:event:stopped'
+  stopped: 'chat:event:stopped',
+  toolCall: 'chat:event:tool-call',
+  toolResult: 'chat:event:tool-result',
+  toolApproval: 'chat:event:tool-approval'
 } as const
 
 export const WINDOW_EVENT = {

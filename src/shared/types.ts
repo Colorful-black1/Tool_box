@@ -231,6 +231,70 @@ export interface ChatStoppedEvent {
   conversationId: string
 }
 
+// ============ AI 助手 Agent（工具接管） ============
+
+/**
+ * Agent 权限档位（对标编辑器 Agent 的三档）：
+ * - readonly  只读：仅暴露只读工具，任何写操作都不可用
+ * - confirm  写操作需确认：只读自动执行，写 / 破坏性工具执行前需用户批准
+ * - full     完全访问：所有工具自动执行
+ */
+export const AGENT_PERMISSION_MODES = ['readonly', 'confirm', 'full'] as const
+
+export type AgentPermission = (typeof AGENT_PERMISSION_MODES)[number]
+
+export const DEFAULT_AGENT_PERMISSION: AgentPermission = 'confirm'
+
+/** Agent 权限的人类可读标签 */
+export const AGENT_PERMISSION_LABELS: Record<AgentPermission, string> = {
+  readonly: '只读',
+  confirm: '写操作确认',
+  full: '完全访问'
+}
+
+export function isAgentPermission(value: unknown): value is AgentPermission {
+  return (
+    typeof value === 'string' && (AGENT_PERMISSION_MODES as readonly string[]).includes(value)
+  )
+}
+
+/** 工具风险级别：决定 confirm 档位下是否需要人工确认 */
+export type AgentToolRisk = 'read' | 'write' | 'destructive'
+
+/** 工具开始执行（已获批准或无需批准） */
+export interface AgentToolCallEvent {
+  conversationId: string
+  callId: string
+  name: string
+  /** 人类可读的入参摘要（截断、脱敏） */
+  args: string
+}
+
+/** 工具执行结束 */
+export interface AgentToolResultEvent {
+  conversationId: string
+  callId: string
+  ok: boolean
+  /** 结果摘要（截断、脱敏） */
+  summary: string
+}
+
+/** 请求用户批准一个写 / 破坏性工具调用 */
+export interface AgentToolApprovalRequestEvent {
+  conversationId: string
+  callId: string
+  name: string
+  args: string
+  risk: AgentToolRisk
+}
+
+/** 渲染层对审批请求的答复 */
+export interface AgentToolApprovalInput {
+  conversationId: string
+  callId: string
+  approved: boolean
+}
+
 // ============ 阅读配置 ============
 
 /** 翻页模式：上下滚动 / 左右翻页 / 覆盖翻页 */

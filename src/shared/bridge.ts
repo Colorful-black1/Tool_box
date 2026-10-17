@@ -1,4 +1,9 @@
 import type {
+  AgentPermission,
+  AgentToolApprovalInput,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
   AiConfigView,
   AiFetchModelsInput,
   AiModelListResult,
@@ -58,6 +63,16 @@ export interface ToolboxBridge {
     onCompleted(listener: (event: ChatCompletedEvent) => void): () => void
     onError(listener: (event: ChatErrorEvent) => void): () => void
     onStopped(listener: (event: ChatStoppedEvent) => void): () => void
+    onToolCall(listener: (event: AgentToolCallEvent) => void): () => void
+    onToolResult(listener: (event: AgentToolResultEvent) => void): () => void
+    onToolApprovalRequest(listener: (event: AgentToolApprovalRequestEvent) => void): () => void
+    /** 批准 / 拒绝一次写或破坏性工具调用 */
+    approveTool(input: AgentToolApprovalInput): Promise<void>
+  }
+  agent: {
+    /** 当前 Agent 权限档位 */
+    getPermission(): Promise<AgentPermission>
+    setPermission(permission: AgentPermission): Promise<AgentPermission>
   }
   books: {
     list(): Promise<BookSummary[]>
