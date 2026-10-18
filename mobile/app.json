@@ -2,7 +2,7 @@
   "expo": {
     "name": "私人百宝箱",
     "slug": "tool-box-mobile",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.toolbox.mobile",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#080b16",
         "foregroundImage": "./assets/android-icon-foreground.png",

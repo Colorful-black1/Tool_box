@@ -59,6 +59,11 @@ class FakeStore {
     this.title = title
     return this.getConversation('c1')
   }
+
+  /** 网关每轮都要读一次 Agent 权限档位（不存在时回落到默认值） */
+  async configGet(): Promise<Record<string, unknown> | null> {
+    return null
+  }
 }
 
 const CONFIG = {
@@ -132,7 +137,11 @@ function recordingSink(): ChatEventSink & {
     onStopped: () => {
       events.push('stopped')
       sink.stopped += 1
-    }
+    },
+    // 这批用例只关心对话流本身；工具相关事件在这里不参与断言
+    onToolCall: () => events.push('tool-call'),
+    onToolResult: () => events.push('tool-result'),
+    onToolApprovalRequest: () => events.push('tool-approval')
   }
   return sink
 }
@@ -176,7 +185,7 @@ describe('AiGateway.send', () => {
     expect(gateway.isStreaming('c1')).toBe(false)
   })
 
-  it('发给模型的历史包含本轮 user 消息', async () => {
+  it('发给模型的历史包含 system 提示词与本轮 user 消息', async () => {
     const store = new FakeStore()
     let sentBody = ''
     const fetchImpl: FetchLike = (_url, init) => {
@@ -188,7 +197,11 @@ describe('AiGateway.send', () => {
     await gateway.send('c1', '我的问题', recordingSink())
     await waitFor(() => sentBody !== '')
 
-    expect(JSON.parse(sentBody).messages).toEqual([{ role: 'user', content: '我的问题' }])
+    const messages = JSON.parse(sentBody).messages as Array<{ role: string; content: string }>
+    // Agent 化之后固定首条是 system 提示词，随后才是落库的历史
+    expect(messages[0]?.role).toBe('system')
+    expect(messages[0]?.content).toContain('私人百宝箱')
+    expect(messages.at(-1)).toEqual({ role: 'user', content: '我的问题' })
   })
 
   it('首次对话用内容当标题', async () => {

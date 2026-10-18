@@ -254,6 +254,8 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
 * 数据层在 `mobile/src/data/`：`MobileStore` 方法名与语义刻意对齐桌面端 `ToolboxStore`；schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
 * 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
 * 改数据层后必须跑 `npm run mobile:verify:data`：用 esbuild + Electron 把真实数据层跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL。
+* Agent 工具放 `mobile/src/agent/tools/`：**工具名与 risk 分级必须与桌面端一致**（`域_动作`，如 `books_list`），新增前先看桌面端有没有同名实现；工具层**禁止引 zod / langchain**（Metro 只解析 `mobile/node_modules`），入参校验用 `tool-registry.ts` 的手写帮手。
+* 写工具必须经过审批门，且只读档位**不下发**写工具；密码箱写工具不提供（覆盖保存会把 `isDecryptable === false` 条目的密文替换成占位文本，见 `docs/ROADMAP.md`）。
 * `transaction.ts` 单独成文件只为切断原生模块的运行期引用，勿合并回 `database.ts`。
 * 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
 * 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。

@@ -467,7 +467,11 @@ async function main(): Promise<void> {
     onError: (event) => {
       errored = event.message
     },
-    onStopped: () => {}
+    onStopped: () => {},
+    // 自检不涉及工具：这里只保证接口完整，工具链路由 agent-loop.test.ts 覆盖
+    onToolCall: () => {},
+    onToolResult: () => {},
+    onToolApprovalRequest: () => {}
   }
 
   await gateway.send(aiConversation.id, '请自检', sink)
@@ -517,7 +521,10 @@ async function main(): Promise<void> {
     onError: (event) => say(`  意外错误：${event.message}`),
     onStopped: () => {
       state.stopped = true
-    }
+    },
+    onToolCall: () => {},
+    onToolResult: () => {},
+    onToolApprovalRequest: () => {}
   })
   stopGateway.stop(stopConversation.id)
   check('停止后到达终态', await waitUntil(() => state.stopped))

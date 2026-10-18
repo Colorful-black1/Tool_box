@@ -144,7 +144,8 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 | 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
 | 数据层 | `mobile/src/data/`：`expo-sqlite` + 与桌面端同构的 `MobileStore`；schema 与桌面端逐段对齐（v4，11 张表） |
 | 加密 | `expo-crypto` AES-256-GCM + `expo-secure-store` 存主密钥；**密文信封格式与桌面端一致**（`{v,iv,tag,data}`） |
-| 需重写 | AI 客户端（自写 SSE，不用 LangChain）、阅读器分页（RN 无 `scrollHeight`）、全部界面 |
+| AI 助手 | 自写 Agent 循环（不搬 LangChain）：**7 个只读工具 + `notes_save`**；三档权限（只读 / 写操作确认 / 完全访问），写操作在对话页弹审批卡；**密码箱刻意只读**，没有任何密码箱写工具 |
+| 需重写 | AI 客户端（自写 SSE，不用 LangChain）、Agent 循环与工具层、阅读器分页（RN 无 `scrollHeight`）、全部界面 |
 | 数据 | **与桌面端各自独立**，主密钥绑定设备，密码箱密文不互通 |
 
 **跨端对齐护栏**（防止两端 schema / 密文格式单边漂移）：
@@ -182,7 +183,7 @@ npm run mobile:verify:data
 
 ### 在手机上跑起来
 
-当前进度是 **M0**：只有底部导航与 5 个占位页，**还没有任何可用功能**，数据层与各模块界面在 M1–M5 实现。
+当前进度是 **M1–M6 代码全部完成，但都还没在真机上验收**（详见 `docs/ROADMAP.md` 第 2 节清单）：5 个 Tab 均有可用界面，AI 助手已能调用工具管理手机本地的书架 / 记事本 / 密码箱 / 统计。
 
 1. 手机装 **Expo Go**（应用商店搜 Expo Go）。
 2. 手机与电脑连同一个 Wi-Fi。
@@ -221,7 +222,8 @@ npm run android:apk --prefix mobile   # → mobile/android/app/build/outputs/apk
 
 ## 已知限制
 
-- 桌面端仅 Windows；手机端处于 M1（数据层 + 加密已完成，界面仍是占位页）。
+- 桌面端仅 Windows；手机端 M1–M6 代码完成，但**从未在真机上验收过**（`expo-sqlite` / `expo-crypto` / `expo-secure-store` 三个原生模块只在与真机同构的 Node 环境里验证过）。
+- 手机端的 AI 助手只能操作**手机本地**数据（书架 / 记事本 / 密码箱 / 统计），看不到也改不了电脑上的数据。
 - 手机端与桌面端数据互相独立，密码箱密文不互通（主密钥分属 DPAPI 与系统钥匙串）。
 - 安装包未做代码签名，首次安装 Windows SmartScreen 可能提示「未知发布者」。
 - 局域网同步、PC 摸鱼（老板键 / 伪装皮肤）、启动锁尚未迁移。

@@ -12,18 +12,28 @@
 
 // 共享契约：类型、供应商预设、常量
 export {
+  AGENT_PERMISSION_LABELS,
+  AGENT_PERMISSION_MODES,
   AI_PROVIDER_IDS,
   AI_PROVIDER_PRESETS,
+  DEFAULT_AGENT_PERMISSION,
   DEFAULT_READ_CONFIG,
   FONT_OPTIONS,
   NIGHT_THEME,
   READER_THEMES,
   effectiveReaderTheme,
   findAiProvider,
+  isAgentPermission,
   isAiProviderId,
   matchProviderByBaseUrl
 } from '../../src/shared/types'
 export type {
+  AgentPermission,
+  AgentToolApprovalInput,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
+  AgentToolRisk,
   AiConfigView,
   AiFetchModelsInput,
   AiModelListResult,

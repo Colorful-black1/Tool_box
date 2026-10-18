@@ -16,9 +16,11 @@
  *    靠 `timedOut` 标记判断，不靠 error 消息猜测。
  */
 import { AiGatewayError, describeAiError, normalizeOpenAiBaseUrl, redactSecret } from '../shared-bridge'
-import type { AiProviderId, ChatMessage } from '../shared-bridge'
+import type { AiProviderId } from '../shared-bridge'
 
 import { SseParser, extractDelta, extractErrorMessage, isDoneSentinel } from './sse'
+import { ToolCallAccumulator, toWireMessage } from './wire'
+import type { ToolSchema, WireMessage, WireToolCall } from './wire'
 import { buildChatHeaders } from './provider-headers'
 
 /** 注入的 fetch：签名对齐标准 fetch，便于测试替换 */
@@ -31,7 +33,13 @@ export interface StreamChatInput {
   provider: AiProviderId
   /** 逐轮稳定；OpenCode Go 用它做路由与 prompt 缓存，取 conversationId */
   sessionId: string
-  messages: ChatMessage[]
+  /**
+   * 会话历史 + 本轮的工具轮次消息。
+   * 工具轮次（assistant.tool_calls / role:'tool'）只存在于内存，不落库 —— 与桌面端一致。
+   */
+  messages: WireMessage[]
+  /** 传入即启用 function calling；留空则是普通对话 */
+  tools?: ToolSchema[]
   signal: AbortSignal
   /** 用户主动停止与超时时都会触发，用于底层资源释放 */
   onAbort?: () => void
@@ -47,20 +55,29 @@ export interface StreamChatResult {
   content: string
   /** 是否收到过 [DONE] */
   completed: boolean
+  /** 本轮结束后要执行的工具调用；为空表示模型已给出最终回答 */
+  toolCalls: WireToolCall[]
 }
 
 /** 构建请求体：OpenAI 兼容的 chat/completions 格式 */
 export function buildChatBody(input: {
   model: string
-  messages: ChatMessage[]
+  messages: WireMessage[]
   temperature: number
+  tools?: ToolSchema[]
 }): string {
-  return JSON.stringify({
+  const body: Record<string, unknown> = {
     model: input.model,
     temperature: input.temperature,
     stream: true,
-    messages: input.messages.map((message) => ({ role: message.role, content: message.content }))
-  })
+    messages: input.messages.map(toWireMessage)
+  }
+  if (input.tools && input.tools.length > 0) {
+    body['tools'] = input.tools
+    // 'auto' 让模型自己决定是否调用工具；强制 'required' 会变成「随便答一句也要调工具」
+    body['tool_choice'] = 'auto'
+  }
+  return JSON.stringify(body)
 }
 
 /**
@@ -92,6 +109,8 @@ export async function streamChat(input: StreamChatInput): Promise<StreamChatResu
   }
 
   let content = ''
+  /** 工具调用分片累加器：本轮若有内容，调用方会执行后继续下一轮 */
+  const toolCalls = new ToolCallAccumulator()
 
   try {
     // 与 abort 竞速：平台若不把 abort 传播给 fetch 本身，挂起的连接不会被超时回收
@@ -107,7 +126,8 @@ const response = await raceAbort(
         body: buildChatBody({
           model: input.model,
           messages: input.messages,
-          temperature: input.temperature ?? 0.7
+          temperature: input.temperature ?? 0.7,
+          tools: input.tools
         }),
         signal: controller.signal
       }),
@@ -142,6 +162,10 @@ const response = await raceAbort(
         throw new AiGatewayError(describeAiError(new Error(serverError), input.apiKey))
       }
 
+      // 工具调用是**分片**到达的，必须在解析完 payload 后立刻累加，
+      // 且与正文增量互不干扰（同一轮里模型可能先说一句再调工具）
+      toolCalls.push(payload)
+
       const delta = extractDelta(payload)
       // 空 delta 必须跳过：首个 chunk 只有 role，末个只有 finish_reason
       if (delta) {
@@ -155,7 +179,7 @@ const response = await raceAbort(
     if (completed) controller.abort()
 
     if (timedOut) throw new AiGatewayError('AI 请求超时，请检查网络后重试')
-    return { content, completed }
+    return { content, completed, toolCalls: toolCalls.list() }
   } catch (error) {
     if (timedOut) throw new AiGatewayError('AI 请求超时，请检查网络后重试')
     if (input.signal.aborted || controller.signal.aborted) {

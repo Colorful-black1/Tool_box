@@ -10,16 +10,33 @@
  * 4. 用户主动停止 → `onStopped`，**不算错误**；其他失败 → `onError`（文案已脱敏）。
  * 5. 无论成败都必须从 `active` 里清理，否则该会话再也发不出消息。
  * 6. 只有成功路径才落库 assistant 消息；停止时已收到的增量丢弃。
+ *
+ * 对话本身由 `agent/agent-loop.ts` 的模型 ⇄ 工具循环承担（桌面端是 LangChain Agent）：
+ * 这里只负责落库、事件回推、权限档位读取与取消语义。
  */
 import { AiGatewayError, validateChatInput } from '../shared-bridge'
-import type { AiProviderId, ChatMessage, ConversationSummary } from '../shared-bridge'
+import type {
+  AgentToolApprovalInput,
+  AgentToolApprovalRequestEvent,
+  AgentToolCallEvent,
+  AgentToolResultEvent,
+  AiProviderId,
+  ChatMessage,
+  ConversationSummary
+} from '../shared-bridge'
 
+import { runAgent } from '../agent/agent-loop'
+import { ApprovalGate } from '../agent/approval-gate'
+import { getAgentPermission } from '../agent/permission'
+import { AGENT_SYSTEM_PROMPT } from '../agent/system-prompt'
+import { createAgentToolSet } from '../agent/tools'
+import type { AgentToolDefinition } from '../agent/tool-registry'
 import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TITLE } from '../data/constants'
 import type { MobileStore } from '../data/store'
 
 import type { AiSettingsService } from './ai-settings'
 import { completeChat } from './complete-chat'
-import { isAbortError, streamChat } from './stream-chat'
+import { isAbortError } from './stream-chat'
 import type { FetchLike } from './stream-chat'
 
 export interface ChatEventSink {
@@ -31,6 +48,14 @@ export interface ChatEventSink {
   }): void
   onError(event: { conversationId: string; message: string }): void
   onStopped(event: { conversationId: string }): void
+  /** 工具开始执行（已获批准或无需批准） */
+  onToolCall(event: AgentToolCallEvent): void
+  /** 工具执行结束 */
+  onToolResult(event: AgentToolResultEvent): void
+  /** 写工具请求批准（界面弹出审批卡） */
+  onToolApprovalRequest(event: AgentToolApprovalRequestEvent): void
+  /** 非错误提示，例如「当前模型不支持工具调用，已降级为普通对话」 */
+  onNotice?(message: string): void
 }
 
 export interface ChatSendResult {
@@ -53,16 +78,33 @@ function newOneShotSessionId(): string {
   return `oneshot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/**
+ * 工具调用的 callId。
+ *
+ * 它只是「界面上的工具卡片 ↔ 审批回执」的配对键，**不是凭据**，
+ * 因此用 `Date.now` + `Math.random` 即可（同 `newOneShotSessionId`）——
+ * 这样本模块不必引 `expo-crypto`，可以在 vitest 的 node 环境里直接跑。
+ */
+function newCallId(): string {
+  return `call-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export class AiGateway {
   /** 运行期流句柄：key 是会话 id，value 是用于中止的控制器 */
   private readonly active = new Map<string, AbortController>()
+  /** 写工具的审批门：跨轮次存在，因为工具节点会挂起等用户回执 */
+  private readonly gate = new ApprovalGate()
+  /** 工具声明是纯数据，构造一次即可（handler 里再按会话注入上下文） */
+  private readonly tools: AgentToolDefinition[]
 
   constructor(
     private readonly settings: AiSettingsService,
     private readonly store: MobileStore,
     private readonly fetchImpl: FetchLike,
     private readonly timeoutMs: number = CHAT_TIMEOUT_MS
-  ) {}
+  ) {
+    this.tools = createAgentToolSet({ store })
+  }
 
   /** 该会话是否正在生成回复，用于界面禁用输入 */
   isStreaming(conversationId: string): boolean {
@@ -94,7 +136,7 @@ export class AiGateway {
     const controller = new AbortController()
     this.active.set(conversationId, controller)
 
-    void this.runStream({
+    void this.runAgentTurn({
       conversationId,
       history,
       config,
@@ -105,9 +147,27 @@ export class AiGateway {
     return { userMessage, conversation: updated }
   }
 
-  /** 用户主动停止：只中止，不发事件，由 runStream 判定后转成 stopped */
+  /** 用户主动停止：只中止，不发事件，由 runAgentTurn 判定后转成 stopped */
   stop(conversationId: string): void {
     this.active.get(conversationId)?.abort()
+    // 立刻拒绝该会话挂起的审批，否则工具节点会一直等着用户回执
+    this.gate.rejectConversation(conversationId)
+  }
+
+  /** 界面对写工具审批的回执 */
+  approveTool(input: AgentToolApprovalInput): void {
+    this.gate.settle(input.callId, input.approved === true)
+  }
+
+  /**
+   * 界面离开会话时调用：拒绝该会话挂起的审批，但**不打断生成**。
+   *
+   * 与 `stop()` 的区别：审批卡随页面一起消失，用户再也点不到「允许 / 拒绝」，
+   * 不主动 settle 的话工具节点会永远挂着，该会话的流也永远不结束。
+   * 此处只拒绝挂起项，让模型接着把话说完（生成中的正文不受影响）。
+   */
+  cancelApprovals(conversationId: string): void {
+    this.gate.rejectConversation(conversationId)
   }
 
   /**
@@ -158,7 +218,7 @@ export class AiGateway {
     }
   }
 
-  private async runStream(input: {
+  private async runAgentTurn(input: {
     conversationId: string
     history: ChatMessage[]
     config: { provider: AiProviderId; baseUrl: string; model: string; apiKey: string }
@@ -168,27 +228,44 @@ export class AiGateway {
     const { conversationId, history, config, controller, sink } = input
 
     try {
-      const result = await streamChat({
-        baseUrl: config.baseUrl,
-        apiKey: config.apiKey,
-        model: config.model,
-        // 会话 id 逐轮稳定；OpenCode Go 依赖它做路由与 prompt 缓存
-        provider: config.provider,
-        sessionId: conversationId,
-        messages: history,
+      // 每轮都现读权限：用户可能在生成过程中切了档位，下一轮就该生效
+      const permission = await getAgentPermission(this.store)
+
+      const result = await runAgent({
+        conversationId,
+        history,
+        config,
+        systemPrompt: AGENT_SYSTEM_PROMPT,
+        permission,
+        tools: this.tools,
+        gate: this.gate,
+        sink: {
+          onToolCall: (event) => sink.onToolCall({ conversationId, ...event }),
+          onToolResult: (event) => sink.onToolResult({ conversationId, ...event }),
+          onToolApprovalRequest: (event) =>
+            sink.onToolApprovalRequest({ conversationId, ...event })
+        },
+        onDelta: (delta) => sink.onDelta({ conversationId, delta }),
+        onNotice: (message) => sink.onNotice?.(message),
         signal: controller.signal,
-        timeoutMs: this.timeoutMs,
         fetchImpl: this.fetchImpl,
-        onDelta: (delta) => sink.onDelta({ conversationId, delta })
+        timeoutMs: this.timeoutMs,
+        idFactory: newCallId
       })
 
-      // 用户主动停止时 streamChat 会抛 AbortError，走下面的 stopped 分支，不落库
-      if (!result.content.trim()) throw new AiGatewayError('AI 未返回内容')
+      // 用户主动停止时 runAgent 会抛 AbortError，走下面的 stopped 分支，不落库。
+      // 只调了工具没说话时给一句兜底，否则会以「AI 未返回内容」收场（与桌面端一致）。
+      const content = result.content.trim()
+        ? result.content
+        : result.usedTools
+          ? '已完成操作。'
+          : ''
+      if (!content.trim()) throw new AiGatewayError('AI 未返回内容')
 
       const message = await this.store.appendMessage({
         conversationId,
         role: 'assistant',
-        content: result.content
+        content
       })
       const conversation = await this.store.getConversation(conversationId)
       if (!conversation) throw new AiGatewayError('会话不存在')
@@ -205,6 +282,8 @@ export class AiGateway {
         message: error instanceof Error ? error.message : 'AI 请求失败'
       })
     } finally {
+      // 正常结束也要拒一次：模型可能留下没人回应的审批（例如步数超限退出）
+      this.gate.rejectConversation(conversationId)
       this.active.delete(conversationId)
     }
   }

@@ -9,17 +9,27 @@ import type { ReactNode } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
 
 import { GlassCard } from '../../components/placeholder-screen'
-import { Banner, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
+import { Banner, Chip, ChipRow, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
+import { getAgentPermission, setAgentPermission } from '../../agent/permission'
 import { useServices } from '../../runtime/services'
 import { AiProfileEditor } from './ai-profile-editor'
-import type { AiConfigView } from '../../shared-bridge'
+import type { AgentPermission, AiConfigView } from '../../shared-bridge'
+import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES, DEFAULT_AGENT_PERMISSION } from '../../shared-bridge'
 import { colors, fonts, radius, spacing } from '../../theme'
 
+/** 档位说明：直接解释「AI 能做什么」，比解释档位名本身有用 */
+const PERMISSION_HINTS: Record<AgentPermission, string> = {
+  readonly: '只读：AI 可以查看书架、记事本与密码箱，但不会改动任何数据。',
+  confirm: '写操作确认：AI 想改动数据前会先弹出确认卡，由你决定是否允许。',
+  full: '完全访问：写操作不再询问，直接执行。请谨慎使用。'
+}
+
 export function AiSettingsSection(): ReactNode {
-  const { aiSettings } = useServices()
+  const { aiSettings, store } = useServices()
   const [view, setView] = useState<AiConfigView>({ profiles: [], activeId: null })
   const [editing, setEditing] = useState<string | 'new' | null>(null)
   const [error, setError] = useState('')
+  const [permission, setPermission] = useState<AgentPermission>(DEFAULT_AGENT_PERMISSION)
 
   const reload = useCallback(async (): Promise<void> => {
     try {
@@ -32,6 +42,28 @@ export function AiSettingsSection(): ReactNode {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setPermission(await getAgentPermission(store))
+      } catch (loadError) {
+        // 读不到就保持默认档位（写操作需确认），比让整个设置页报错更合理
+        setError(loadError instanceof Error ? loadError.message : '读取权限档位失败')
+      }
+    })()
+  }, [store])
+
+  const changePermission = async (next: AgentPermission): Promise<void> => {
+    const previous = permission
+    setPermission(next)
+    try {
+      setPermission(await setAgentPermission(store, next))
+    } catch (saveError) {
+      setPermission(previous)
+      setError(saveError instanceof Error ? saveError.message : '保存权限档位失败')
+    }
+  }
 
   if (editing) {
     return (
@@ -80,6 +112,21 @@ export function AiSettingsSection(): ReactNode {
       <SectionTitle>AI 配置</SectionTitle>
       {error ? <Banner message={error} /> : null}
 
+      <View style={styles.permissionBlock}>
+        <Text style={styles.permissionTitle}>AI 助手权限</Text>
+        <ChipRow>
+          {AGENT_PERMISSION_MODES.map((mode) => (
+            <Chip
+              key={mode}
+              label={AGENT_PERMISSION_LABELS[mode]}
+              active={mode === permission}
+              onPress={() => void changePermission(mode)}
+            />
+          ))}
+        </ChipRow>
+        <Text style={styles.permissionHint}>{PERMISSION_HINTS[permission]}</Text>
+      </View>
+
       {view.profiles.length === 0 ? (
         <GlassCard>
           <Text style={styles.emptyTitle}>还没有配置</Text>
@@ -125,6 +172,16 @@ export function AiSettingsSection(): ReactNode {
 
 const styles = StyleSheet.create({
   root: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
+  permissionBlock: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg
+  },
+  permissionTitle: { color: colors.textHi, fontSize: 13 },
+  permissionHint: { color: colors.textDim, fontSize: 11, lineHeight: 16 },
   card: { gap: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   name: { fontSize: 15, color: colors.textHi, flexShrink: 1 },
