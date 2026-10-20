@@ -6,10 +6,10 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 | 模块 | 说明 |
 | --- | --- |
-| AI 助手 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；基于 LangChain.js `createAgent` 的 **Agent，可调用工具接管书架 / 分组 / 书签 / 密码箱 / 记事本 / 统计**；**三档权限（只读 / 写操作确认 / 完全访问）**，写与破坏性操作支持人在环审批；流式输出、多会话、停止生成 |
-| 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计 |
+| AI 助手 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；基于 LangChain.js `createAgent` 的 **Agent，可调用工具接管书架 / 分组 / 书签 / 密码箱 / 记事本 / 统计**；**三档权限（只读 / 写操作确认 / 完全访问）**，写与破坏性操作支持人在环审批；**回答按 Markdown 渲染**（粗体 / 列表 / 代码块 / 链接）；**长对话自动裁剪历史**（超预算时丢弃最早的部分并明确告知模型）；流式输出、多会话、停止生成 |
+| 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计（今日 / 累计 / **任意区间**） |
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入；重复检测、拼音分组、字母索引 |
-| 记事本 | Markdown 编辑与预览、导入导出 `.md` |
+| 记事本 | Markdown 编辑与预览、导入导出 `.md`；**支持按标题与正文搜索** |
 
 ### AI 供应商配置
 
@@ -141,10 +141,10 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 | 项 | 说明 |
 | --- | --- |
 | 复用方式 | `mobile/metro.config.js` 把 `../src` 纳入 `watchFolders`；所有跨目录引用集中在 `mobile/src/shared-bridge.ts` 一个文件 |
-| 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
+| 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`src/shared/markdown.ts`（Markdown 解析）、`src/shared/notes-search.ts`（笔记搜索）、`src/shared/reading-stats.ts`（区间统计）、`src/shared/history.ts`（对话历史裁剪）、`src/shared/book-cover.ts`（占位封面）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
 | 数据层 | `mobile/src/data/`：`expo-sqlite` + 与桌面端同构的 `MobileStore`；schema 与桌面端逐段对齐（v4，11 张表） |
 | 加密 | `expo-crypto` AES-256-GCM + `expo-secure-store` 存主密钥；**密文信封格式与桌面端一致**（`{v,iv,tag,data}`） |
-| AI 助手 | 自写 Agent 循环（不搬 LangChain）：**7 个只读工具 + `notes_save`**；三档权限（只读 / 写操作确认 / 完全访问），写操作在对话页弹审批卡；**密码箱刻意只读**，没有任何密码箱写工具 |
+| AI 助手 | 自写 Agent 循环（不搬 LangChain）：**14 个工具**（12 读 + `notes_save` + `passwords_delete`）；三档权限（只读 / 写操作确认 / 完全访问），写操作在对话页弹审批卡；**密码箱不给「保存 / 覆盖」**（会毁掉解密失败条目的原密文），只给收藏与删除 |
 | 需重写 | AI 客户端（自写 SSE，不用 LangChain）、Agent 循环与工具层、阅读器分页（RN 无 `scrollHeight`）、全部界面 |
 | 数据 | **与桌面端各自独立**，主密钥绑定设备，密码箱密文不互通 |
 
@@ -176,14 +176,14 @@ npm run mobile:start         # 启动 Expo Dev Server
 
 ```bash
 npm run mobile:verify:data
-# 通过 54 项，失败 0 项
+# 通过 84 项，失败 0 项
 ```
 
 **这套验证覆盖不到的部分**：真机上的原生绑定行为（expo-sqlite 的实际实现、系统钥匙串 Keychain/Keystore、解密失败时的降级路径）。这些只能在真机上验。
 
 ### 在手机上跑起来
 
-当前进度是 **M1–M6 代码全部完成，但都还没在真机上验收**（详见 `docs/ROADMAP.md` 第 2 节清单）：5 个 Tab 均有可用界面，AI 助手已能调用工具管理手机本地的书架 / 记事本 / 密码箱 / 统计。
+当前进度是 **M1–M7 代码全部完成，但都还没在真机上验收**（详见 `docs/ROADMAP.md` 第 2 节清单）：5 个 Tab 均有可用界面，AI 助手已能调用工具管理手机本地的书架 / 记事本 / 密码箱 / 统计；阅读器支持书内全文搜索，记事本支持搜索 / Markdown 预览 / 导入导出。
 
 1. 手机装 **Expo Go**（应用商店搜 Expo Go）。
 2. 手机与电脑连同一个 Wi-Fi。
