@@ -1,4 +1,4 @@
-import type { BookSummary, NoteView, PasswordEntryView } from '../../shared-bridge'
+import type { BookGroup, BookSummary, NoteView, PasswordEntryView } from '../../shared-bridge'
 import type { MobileStore } from '../../data/store'
 
 /**
@@ -39,6 +39,10 @@ function pickUnique<T>(
 
 export async function resolveBook(store: MobileStore, ref: string): Promise<BookSummary> {
   return pickUnique(ref, await store.listBooks(), (book) => book.id, (book) => book.title, '书籍')
+}
+
+export async function resolveGroup(store: MobileStore, ref: string): Promise<BookGroup> {
+  return pickUnique(ref, await store.listGroups(), (group) => group.id, (group) => group.name, '分组')
 }
 
 export async function resolveNote(store: MobileStore, ref: string): Promise<NoteView> {

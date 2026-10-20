@@ -1,5 +1,6 @@
 import * as z from 'zod'
 
+import { searchNotes } from '../../../../shared/notes-search'
 import type { ToolFactory } from './deps'
 import { resolveNote } from './resolve'
 
@@ -20,6 +21,23 @@ export const noteTools: ToolFactory = ({ store }) => [
         updatedAtMs: note.updatedAtMs,
         preview: note.content.slice(0, 60)
       }))
+  },
+  {
+    name: 'notes_search',
+    description:
+      '按关键词搜索笔记标题与正文，返回命中的笔记与正文片段。用于在长笔记里定位内容。',
+    schema: z.object({
+      query: z.string().max(60).describe('搜索关键词'),
+      limit: z.number().int().min(1).max(20).optional().describe('最多返回几条，默认 10')
+    }),
+    risk: 'read',
+    summarize: (_input, result) => `命中 ${(result as unknown[]).length} 篇笔记`,
+    handler: async (input) => {
+      const query = String(input.query ?? '').trim()
+      if (!query) throw new Error('请提供搜索关键词')
+      const limit = typeof input.limit === 'number' ? input.limit : 10
+      return searchNotes(store.listNotes(), query, limit)
+    }
   },
   {
     name: 'notes_get',

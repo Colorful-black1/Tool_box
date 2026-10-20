@@ -1,6 +1,6 @@
 import { intParam, optionalInt, optionalText, requireInt, requireText, textParam } from '../tool-registry'
 import type { ToolFactory } from './deps'
-import { resolveBook } from './resolve'
+import { resolveBook, resolveGroup } from './resolve'
 
 /** 单次返回的正文上限，防止撑爆上下文（与桌面端一致） */
 const DEFAULT_CHAPTER_CHARS = 4000
@@ -90,6 +90,36 @@ export const bookTools: ToolFactory = ({ store }) => [
         truncated: detail.content.length > max,
         content: detail.content.slice(0, max)
       }
+    }
+  },
+  {
+    name: 'books_set_group',
+    description: '把某本小说归入某个分组；group 留空表示移出分组。',
+    parameters: {
+      type: 'object',
+      properties: {
+        book: textParam('书名或书籍 ID', 120),
+        group: textParam('分组名称或 ID，留空表示移出分组', 40)
+      },
+      required: ['book']
+    },
+    risk: 'write',
+    summarize: (_input, result) => {
+      const data = result as { book: string; group: string | null }
+      return data.group
+        ? `已把《${data.book}》归入分组「${data.group}」`
+        : `已将《${data.book}》移出分组`
+    },
+    handler: async (input) => {
+      const book = await resolveBook(store, requireText(input, 'book', '书名或书籍 ID', 120))
+      const groupRef = optionalText(input, 'group', '分组名称或 ID', 40)
+      if (!groupRef) {
+        await store.setBooksGroup([book.id], null)
+        return { book: book.title, group: null }
+      }
+      const group = await resolveGroup(store, groupRef)
+      await store.setBooksGroup([book.id], group.id)
+      return { book: book.title, group: group.name }
     }
   }
 ]

@@ -85,3 +85,7 @@ export { pinyinFirstLetter } from '../../src/main/services/library/pinyin-util'
 // 同一份 AST 保证两端语法表现一致（不引任何 Markdown 库）
 export { escapeHtml, parseInline, parseMarkdown } from '../../src/shared/markdown'
 export type { MdBlock, MdInline } from '../../src/shared/markdown'
+
+// 笔记搜索：两端同一套匹配与排序规则
+export { searchNotes } from '../../src/shared/notes-search'
+export type { NoteSearchHit } from '../../src/shared/notes-search'

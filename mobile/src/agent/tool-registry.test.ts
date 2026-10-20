@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { MobileStore } from '../data/store'
-import type { PasswordEntryView } from '../shared-bridge'
+import type { BookSummary, Bookmark, PasswordEntryView } from '../shared-bridge'
 import {
   collectTools,
   filterToolsByPermission,
@@ -14,6 +14,9 @@ import {
 import type { AgentToolContext, AgentToolDefinition } from './tool-registry'
 import { noteTools } from './tools/notes'
 import { passwordTools } from './tools/passwords'
+import { groupTools } from './tools/groups'
+import { bookmarkTools } from './tools/bookmarks'
+import { bookTools } from './tools/books'
 
 function makeContext(approved = true) {
   const calls: Array<{ callId: string; name: string; args: string }> = []
@@ -229,6 +232,29 @@ function fakeStore(overrides: Partial<MobileStore>): MobileStore {
   return overrides as unknown as MobileStore
 }
 
+const fakeBook: BookSummary = {
+  id: 'b1',
+  title: '三体',
+  author: '刘慈欣',
+  chapterCount: 3,
+  coverPath: '',
+  sortIndex: 0,
+  groupId: null,
+  createdAtMs: 1,
+  updatedAtMs: 1,
+  progress: null
+}
+
+const fakeBookmark: Bookmark = {
+  id: 'bm1',
+  bookId: 'b1',
+  chapterIdx: 2,
+  pageIdx: 1,
+  pageIdxRatio: 0.4,
+  snippet: '片段',
+  createdAtMs: 1
+}
+
 describe('passwords_list（手机端密码箱只读）', () => {
   it('账号脱敏、密码明文绝不进入工具返回值', async () => {
     const store = fakeStore({ listPasswords: async () => [passwordEntry] })
@@ -254,10 +280,12 @@ describe('passwords_list（手机端密码箱只读）', () => {
     })
   })
 
-  it('手机端不提供任何密码箱写工具', () => {
+  it('手机端密码箱不提供「保存 / 覆盖」工具，只给收藏与删除', () => {
     const store = fakeStore({})
     const names = passwordTools({ store }).map((tool) => tool.name)
-    expect(names).toEqual(['passwords_list'])
+    // 保存会重新加密并覆盖原密文，isDecryptable === false 的条目会被毁掉
+    expect(names).toEqual(['passwords_list', 'passwords_set_favorite', 'passwords_delete'])
+    expect(names).not.toContain('passwords_save')
   })
 })
 
@@ -296,5 +324,165 @@ describe('notes_save', () => {
       ctx: ctx2
     })
     expect(bad).toContain('请提供笔记正文')
+  })
+})
+
+describe('手机端新增的工具', () => {
+  it('passwords_set_favorite 只改收藏列，不触碰密文', async () => {
+    const setPasswordFavorite = vi.fn(async () => undefined)
+    const store = fakeStore({
+      listPasswords: async () => [passwordEntry],
+      setPasswordFavorite
+    } as unknown as Partial<MobileStore>)
+    const tool = passwordTools({ store }).find((item) => item.name === 'passwords_set_favorite')
+    if (!tool) throw new Error('缺少 passwords_set_favorite')
+
+    const { ctx } = makeContext(true)
+    const output = await runTool({
+      definition: tool,
+      callId: 'call_20',
+      rawArguments: JSON.stringify({ entry: 'GitHub', favorite: true }),
+      permission: 'confirm',
+      ctx
+    })
+
+    expect(setPasswordFavorite).toHaveBeenCalledWith('p1', true)
+    expect(JSON.parse(output)).toMatchObject({ title: 'GitHub', isFavorite: true })
+  })
+
+  it('passwords_delete 删除指定条目', async () => {
+    const deletePassword = vi.fn(async () => undefined)
+    const store = fakeStore({
+      listPasswords: async () => [passwordEntry],
+      deletePassword
+    } as unknown as Partial<MobileStore>)
+    const tool = passwordTools({ store }).find((item) => item.name === 'passwords_delete')
+    if (!tool) throw new Error('缺少 passwords_delete')
+
+    const { ctx } = makeContext(true)
+    await runTool({
+      definition: tool,
+      callId: 'call_21',
+      rawArguments: JSON.stringify({ entry: 'GitHub' }),
+      permission: 'confirm',
+      ctx
+    })
+
+    expect(deletePassword).toHaveBeenCalledWith('p1')
+  })
+
+  it('notes_delete 删除指定笔记', async () => {
+    const deleteNote = vi.fn(async () => undefined)
+    const store = fakeStore({
+      listNotes: async () => [
+        { id: 'n1', title: '灵感', content: '买牛奶', createdAtMs: 1, updatedAtMs: 1 }
+      ],
+      deleteNote
+    } as unknown as Partial<MobileStore>)
+    const tool = noteTools({ store }).find((item) => item.name === 'notes_delete')
+    if (!tool) throw new Error('缺少 notes_delete')
+
+    const { ctx } = makeContext(true)
+    await runTool({
+      definition: tool,
+      callId: 'call_22',
+      rawArguments: JSON.stringify({ note: '灵感' }),
+      permission: 'confirm',
+      ctx
+    })
+
+    expect(deleteNote).toHaveBeenCalledWith('n1')
+  })
+
+  it('notes_search 能搜到正文并返回片段', async () => {
+    const store = fakeStore({
+      listNotes: async () => [
+        {
+          id: 'n1',
+          title: '读书笔记',
+          content: '第二段提到星轨列车',
+          createdAtMs: 1,
+          updatedAtMs: 1
+        }
+      ]
+    } as unknown as Partial<MobileStore>)
+    const tool = noteTools({ store }).find((item) => item.name === 'notes_search')
+    if (!tool) throw new Error('缺少 notes_search')
+
+    const { ctx } = makeContext()
+    const output = await runTool({
+      definition: tool,
+      callId: 'call_23',
+      rawArguments: JSON.stringify({ query: '星轨列车' }),
+      permission: 'confirm',
+      ctx
+    })
+
+    const parsed = JSON.parse(output) as Array<{ id: string; snippet: string }>
+    expect(parsed[0]?.id).toBe('n1')
+    expect(parsed[0]?.snippet).toContain('星轨列车')
+  })
+
+  it('groups_list 列出分组', async () => {
+    const store = fakeStore({
+      listGroups: async () => [{ id: 'g1', name: '科幻', sortIndex: 0 }]
+    } as unknown as Partial<MobileStore>)
+    const tool = groupTools({ store }).find((item) => item.name === 'groups_list')
+    if (!tool) throw new Error('缺少 groups_list')
+
+    const { ctx } = makeContext()
+    const output = await runTool({
+      definition: tool,
+      callId: 'call_24',
+      rawArguments: '{}',
+      permission: 'confirm',
+      ctx
+    })
+
+    expect(JSON.parse(output)).toEqual([{ id: 'g1', name: '科幻' }])
+  })
+
+  it('bookmarks_list 列出指定书籍的书签', async () => {
+    const store = fakeStore({
+      listBooks: async () => [fakeBook],
+      listBookmarks: async () => [fakeBookmark]
+    } as unknown as Partial<MobileStore>)
+    const tool = bookmarkTools({ store }).find((item) => item.name === 'bookmarks_list')
+    if (!tool) throw new Error('缺少 bookmarks_list')
+
+    const { ctx } = makeContext()
+    const output = await runTool({
+      definition: tool,
+      callId: 'call_25',
+      rawArguments: JSON.stringify({ book: '三体' }),
+      permission: 'confirm',
+      ctx
+    })
+
+    const parsed = JSON.parse(output) as { book: { title: string }; bookmarks: unknown[] }
+    expect(parsed.book.title).toBe('三体')
+    expect(parsed.bookmarks).toHaveLength(1)
+  })
+
+  it('books_set_group 把书移入分组', async () => {
+    const setBooksGroup = vi.fn(async () => undefined)
+    const store = fakeStore({
+      listBooks: async () => [fakeBook],
+      listGroups: async () => [{ id: 'g1', name: '科幻', sortIndex: 0 }],
+      setBooksGroup
+    } as unknown as Partial<MobileStore>)
+    const tool = bookTools({ store }).find((item) => item.name === 'books_set_group')
+    if (!tool) throw new Error('缺少 books_set_group')
+
+    const { ctx } = makeContext(true)
+    await runTool({
+      definition: tool,
+      callId: 'call_26',
+      rawArguments: JSON.stringify({ book: '三体', group: '科幻' }),
+      permission: 'confirm',
+      ctx
+    })
+
+    expect(setBooksGroup).toHaveBeenCalledWith(['b1'], 'g1')
   })
 })

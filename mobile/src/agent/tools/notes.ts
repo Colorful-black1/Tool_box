@@ -1,4 +1,5 @@
-import { optionalText, requireText, textParam } from '../tool-registry'
+import { intParam, optionalInt, optionalText, requireText, textParam } from '../tool-registry'
+import { searchNotes } from '../../shared-bridge'
 import type { ToolFactory } from './deps'
 import { resolveNote } from './resolve'
 
@@ -22,6 +23,27 @@ export const noteTools: ToolFactory = ({ store }) => [
         updatedAtMs: note.updatedAtMs,
         preview: note.content.slice(0, 60)
       }))
+    }
+  },
+  {
+    name: 'notes_search',
+    description:
+      '按关键词搜索笔记标题与正文，返回命中的笔记与正文片段。用于在长笔记里定位内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: textParam('搜索关键词', 60),
+        limit: intParam('最多返回几条，默认 10', 1, 20)
+      },
+      required: ['query']
+    },
+    risk: 'read',
+    summarize: (_input, result) => `命中 ${(result as unknown[]).length} 篇笔记`,
+    handler: async (input) => {
+      const query = requireText(input, 'query', '搜索关键词', 60)
+      const limit = optionalInt(input, 'limit', '返回条数', 1, 20) ?? 10
+      const notes = await store.listNotes()
+      return searchNotes(notes, query, limit)
     }
   },
   {
@@ -68,6 +90,23 @@ export const noteTools: ToolFactory = ({ store }) => [
       const id = ref ? (await resolveNote(store, ref)).id : undefined
       const saved = await store.saveNote({ id, title, content })
       return { id: saved.id, title: saved.title, updated: id !== undefined }
+    }
+  },
+  {
+    name: 'notes_delete',
+    description: '删除一篇笔记。此操作不可撤销。',
+    parameters: {
+      type: 'object',
+      properties: { note: textParam('笔记标题或 ID', 120) },
+      required: ['note']
+    },
+    risk: 'destructive',
+    summarize: (_input, result) =>
+      `已删除笔记《${(result as { deleted: string }).deleted || '未命名'}》`,
+    handler: async (input) => {
+      const note = await resolveNote(store, requireText(input, 'note', '笔记标题或 ID', 120))
+      await store.deleteNote(note.id)
+      return { deleted: note.title }
     }
   }
 ]

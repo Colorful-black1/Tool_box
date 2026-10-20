@@ -1,5 +1,6 @@
-import { optionalText, textParam } from '../tool-registry'
+import { optionalText, requireText, textParam } from '../tool-registry'
 import type { ToolFactory } from './deps'
+import { resolvePassword } from './resolve'
 
 /**
  * 账号脱敏：密码箱明文绝不进入模型上下文。
@@ -16,12 +17,14 @@ function maskAccount(value: string): string {
 }
 
 /**
- * 手机端密码箱**只读**（M6 的刻意取舍）。
+ * 手机端密码箱：**不给「保存 / 覆盖」，只给收藏与删除**。
  *
- * 桌面端有 `passwords_save` / `passwords_set_favorite` / `passwords_delete`，
- * 手机端一个都不给：`isDecryptable === false` 的条目一旦被覆盖保存，
- * 原始密文会被占位文本永久替换（见 docs/ROADMAP.md 第 3 节）。
- * AI 驱动的写操作更容易在用户没看清条目状态时触发，因此先不开这个口子。
+ * 桌面端还有 `passwords_save`，手机端刻意不给：`isDecryptable === false`
+ * 的条目一旦被覆盖保存，原始密文会被占位文本永久替换（见 docs/ROADMAP.md 第 3 节）。
+ *
+ * 但 `passwords_set_favorite` 与 `passwords_delete` 是安全的 ——
+ * 前者只 `UPDATE is_favorite` 一列，后者只删行，**都不经过加解密**，
+ * 因此不会破坏任何条目的原始密文。这两个工具在桌面端同名同义。
  */
 export const passwordTools: ToolFactory = ({ store }) => [
   {
@@ -54,6 +57,52 @@ export const passwordTools: ToolFactory = ({ store }) => [
           isFavorite: entry.isFavorite,
           isDecryptable: entry.isDecryptable
         }))
+    }
+  },
+  {
+    name: 'passwords_set_favorite',
+    description: '把某条密码箱记录设为 / 取消收藏。不会改动密码本身。',
+    parameters: {
+      type: 'object',
+      properties: {
+        entry: textParam('条目名称或 ID', 120),
+        favorite: { type: 'boolean', description: 'true 收藏，false 取消收藏' }
+      },
+      required: ['entry', 'favorite']
+    },
+    risk: 'write',
+    summarize: (_input, result) => {
+      const data = result as { title: string; isFavorite: boolean }
+      return `已${data.isFavorite ? '收藏' : '取消收藏'}「${data.title}」`
+    },
+    handler: async (input) => {
+      const entry = await resolvePassword(
+        store,
+        requireText(input, 'entry', '条目名称或 ID', 120)
+      )
+      const favorite = input['favorite'] === true
+      await store.setPasswordFavorite(entry.id, favorite)
+      return { title: entry.title, isFavorite: favorite }
+    }
+  },
+  {
+    name: 'passwords_delete',
+    description: '删除一条密码箱记录。此操作不可撤销。',
+    parameters: {
+      type: 'object',
+      properties: { entry: textParam('条目名称或 ID', 120) },
+      required: ['entry']
+    },
+    risk: 'destructive',
+    summarize: (_input, result) =>
+      `已删除密码条目「${(result as { deleted: string }).deleted}」`,
+    handler: async (input) => {
+      const entry = await resolvePassword(
+        store,
+        requireText(input, 'entry', '条目名称或 ID', 120)
+      )
+      await store.deletePassword(entry.id)
+      return { deleted: entry.title }
     }
   }
 ]
