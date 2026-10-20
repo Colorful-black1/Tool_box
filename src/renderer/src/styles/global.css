@@ -2557,6 +2557,30 @@ textarea,
   font-size: 11.5px;
 }
 
+/* 下拉顶部的过滤框：模型列表几十条时用来定位 */
+.ui-dropdown-search {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  padding: 4px 4px 6px;
+  background: rgba(14, 18, 34, 0.97);
+}
+
+.ui-dropdown-search-input {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 7px;
+  background: rgba(8, 11, 22, 0.9);
+  color: var(--text-hi);
+  font-size: 12px;
+  outline: none;
+}
+
+.ui-dropdown-search-input:focus {
+  border-color: rgba(232, 201, 138, 0.5);
+}
+
 .dropdown-compact .ui-dropdown-label {
   max-width: 132px;
 }
@@ -2890,6 +2914,38 @@ textarea,
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 模型下拉的来源说明：实时列表 / 降级原因，避免"拉取失败"静默无感 */
+.model-notice {
+  margin-top: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.model-notice.warn {
+  color: var(--gold-dim);
+}
+
+/* 设置页：拉模型列表的按钮 + 结果说明 */
+.model-fetch-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.field-hint.warn {
+  color: var(--gold-dim);
+}
+
+/* 设置页：开关行（标题在左、开关在右） */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 /* 输入框在面板底部，下拉向上展开，避免超出可视区域 */

@@ -36,6 +36,7 @@ import { AGENT_PERMISSION_LABELS, DEFAULT_AGENT_PERMISSION } from '../../shared-
 import { colors, fonts, radius, spacing } from '../../theme'
 import { ApprovalCard } from './approval-card'
 import type { PendingApprovalView } from './approval-card'
+import { ModelPickerSheet } from './model-picker-sheet'
 import { ToolCallList } from './tool-call-list'
 import type { ToolCallView } from './tool-call-list'
 
@@ -45,7 +46,7 @@ interface Props {
 }
 
 export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
-  const { store, gateway } = useServices()
+  const { store, gateway, aiSettings } = useServices()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState('')
   const [toolCalls, setToolCalls] = useState<ToolCallView[]>([])
@@ -55,6 +56,8 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   const [sending, setSending] = useState(false)
   const [draft, setDraft] = useState('')
   const [permission, setPermission] = useState<AgentPermission>(DEFAULT_AGENT_PERMISSION)
+  const [model, setModel] = useState('')
+  const [modelOpen, setModelOpen] = useState(false)
   const listRef = useRef<FlatList<ChatMessage> | null>(null)
   /**
    * 是否贴着底部。
@@ -90,6 +93,19 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
       }
     })()
   }, [store])
+
+  // 当前档案用的模型：显示在输入框上方，点一下就能换
+  useEffect(() => {
+    void (async () => {
+      try {
+        const view = await aiSettings.getView()
+        const active = view.profiles.find((item) => item.id === view.activeId)
+        setModel(active?.model ?? '')
+      } catch {
+        // 读不到就不显示模型名，不影响对话
+      }
+    })()
+  }, [aiSettings])
 
   /**
    * 离开会话时拒绝挂起的审批。
@@ -178,6 +194,26 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   }
 
   const stop = (): void => gateway.stop(conversationId)
+
+  /** 切换模型：写回当前档案，下一轮对话就用新模型 */
+  const selectModel = async (next: string): Promise<void> => {
+    setModel(next)
+    try {
+      const view = await aiSettings.getView()
+      const active = view.profiles.find((item) => item.id === view.activeId)
+      if (!active) return
+      await aiSettings.save({
+        id: active.id,
+        name: active.name,
+        provider: active.provider,
+        baseUrl: active.baseUrl,
+        model: next,
+        showRemoteModels: active.showRemoteModels
+      })
+    } catch (selectError) {
+      setError(selectError instanceof Error ? selectError.message : '切换模型失败')
+    }
+  }
 
   /** 记录是否还贴着底部：离底超过一屏就认为用户在看历史 */
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
@@ -278,6 +314,30 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
           <Text style={styles.jumpText}>↓ 回到最新</Text>
         </Pressable>
       ) : null}
+
+      {/*
+        模型入口：放在输入框上方（与桌面端把模型下拉放在输入框旁一致），
+        不塞进页头 —— 页头已经有权限档位和停止按钮，再加一项会很挤。
+      */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="切换模型"
+        onPress={() => setModelOpen(true)}
+        style={styles.modelRow}
+      >
+        <Text style={styles.modelLabel}>模型</Text>
+        <Text style={styles.modelValue} numberOfLines={1}>
+          {model || '未选择'}
+        </Text>
+        <Text style={styles.modelCaret}>▾</Text>
+      </Pressable>
+
+      <ModelPickerSheet
+        visible={modelOpen}
+        current={model}
+        onClose={() => setModelOpen(false)}
+        onSelect={(next) => void selectModel(next)}
+      />
 
       {/*
         输入区整体上移键盘高度。
@@ -433,6 +493,19 @@ const styles = StyleSheet.create({
   cursor: { color: colors.gold, fontSize: 12 },
   // 外层只负责挂 marginBottom，内容样式留给 composer，两层职责分开
   composerWrap: { backgroundColor: colors.bgPanelSolid },
+  modelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgPanelSolid,
+    borderTopWidth: 1,
+    borderTopColor: colors.lineSoft
+  },
+  modelLabel: { color: colors.textDim, fontSize: 11 },
+  modelValue: { flex: 1, color: colors.gold, fontSize: 12, fontFamily: fonts.mono },
+  modelCaret: { color: colors.textDim, fontSize: 11 },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

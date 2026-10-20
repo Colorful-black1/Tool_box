@@ -9,6 +9,7 @@ import type {
   AiConfigView,
   AiFetchModelsInput,
   AiModelListResult,
+  AiModelSource,
   AiProfileInput,
   AiProfileView,
   AppInfo,
@@ -79,6 +80,15 @@ interface AppState {
   /** 对话页模型下拉的可选模型（当前模型 + 供应商推荐 + 拉取结果） */
   chatModels: string[]
   chatModelsLoading: boolean
+  /**
+   * 下拉里这批模型来自哪：remote = 供应商实时列表，preset = 内置推荐（降级）。
+   * null = 还没拉过远端。
+   */
+  chatModelsSource: AiModelSource | null
+  /** 实时列表本身的条数（合并前的原始数量，避免把内置推荐算进去） */
+  chatModelsRemoteCount: number
+  /** 拉取失败 / 降级的原因（已脱敏），空串表示没有提示 */
+  chatModelsNotice: string
 
   books: BookSummary[]
   groups: BookGroup[]
@@ -177,6 +187,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   agentPermission: DEFAULT_AGENT_PERMISSION,
   chatModels: [],
   chatModelsLoading: false,
+  chatModelsSource: null,
+  chatModelsRemoteCount: 0,
+  chatModelsNotice: '',
   books: [],
   groups: [],
   activeBookId: null,
@@ -593,15 +606,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadChatModels: async () => {
     const active = activeProfileOf(get().settings)
     if (!active) {
-      set({ chatModels: [] })
+      set({ chatModels: [], chatModelsSource: null, chatModelsNotice: '' })
       return
     }
-    set({ chatModels: mergeModels(active.model, [findAiProvider(active.provider).models]) })
+    // 先秒出内置推荐（离线也能选），随后再拉远端合并
+    set({
+      chatModels: mergeModels(active.model, [findAiProvider(active.provider).models]),
+      chatModelsSource: null,
+      chatModelsNotice: ''
+    })
+    // 档案里关掉了「显示实时列表」就只保留内置推荐，也不发这个请求
+    if (active.showRemoteModels === false) {
+      set({ chatModelsSource: 'preset' })
+      return
+    }
+    void get().refreshChatModels()
   },
 
   refreshChatModels: async () => {
     const active = activeProfileOf(get().settings)
     if (!active || get().chatModelsLoading) return
+    // 档案里明确关掉了实时列表：连手动刷新也不拉，免得又混进来
+    if (active.showRemoteModels === false) {
+      set({
+        chatModels: mergeModels(active.model, [findAiProvider(active.provider).models]),
+        chatModelsSource: 'preset',
+        chatModelsNotice: ''
+      })
+      return
+    }
     set({ chatModelsLoading: true })
     const preset = findAiProvider(active.provider).models
     try {
@@ -610,10 +643,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         provider: active.provider,
         baseUrl: active.baseUrl
       })
-      set({ chatModels: mergeModels(active.model, [preset, result.models]) })
-    } catch {
-      // 拉取失败（未配置 Key / 断网等）时回落到「当前模型 + 内置推荐」，不打断使用
-      set({ chatModels: mergeModels(active.model, [preset]) })
+      // 期间用户可能切了档案：这份结果已经过期，丢弃
+      if (activeProfileOf(get().settings)?.id !== active.id) return
+      set({
+        chatModels: mergeModels(active.model, [preset, result.models]),
+        chatModelsSource: result.source,
+        chatModelsRemoteCount: result.source === 'remote' ? result.models.length : 0,
+        // 降级时主进程会给出原因，这里原样展示（已脱敏），不再静默吞掉
+        chatModelsNotice:
+          result.source === 'remote'
+            ? ''
+            : (result.message ?? '未能获取供应商实时模型列表')
+      })
+    } catch (error) {
+      if (activeProfileOf(get().settings)?.id !== active.id) return
+      // 拉取失败（未配置 Key / 断网等）时回落到「当前模型 + 内置推荐」，并说明原因
+      set({
+        chatModels: mergeModels(active.model, [preset]),
+        chatModelsSource: 'preset',
+        chatModelsRemoteCount: 0,
+        chatModelsNotice: error instanceof Error ? error.message : '未能获取供应商实时模型列表'
+      })
     } finally {
       set({ chatModelsLoading: false })
     }

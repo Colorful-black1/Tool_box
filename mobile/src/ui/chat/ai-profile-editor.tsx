@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
 import { AI_PROVIDER_PRESETS, findAiProvider } from '../../shared-bridge'
 import type { AiProfileView, AiProviderId, AiProviderPreset } from '../../shared-bridge'
@@ -38,6 +38,8 @@ export function AiProfileEditor({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
+  /** 对话下拉是否显示供应商实时模型列表 */
+  const [showRemoteModels, setShowRemoteModels] = useState(existing?.showRemoteModels ?? true)
 
   const pickProvider = (next: AiProviderId): void => {
     const preset = findAiProvider(next)
@@ -47,23 +49,43 @@ export function AiProfileEditor({
     setModel(preset.models[0] ?? model)
     setModels([])
     setNote('')
+    // 顺手拉一次该供应商的实时模型列表：省得用户再点一次「拉取模型列表」
+    void loadModels({ provider: next, baseUrl: preset.baseUrl }, true)
   }
 
-  const loadModels = async (): Promise<void> => {
+  /**
+   * 拉取模型列表。
+   *
+   * `silent` 用于「换供应商自动拉取」这类顺带动作：失败只给一句提示，
+   * 不弹错误横幅（那时用户可能还没填 Key）。
+   */
+  const loadModels = async (
+    overrides?: { provider?: AiProviderId; baseUrl?: string },
+    silent = false
+  ): Promise<void> => {
+    const targetProvider = overrides?.provider ?? provider
+    const targetBaseUrl = overrides?.baseUrl ?? baseUrl
     setLoadingModels(true)
     setError('')
     setNote('')
     try {
       const result = await fetchModels(
         aiSettings,
-        { profileId, provider, baseUrl, apiKey: apiKey || undefined },
+        {
+          profileId,
+          provider: targetProvider,
+          baseUrl: targetBaseUrl,
+          apiKey: apiKey || undefined
+        },
         fetchImpl
       )
       setModels(result.models)
       if (result.message) setNote(result.message)
       if (!result.models.includes(model)) setModel(result.models[0] ?? model)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '获取模型列表失败')
+      const message = loadError instanceof Error ? loadError.message : '获取模型列表失败'
+      if (silent) setNote(message)
+      else setError(message)
     } finally {
       setLoadingModels(false)
     }
@@ -79,7 +101,8 @@ export function AiProfileEditor({
         provider,
         baseUrl,
         model,
-        apiKey: apiKey || undefined
+        apiKey: apiKey || undefined,
+        showRemoteModels
       })
       onDone()
     } catch (saveError) {
@@ -136,6 +159,22 @@ export function AiProfileEditor({
           placeholder="deepseek-v4-pro"
           autoCapitalize="none"
         />
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.switchTitle}>对话下拉显示实时模型列表</Text>
+            <Text style={styles.switchHint}>
+              关闭后只列内置推荐模型，也不再自动请求供应商接口
+            </Text>
+          </View>
+          <Switch
+            value={showRemoteModels}
+            onValueChange={setShowRemoteModels}
+            trackColor={{ false: colors.line, true: colors.goldDim }}
+            thumbColor={showRemoteModels ? colors.gold : colors.textDim}
+            accessibilityLabel="对话下拉显示实时模型列表"
+          />
+        </View>
 
         <View style={styles.actions}>
           <GhostButton
@@ -196,6 +235,16 @@ function Chip({
 
 const styles = StyleSheet.create({
   root: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  switchText: { flex: 1, gap: 2 },
+  switchTitle: { color: colors.textHi, fontSize: 13 },
+  switchHint: { color: colors.textDim, fontSize: 11, lineHeight: 16 },
   chips: { paddingVertical: spacing.xs, paddingRight: spacing.lg },
   chip: {
     paddingVertical: 6,

@@ -50,7 +50,9 @@ describe('SettingsService', () => {
         provider: 'custom',
         baseUrl: 'https://api.example.com/v1',
         model: 'test-model',
-        hasApiKey: true
+        hasApiKey: true,
+        // 新档案默认显示供应商实时模型列表
+        showRemoteModels: true
       }
     ])
     // 首个档案自动启用
@@ -86,8 +88,60 @@ describe('SettingsService', () => {
     expect(config.apiKey).toBe('sk-secret-value')
   })
 
-  it('rejects a new profile without any API key', async () => {
+  it('keeps the "show remote models" flag per profile', async () => {
     const service = new SettingsService(directory, new FakeSafeStorage())
+    const created = await service.save({
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'test-model',
+      apiKey: 'sk-1',
+      showRemoteModels: false
+    })
+    const id = created.profiles[0].id
+    expect(created.profiles[0].showRemoteModels).toBe(false)
+
+    // 后续保存不带这个字段时保持原值
+    const updated = await service.save({
+      id,
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'test-model-2'
+    })
+    expect(updated.profiles[0].showRemoteModels).toBe(false)
+
+    // 重新打开（从磁盘读）也还是 false
+    const reopened = new SettingsService(directory, new FakeSafeStorage())
+    expect((await reopened.getView()).profiles[0].showRemoteModels).toBe(false)
+  })
+
+  it('treats a legacy config without the flag as "show remote models"', async () => {
+    await writeFile(
+      join(directory, SETTINGS_FILE_NAME),
+      JSON.stringify({
+        version: 2,
+        activeId: 'p1',
+        profiles: [
+          {
+            id: 'p1',
+            name: '老配置',
+            provider: 'custom',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'old-model',
+            apiKeyCipher: ''
+          }
+        ]
+      }),
+      'utf8'
+    )
+
+    const service = new SettingsService(directory, new FakeSafeStorage())
+    const view = await service.getView()
+    expect(view.profiles[0].showRemoteModels).toBe(true)
+  })
+
+  it('rejects a new profile without any API key', async () => {    const service = new SettingsService(directory, new FakeSafeStorage())
     await expect(
       service.save({
         name: '空 Key',

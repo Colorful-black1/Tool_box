@@ -48,6 +48,11 @@ export interface StoredAiProfile {
   model: string
   /** API Key 的 AES-GCM 信封（JSON 字符串） */
   apiKeyCipher: string
+  /**
+   * 对话下拉是否显示供应商实时模型列表。
+   * 旧档案没有这个字段，读出来时按 true 处理（加字段，不改 version）。
+   */
+  showRemoteModels?: boolean
 }
 
 export interface StoredAiSettings {
@@ -66,7 +71,8 @@ function toView(profile: StoredAiProfile): AiProfileView {
     provider: profile.provider,
     baseUrl: profile.baseUrl,
     model: profile.model,
-    hasApiKey: Boolean(profile.apiKeyCipher)
+    hasApiKey: Boolean(profile.apiKeyCipher),
+    showRemoteModels: profile.showRemoteModels ?? true
   }
 }
 
@@ -136,7 +142,9 @@ export class AiSettingsService {
       model,
       apiKeyCipher: apiKey
         ? await this.secretBox.encryptText(apiKey)
-        : (existing?.apiKeyCipher ?? '')
+        : (existing?.apiKeyCipher ?? ''),
+      // 留空视为「显示」：老档案没有这个字段时行为不变
+      showRemoteModels: input.showRemoteModels ?? existing?.showRemoteModels ?? true
     }
 
     const profiles = existing
@@ -266,6 +274,8 @@ function toStoredProfile(item: unknown): StoredAiProfile | null {
     provider,
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : '',
     model: typeof record.model === 'string' ? record.model : '',
-    apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : ''
+    apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : '',
+    // 旧档案没有这个字段：按「显示实时列表」处理
+    showRemoteModels: record.showRemoteModels !== false
   }
 }

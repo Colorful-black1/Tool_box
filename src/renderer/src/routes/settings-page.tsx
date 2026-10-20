@@ -4,6 +4,7 @@ import type { FormEvent, JSX } from 'react'
 import { AI_PROVIDER_PRESETS, findAiProvider } from '@shared/types'
 import type {
   AiConfigView,
+  AiModelSource,
   AiProfileInput,
   AiProfileView,
   AiProviderId
@@ -18,6 +19,8 @@ interface ProfileDraft {
   baseUrl: string
   model: string
   apiKey: string
+  /** 对话下拉是否显示供应商实时模型列表 */
+  showRemoteModels: boolean
 }
 
 type SaveStatus =
@@ -25,6 +28,15 @@ type SaveStatus =
   | { type: 'saving' }
   | { type: 'success'; message: string }
   | { type: 'error'; message: string }
+
+/** 拉取模型列表的结果 */
+interface ModelListState {
+  count: number
+  /** remote = 供应商实时列表；preset = 降级为内置推荐 */
+  source: AiModelSource
+  /** 降级原因（已脱敏） */
+  message?: string
+}
 
 export function SettingsPage(): JSX.Element {
   const settings = useAppStore((state) => state.settings)
@@ -51,6 +63,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const saveProfile = useAppStore((state) => state.saveProfile)
   const removeProfile = useAppStore((state) => state.removeProfile)
   const activateProfile = useAppStore((state) => state.activateProfile)
+  const fetchModels = useAppStore((state) => state.fetchModels)
 
   // 草稿是表单的唯一真相源：档案列表高亮直接由 draft.id 推导，
   // 避免用 selectedId 另存一份状态后与草稿不同步。
@@ -58,6 +71,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     toDraft(settings.profiles.find((item) => item.id === settings.activeId) ?? null)
   )
   const [status, setStatus] = useState<SaveStatus>({ type: 'idle' })
+  /** 拉取模型列表的结果：数量 + 来源（实时 / 降级）+ 原因 */
+  const [modelList, setModelList] = useState<ModelListState | null>(null)
+  const [loadingModels, setLoadingModels] = useState(false)
 
   // 当前编辑的档案被外部删除时关闭草稿；新建草稿（id 为 null）不受影响
   useEffect(() => {
@@ -89,7 +105,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       provider: preset.id,
       baseUrl: preset.baseUrl,
       model: preset.models[0] ?? '',
-      apiKey: ''
+      apiKey: '',
+      showRemoteModels: true
     })
     setStatus({ type: 'idle' })
   }
@@ -120,7 +137,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       provider: draft.provider,
       baseUrl: draft.baseUrl,
       model: draft.model,
-      apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined
+      apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
+      showRemoteModels: draft.showRemoteModels
     }
 
     setStatus({ type: 'saving' })
@@ -152,6 +170,43 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
         type: 'error',
         message: error instanceof Error && error.message ? error.message : '删除失败'
       })
+    }
+  }
+
+  /**
+   * 拉取该供应商当前的模型列表。
+   *
+   * 这是「当场验证 Key 是否有效」的最快方式：远端能列出来就说明 Key 与地址都对，
+   * 列不出来时主进程会降级为内置推荐并给出原因，这里原样显示。
+   */
+  const onFetchModels = async (): Promise<void> => {
+    if (!draft || loadingModels) return
+    setLoadingModels(true)
+    setModelList(null)
+    try {
+      const result = await fetchModels({
+        profileId: draft.id ?? undefined,
+        provider: draft.provider,
+        baseUrl: draft.baseUrl,
+        apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined
+      })
+      setModelList({
+        count: result.models.length,
+        source: result.source,
+        message: result.message
+      })
+      // 实时列表拉到了就把模型名填进草稿，省得再去对话页选一次
+      if (result.source === 'remote' && result.models.length > 0 && !draft.model) {
+        patchDraft({ model: result.models[0] })
+      }
+    } catch (error) {
+      setModelList({
+        count: 0,
+        source: 'preset',
+        message: error instanceof Error ? error.message : '获取失败'
+      })
+    } finally {
+      setLoadingModels(false)
     }
   }
 
@@ -294,6 +349,54 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                 </p>
               </div>
 
+              <div>
+                <label className="field-label" htmlFor="model-fetch">
+                  模型列表 · MODELS
+                </label>
+                <div className="model-fetch-row">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={loadingModels}
+                    onClick={() => void onFetchModels()}
+                  >
+                    {loadingModels ? '获取中…' : '获取模型列表'}
+                  </button>
+                  {modelList ? (
+                    <span
+                      className={`field-hint${modelList.source === 'remote' ? '' : ' warn'}`}
+                      role="status"
+                    >
+                      {modelList.source === 'remote'
+                        ? `供应商实时列表 ${modelList.count} 个`
+                        : `未能获取实时列表（${modelList.message ?? '未知原因'}），已列出内置推荐`}
+                    </span>
+                  ) : (
+                    <span className="field-hint">
+                      拉取该供应商当前可用的模型；拉不到时回落到内置推荐并说明原因。
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="settings-toggle-row">
+                <span className="field-label" id="show-remote-models-label">
+                  对话下拉显示供应商实时模型列表
+                </span>
+                <button
+                  type="button"
+                  className={`toggle-switch${draft.showRemoteModels ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={draft.showRemoteModels}
+                  aria-labelledby="show-remote-models-label"
+                  onClick={() =>
+                    patchDraft({ showRemoteModels: !draft.showRemoteModels })
+                  }
+                >
+                  <span />
+                </button>
+              </div>
+
               <div className="settings-actions">
                 <button type="submit" className="btn-gold" disabled={status.type === 'saving'}>
                   {status.type === 'saving' ? '保存中' : '保存配置'}
@@ -343,6 +446,7 @@ function toDraft(profile: AiProfileView | null): ProfileDraft | null {
     provider: profile.provider,
     baseUrl: profile.baseUrl,
     model: profile.model,
-    apiKey: ''
+    apiKey: '',
+    showRemoteModels: profile.showRemoteModels ?? true
   }
 }

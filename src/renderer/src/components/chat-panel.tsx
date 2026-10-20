@@ -332,9 +332,45 @@ function Composer(): JSX.Element {
             </button>
           )}
         </div>
+        <ModelNotice />
       </div>
     </form>
   )
+}
+
+/**
+ * 模型下拉的来源说明。
+ *
+ * 之前拉取失败是**完全静默**的：主进程降级成内置推荐，界面只看到「8 个模型」，
+ * 用户根本不知道是没拉到还是就这些。现在把来源和失败原因摆出来。
+ */
+function ModelNotice(): JSX.Element | null {
+  const source = useAppStore((state) => state.chatModelsSource)
+  const notice = useAppStore((state) => state.chatModelsNotice)
+  const remoteCount = useAppStore((state) => state.chatModelsRemoteCount)
+
+  if (notice) {
+    return (
+      <div className="model-notice warn" role="status">
+        {notice} · 可到设置页检查接口地址与 API Key
+      </div>
+    )
+  }
+  if (source === 'remote') {
+    return (
+      <div className="model-notice" role="status">
+        供应商实时列表 · {remoteCount} 个
+      </div>
+    )
+  }
+  if (source === 'preset') {
+    return (
+      <div className="model-notice" role="status">
+        当前只显示内置推荐模型
+      </div>
+    )
+  }
+  return null
 }
 
 function ModelSelect(): JSX.Element | null {
@@ -359,6 +395,7 @@ function ModelSelect(): JSX.Element | null {
         options={options}
         placeholder="未选择模型"
         triggerClassName="dropdown-compact dropdown-model"
+        searchable
         onChange={(value) => void selectModel(value)}
       />
       <button

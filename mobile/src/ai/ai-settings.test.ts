@@ -86,6 +86,17 @@ describe('AiSettingsService.save', () => {
     expect(view.activeId).toBe(view.profiles[0]?.id)
   })
 
+  it('「显示实时模型列表」按档案保存，留空时保持原值', async () => {
+    const { service } = makeService()
+    const created = await service.save({ ...BASE, showRemoteModels: false })
+    const id = created.profiles[0]?.id
+    expect(created.profiles[0]?.showRemoteModels).toBe(false)
+
+    // 不带该字段再次保存：保持 false
+    const updated = await service.save({ ...BASE, id })
+    expect(updated.profiles[0]?.showRemoteModels).toBe(false)
+  })
+
   it('新增第二套不会顶替已启用的档案', async () => {
     const { service } = makeService()
     const first = await service.save(BASE)
@@ -324,5 +335,10 @@ describe('normalizeStoredSettings', () => {
       model: '',
       apiKeyCipher: ''
     })
+  })
+
+  it('旧档案没有「显示实时模型列表」字段时按 true 处理', () => {
+    const result = normalizeStoredSettings({ version: 2, profiles: [{ id: 'a' }] }, newId)
+    expect(result.profiles[0]?.showRemoteModels).toBe(true)
   })
 })

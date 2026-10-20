@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 import { useOverlayEscape } from '../lib/use-overlay-dismiss'
@@ -7,6 +7,9 @@ export interface DropdownOption {
   value: string
   label: string
 }
+
+/** 超过这个数量的选项就显示过滤框 */
+const SEARCHABLE_THRESHOLD = 8
 
 interface DropdownProps {
   value: string
@@ -19,6 +22,11 @@ interface DropdownProps {
   align?: 'left' | 'right'
   /** 触发按钮附加类名，用于尺寸/色彩微调 */
   triggerClassName?: string
+  /**
+   * 选项较多时（超过 {@link SEARCHABLE_THRESHOLD} 条）在菜单顶部显示过滤框。
+   * 模型列表动辄三四十条，没有过滤框基本没法找。
+   */
+  searchable?: boolean
   ariaLabel: string
 }
 
@@ -36,9 +44,11 @@ export function Dropdown({
   disabled = false,
   align = 'right',
   triggerClassName = '',
+  searchable = false,
   ariaLabel
 }: DropdownProps): JSX.Element {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const wrapRef = useRef<HTMLDivElement>(null)
 
   useOverlayEscape(() => setOpen(false))
@@ -53,6 +63,19 @@ export function Dropdown({
   }, [open])
 
   const selected = options.find((option) => option.value === value) ?? null
+
+  // 每次打开都清掉上一次的过滤词，避免下次进来是空的
+  useEffect(() => {
+    if (open) setQuery('')
+  }, [open])
+
+  const showFilter = searchable && options.length > SEARCHABLE_THRESHOLD
+  const visibleOptions = useMemo(() => {
+    if (!showFilter) return options
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return options
+    return options.filter((option) => option.label.toLowerCase().includes(keyword))
+  }, [options, query, showFilter])
 
   return (
     <div className="ui-dropdown" ref={wrapRef}>
@@ -75,10 +98,23 @@ export function Dropdown({
 
       {open ? (
         <ul className={`ui-dropdown-menu ${align}`} role="listbox" aria-label={ariaLabel}>
-          {options.length === 0 ? (
+          {showFilter ? (
+            <li className="ui-dropdown-search">
+              <input
+                className="ui-dropdown-search-input"
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="筛选…"
+                aria-label={`${ariaLabel} 过滤`}
+                autoFocus
+              />
+            </li>
+          ) : null}
+          {visibleOptions.length === 0 ? (
             <li className="ui-dropdown-empty">暂无可选项</li>
           ) : (
-            options.map((option) => (
+            visibleOptions.map((option) => (
               <li key={option.value}>
                 <button
                   type="button"

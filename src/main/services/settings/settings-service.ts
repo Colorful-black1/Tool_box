@@ -32,6 +32,11 @@ interface StoredProfile {
   baseUrl: string
   model: string
   apiKeyCipher: string
+  /**
+   * 对话下拉是否显示供应商实时模型列表。
+   * 旧配置文件没有这个字段，读出来时按 true 处理（加字段，不改 version）。
+   */
+  showRemoteModels?: boolean
 }
 
 const MAX_NAME_CHARS = 24
@@ -114,7 +119,9 @@ export class SettingsService {
       model,
       apiKeyCipher: apiKey
         ? this.safeStorage.encryptString(apiKey).toString('base64')
-        : (existing?.apiKeyCipher ?? '')
+        : (existing?.apiKeyCipher ?? ''),
+      // 留空视为「显示」：老档案没有这个字段时行为不变
+      showRemoteModels: input.showRemoteModels ?? existing?.showRemoteModels ?? true
     }
 
     const profiles = existing
@@ -258,7 +265,8 @@ function toProfileView(profile: StoredProfile): AiProfileView {
     provider: profile.provider,
     baseUrl: profile.baseUrl,
     model: profile.model,
-    hasApiKey: profile.apiKeyCipher.length > 0
+    hasApiKey: profile.apiKeyCipher.length > 0,
+    showRemoteModels: profile.showRemoteModels ?? true
   }
 }
 
@@ -325,6 +333,8 @@ function toStoredProfile(value: unknown): StoredProfile | null {
     provider,
     baseUrl,
     model: typeof record.model === 'string' ? record.model.trim() : '',
-    apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : ''
+    apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : '',
+    // 旧档案没有这个字段：按「显示实时列表」处理
+    showRemoteModels: record.showRemoteModels !== false
   }
 }

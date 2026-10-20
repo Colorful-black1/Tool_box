@@ -74,15 +74,29 @@ export const AI_PROVIDER_PRESETS: readonly AiProviderPreset[] = [
     id: 'opencode-go',
     name: 'OpenCode Go',
     baseUrl: 'https://opencode.ai/zen/go/v1',
+    /**
+     * 内置推荐 = 供应商目录的**兜底快照**，不是全部。
+     * 实测该目录是动态的（两次请求返回的模型数都不一样），
+     * 所以只保一批主流模型，真正的完整列表靠「获取模型」实时拉取。
+     */
     models: [
       'glm-5.3',
       'glm-5.3-flash',
+      'glm-5.2',
+      'grok-4.6',
+      'grok-4.7',
+      'gpt-6-luna',
+      'gpt-5.6-luna',
+      'claude-haiku-5-5',
       'kimi-k3',
+      'kimi-k2.7-code',
       'minimax-m3',
+      'minimax-m2.7',
+      'mimo-v2.6-pro',
       'qwen3.7-max',
+      'qwen3.8-max',
       'deepseek-v4-pro',
-      'deepseek-v4-flash',
-      'grok-4.6'
+      'deepseek-v4.1-flash'
     ],
     consoleUrl: 'https://opencode.ai/go'
   },
@@ -149,6 +163,13 @@ export interface AiProfileView {
   baseUrl: string
   model: string
   hasApiKey: boolean
+  /**
+   * 对话下拉里是否显示该档案的「供应商实时模型列表」。
+   *
+   * 缺省为 true（显示）。关掉后下拉只列内置推荐，且不再自动请求供应商接口。
+   * 按档案存：不同供应商的目录规模差很多（opencode 37 个 vs 本地网关几百个）。
+   */
+  showRemoteModels?: boolean
 }
 
 export interface AiConfigView {
@@ -165,6 +186,8 @@ export interface AiProfileInput {
   model: string
   /** 留空表示沿用已保存的 Key */
   apiKey?: string
+  /** 对话下拉是否显示供应商实时模型列表；留空按 true 处理 */
+  showRemoteModels?: boolean
 }
 
 /** 获取模型列表入参：apiKey 留空时回落到档案已保存的 Key */
