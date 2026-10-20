@@ -1,123 +1,61 @@
 /**
- * 轻量 Markdown 渲染（对应旧项目 flutter_markdown 的常用子集）。
- * 安全策略：先对全部输入做 HTML 转义，再插入受控标签，
- * 因此用户笔记里的原始 HTML 不会被执行。
+ * 轻量 Markdown 渲染（桌面端）—— 把 `shared/markdown` 的 AST 渲染成 HTML。
+ *
+ * 与旧实现的差别只有一处：**解析与渲染分离**。
+ * 解析在 `src/shared/markdown.ts`（两端共用），这里只负责把 AST 变成 HTML，
+ * 因此手机端可以用同一份 AST 渲染成 RN 组件，语法表现不会分叉。
+ *
+ * 安全策略不变：先对全部文本做 HTML 转义，再插入受控标签，
+ * 因此用户笔记里的原始 HTML 不会被执行；链接只允许 http / https。
  */
+import { escapeHtml, parseMarkdown } from '../../../shared/markdown'
+import type { MdBlock, MdInline } from '../../../shared/markdown'
 
-const ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;'
-}
+export { escapeHtml }
 
-export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => ESCAPE_MAP[char])
-}
-
+/** 渲染整篇 Markdown；空内容给出占位提示 */
 export function renderMarkdown(source: string): string {
   if (!source.trim()) return '<p class="md-empty">（空笔记）</p>'
-
-  const escaped = escapeHtml(source)
-  const lines = escaped.split('\n')
-  const out: string[] = []
-
-  let inCodeBlock = false
-  let listType: 'ul' | 'ol' | null = null
-
-  const closeList = (): void => {
-    if (listType) {
-      out.push(listType === 'ul' ? '</ul>' : '</ol>')
-      listType = null
-    }
-  }
-
-  for (const raw of lines) {
-    // 代码块
-    if (raw.trim().startsWith('```')) {
-      closeList()
-      out.push(inCodeBlock ? '</code></pre>' : '<pre><code>')
-      inCodeBlock = !inCodeBlock
-      continue
-    }
-    if (inCodeBlock) {
-      out.push(`${raw}\n`)
-      continue
-    }
-
-    // 标题
-    const heading = raw.match(/^(#{1,6})\s+(.*)$/)
-    if (heading) {
-      closeList()
-      const level = heading[1].length
-      out.push(`<h${level}>${inline(heading[2])}</h${level}>`)
-      continue
-    }
-
-    // 引用
-    const quote = raw.match(/^&gt;\s?(.*)$/)
-    if (quote) {
-      closeList()
-      out.push(`<blockquote>${inline(quote[1])}</blockquote>`)
-      continue
-    }
-
-    // 分割线
-    if (/^(-{3,}|\*{3,})$/.test(raw.trim())) {
-      closeList()
-      out.push('<hr />')
-      continue
-    }
-
-    // 无序列表
-    const unordered = raw.match(/^\s*[-*+]\s+(.*)$/)
-    if (unordered) {
-      if (listType !== 'ul') {
-        closeList()
-        out.push('<ul>')
-        listType = 'ul'
-      }
-      out.push(`<li>${inline(unordered[1])}</li>`)
-      continue
-    }
-
-    // 有序列表
-    const ordered = raw.match(/^\s*\d+\.\s+(.*)$/)
-    if (ordered) {
-      if (listType !== 'ol') {
-        closeList()
-        out.push('<ol>')
-        listType = 'ol'
-      }
-      out.push(`<li>${inline(ordered[1])}</li>`)
-      continue
-    }
-
-    // 空行
-    if (!raw.trim()) {
-      closeList()
-      continue
-    }
-
-    closeList()
-    out.push(`<p>${inline(raw)}</p>`)
-  }
-
-  closeList()
-  if (inCodeBlock) out.push('</code></pre>')
-
-  return out.join('\n')
+  return parseMarkdown(source).map(renderBlock).join('\n')
 }
 
-/** 行内语法：粗体 / 斜体 / 行内代码 / 链接 */
-function inline(text: string): string {
-  return text
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-    .replace(
-      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-      '<a href="$2" rel="noreferrer noopener" target="_blank">$1</a>'
-    )
+function renderBlock(block: MdBlock): string {
+  switch (block.kind) {
+    case 'heading':
+      return `<h${block.level}>${renderInlines(block.children)}</h${block.level}>`
+    case 'paragraph':
+      return `<p>${renderInlines(block.children)}</p>`
+    case 'list': {
+      const tag = block.ordered ? 'ol' : 'ul'
+      const items = block.items.map((item) => `<li>${renderInlines(item)}</li>`).join('\n')
+      return `<${tag}>\n${items}\n</${tag}>`
+    }
+    case 'code':
+      return `<pre><code>${escapeHtml(block.text)}</code></pre>`
+    case 'quote':
+      return `<blockquote>${renderInlines(block.children)}</blockquote>`
+    case 'rule':
+      return '<hr />'
+  }
+}
+
+function renderInlines(nodes: MdInline[]): string {
+  return nodes.map(renderInline).join('')
+}
+
+function renderInline(node: MdInline): string {
+  switch (node.kind) {
+    case 'text':
+      return escapeHtml(node.text)
+    case 'strong':
+      return `<strong>${renderInlines(node.children)}</strong>`
+    case 'em':
+      return `<em>${renderInlines(node.children)}</em>`
+    case 'code':
+      return `<code>${escapeHtml(node.text)}</code>`
+    case 'link':
+      return `<a href="${escapeHtml(node.href)}" rel="noreferrer noopener" target="_blank">${renderInlines(
+        node.children
+      )}</a>`
+  }
 }

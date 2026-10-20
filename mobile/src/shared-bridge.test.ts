@@ -8,6 +8,7 @@ import {
   matchProviderByBaseUrl,
   normalizeOpenAiBaseUrl,
   parseChapters,
+  parseMarkdown,
   parsePasswordText,
   pinyinFirstLetter
 } from './shared-bridge'
@@ -65,5 +66,16 @@ describe('shared-bridge 复用桌面端纯逻辑', () => {
 
   it('拼音首字母可复用', () => {
     expect(pinyinFirstLetter('测试')).toBe('C')
+  })
+
+  it('Markdown 解析器可复用，且两端语法子集一致', () => {
+    const blocks = parseMarkdown('# 标题\n\n- 一\n- 二\n\n**粗** 与 `code`')
+    expect(blocks[0]).toMatchObject({ kind: 'heading', level: 1 })
+    expect(blocks[1]).toMatchObject({ kind: 'list', ordered: false })
+    // 用户输入里的原始 HTML 只当纯文本节点，不会被解析成结构（渲染时才转义）
+    const escaped = parseMarkdown('<script>alert(1)</script>')
+    const inline = (escaped[0] as { children: Array<{ kind: string; text?: string }> }).children
+    expect(inline[0]?.kind).toBe('text')
+    expect(inline[0]?.text).toBe('<script>alert(1)</script>')
   })
 })

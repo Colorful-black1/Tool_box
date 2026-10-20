@@ -80,3 +80,8 @@ export { extractModelIds } from '../../src/main/services/ai-gateway/model-fetche
 export { normalizeChapterText, parseChapters } from '../../src/main/services/library/chapter-parser'
 export { parsePasswordText } from '../../src/main/services/library/password-text-parser'
 export { pinyinFirstLetter } from '../../src/main/services/library/pinyin-util'
+
+// 共享 Markdown 解析器：桌面端把 AST 渲染成 HTML，手机端渲染成 RN 组件，
+// 同一份 AST 保证两端语法表现一致（不引任何 Markdown 库）
+export { escapeHtml, parseInline, parseMarkdown } from '../../src/shared/markdown'
+export type { MdBlock, MdInline } from '../../src/shared/markdown'
