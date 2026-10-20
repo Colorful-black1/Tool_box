@@ -178,6 +178,14 @@ async function main(): Promise<void> {
   const content = await store.chapterContent(chapters[0].id)
   check('读取章节正文', content.content.includes('正文内容'))
 
+  // 书内全文搜索（SQL 层）
+  const hits = await store.searchChapters(book.id, '正文内容')
+  check('书内搜索命中正文', hits.length === 1 && hits[0].chapterIdx === 0)
+  check('书内搜索给出片段', hits[0]?.match === '正文内容' && hits[0]?.after.length > 0)
+  check('书内搜索换位置', (await store.searchChapters(book.id, '更多正文'))[0]?.chapterIdx === 1)
+  check('书内搜索无命中返回空', (await store.searchChapters(book.id, '不存在的词')).length === 0)
+  check('书内搜索空关键词返回空', (await store.searchChapters(book.id, '  ')).length === 0)
+
   await store.progressSave({ bookId: book.id, chapterIdx: 1, percent: 0.4 })
   const progress = await store.progressGet(book.id)
   check('保存并读取进度', progress?.chapterIdx === 1 && progress?.percent === 0.4)

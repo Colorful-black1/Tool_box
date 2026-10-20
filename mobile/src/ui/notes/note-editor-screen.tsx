@@ -20,10 +20,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { Keyboard } from 'react-native'
+import { Alert, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Clipboard, Keyboard } from 'react-native'
 
 import { GhostButton, PrimaryButton } from '../../components/ui'
+import { MarkdownView } from '../../components/markdown'
 import { useServices } from '../../runtime/services'
 import { useKeyboardInset } from '../keyboard'
 import type { NoteView } from '../../shared-bridge'
@@ -53,6 +54,8 @@ export function NoteEditorScreen({
   const [content, setContent] = useState(note?.content ?? '')
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState('')
+  const [preview, setPreview] = useState(false)
+  const [notice, setNotice] = useState('')
   const keyboard = useKeyboardInset()
 
   // 这篇笔记当前在库里的 id。新建时首存返回的 id 会写进来，
@@ -123,6 +126,29 @@ export function NoteEditorScreen({
     })()
   }
 
+  /**
+   * 导出：复制全文 + 调系统分享。
+   *
+   * 为什么不给「保存成 .md 文件」：那需要把文件写到沙盒再交给系统分享，
+   * 得新增 `expo-sharing` 依赖（未授权）。复制 + 分享纯文本零依赖，
+   * 用户粘到任意编辑器就是 .md。
+   */
+  const exportNote = (): void => {
+    const body = content.trim() ? content : ''
+    if (!body) {
+      setNotice('这篇笔记还没有内容')
+      return
+    }
+    Clipboard.setString(body)
+    setNotice('已复制全文，正在唤起分享…')
+    void Share.share({
+      message: title.trim() ? `${title.trim()}\n\n${body}` : body,
+      title: title.trim() || '笔记'
+    })
+      .then(() => setNotice('已复制全文'))
+      .catch(() => setNotice('已复制全文（分享已取消）'))
+  }
+
   const remove = (): void => {
     const id = idRef.current
     if (!id) {
@@ -156,10 +182,14 @@ export function NoteEditorScreen({
           {error || STATUS_TEXT[status]}
         </Text>
         <View style={styles.headerActions}>
+          <GhostButton label={preview ? '编辑' : '预览'} onPress={() => setPreview(!preview)} />
+          <GhostButton label="导出" onPress={exportNote} />
           {isExisting ? <GhostButton label="删除" onPress={remove} /> : null}
           <PrimaryButton label="保存" onPress={() => void persist()} busy={status === 'saving'} />
         </View>
       </View>
+
+      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: spacing.xxl + keyboard.offset }]}
@@ -173,16 +203,26 @@ export function NoteEditorScreen({
           placeholderTextColor={colors.textDim}
           accessibilityLabel="标题"
         />
-        <TextInput
-          style={styles.contentInput}
-          value={content}
-          onChangeText={changeContent}
-          placeholder="正文…"
-          placeholderTextColor={colors.textDim}
-          multiline
-          textAlignVertical="top"
-          accessibilityLabel="正文"
-        />
+        {preview ? (
+          <View style={styles.preview}>
+            {content.trim() ? (
+              <MarkdownView source={content} />
+            ) : (
+              <Text style={styles.previewEmpty}>（空笔记）</Text>
+            )}
+          </View>
+        ) : (
+          <TextInput
+            style={styles.contentInput}
+            value={content}
+            onChangeText={changeContent}
+            placeholder="正文…"
+            placeholderTextColor={colors.textDim}
+            multiline
+            textAlignVertical="top"
+            accessibilityLabel="正文"
+          />
+        )}
       </ScrollView>
     </View>
   )
@@ -201,6 +241,21 @@ const styles = StyleSheet.create({
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   status: { flex: 1, fontSize: 11, color: colors.textDim, textAlign: 'center' },
+  notice: {
+    fontSize: 11,
+    color: colors.textDim,
+    textAlign: 'center',
+    paddingBottom: spacing.sm
+  },
+  preview: {
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.bgPanelSolid,
+    minHeight: 220
+  },
+  previewEmpty: { color: colors.textDim, fontSize: 13 },
   body: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   titleInput: {
     color: colors.textHi,

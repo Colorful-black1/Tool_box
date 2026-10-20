@@ -47,6 +47,7 @@ export type {
   Bookmark,
   ChapterContent,
   ChapterMeta,
+  ChapterSearchHit,
   ChatMessage,
   ChatRole,
   ConversationSummary,

@@ -40,6 +40,7 @@ import {
   textSnippet
 } from './paginate'
 import { ReaderSettingsSheet } from './reader-settings-sheet'
+import { ReaderSearchSheet } from './reader-search-sheet'
 import { colors, radius, spacing } from '../../theme'
 
 /** 顶部工具条与底部翻页条合计占用的高度，用于从可用高度里扣掉 */
@@ -76,6 +77,7 @@ export function BookReaderScreen({
   const [error, setError] = useState('')
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
 
   /** 载入新章节时要兑现的进度；兑现后置空，避免字号变化时被重复应用 */
@@ -389,6 +391,7 @@ export function BookReaderScreen({
             disabled={!content}
           />
           <GhostButton label="目录" onPress={() => setCatalogOpen(true)} />
+          <GhostButton label="搜索" onPress={() => setSearchOpen(true)} />
           <GhostButton label="Aa" onPress={() => setSettingsOpen(true)} />
         </View>
       </View>
@@ -459,6 +462,16 @@ export function BookReaderScreen({
         prefs={prefs}
         onChange={setPrefs}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <ReaderSearchSheet
+        visible={searchOpen}
+        bookId={book.id}
+        onClose={() => setSearchOpen(false)}
+        onSelect={(hit) => {
+          setSearchOpen(false)
+          jumpTo(hit.chapterIdx, hit.ratio)
+        }}
       />
 
       <PromptModal

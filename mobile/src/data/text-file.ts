@@ -1,7 +1,7 @@
 /**
- * 密码批量导入的「从文件取文本」（手机端）。
+ * 从系统文件选择器拿到的文本文件 → 文本（手机端通用）。
  *
- * 为什么单独一个文件：读文件那一步必须用 `expo-file-system` 的 `File`，
+ * 为什么放在数据层：读文件那一步必须用 `expo-file-system` 的 `File`，
  * 在 vitest 里跑不了。把「体积预检 + 字节转文本」这两步抽成纯逻辑后，
  * 就能在测试里覆盖体积与编码这两类边界，不必拉起真机的系统文件选择器。
  *
@@ -12,7 +12,7 @@
  * `text/plain` 还是 `application/octet-stream` 并不统一，限死反而选不到文件
  * （与 `bookshelf-screen.tsx` 同一个理由）。
  */
-import { MAX_BOOK_BYTES, decodeBookText, formatSizeError } from '../../data/text-decoder'
+import { MAX_BOOK_BYTES, decodeBookText, formatSizeError } from './text-decoder'
 
 /** 系统文件选择器返回的单个文件，本模块只用到这三个成员 */
 export interface PickedTextFile {

@@ -5,16 +5,19 @@
  * 这里不改数据层顺序 —— 它被 `verify:data` 与 `store.test.ts` 的断言覆盖，
  * 且「最近编辑的笔记排在最前」对随手记的场景比「按创建时间」更有用。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { File } from 'expo-file-system'
 
 import { GlassCard } from '../../components/placeholder-screen'
 import { ScreenHeader } from '../../components/screen'
 import { GhostButton, PrimaryButton } from '../../components/ui'
+import { readPickedTextFile } from '../../data/text-file'
 import { useServices } from '../../runtime/services'
 import type { NoteView } from '../../shared-bridge'
 import { colors, fonts, spacing } from '../../theme'
+import { noteTitleFromFileName } from './note-file'
 
 export function NotesListScreen({
   onOpen,
@@ -27,7 +30,10 @@ export function NotesListScreen({
   const { store } = useServices()
   const [items, setItems] = useState<NoteView[]>([])
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [importing, setImporting] = useState(false)
 
   const reload = useCallback(async (): Promise<void> => {
     try {
@@ -43,6 +49,37 @@ export function NotesListScreen({
   useEffect(() => {
     void reload()
   }, [reload, reloadSignal])
+
+  /** 搜索：标题或正文包含关键词即命中（本地过滤，笔记量级不需要走数据库） */
+  const visible = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return items
+    return items.filter(
+      (note) =>
+        note.title.toLowerCase().includes(keyword) ||
+        note.content.toLowerCase().includes(keyword)
+    )
+  }, [items, query])
+
+  /** 导入 .md：选文件 → 读成文本 → 直接存成一篇笔记 */
+  const importFromFile = async (): Promise<void> => {
+    setImporting(true)
+    setError('')
+    setMessage('')
+    try {
+      const picked = await File.pickFileAsync()
+      if (picked.canceled) return
+      const content = await readPickedTextFile(picked.result)
+      const title = noteTitleFromFileName(picked.result.name) || '导入的笔记'
+      await store.saveNote({ title, content })
+      await reload()
+      setMessage(`已导入 ${picked.result.name}`)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : '导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   const remove = (note: NoteView): void => {
     Alert.alert('删除笔记', `确定删除「${note.title || '无标题'}」？此操作不可撤销。`, [
@@ -69,20 +106,45 @@ export function NotesListScreen({
       <ScreenHeader
         title="星笺手记"
         subtitle="NOTES · 星语落笔成笺"
-        actions={<PrimaryButton label="新建" onPress={() => onOpen(null)} />}
+        actions={
+          <View style={styles.headerActions}>
+            <GhostButton
+              label={importing ? '导入中…' : '导入'}
+              onPress={() => void importFromFile()}
+              disabled={importing}
+            />
+            <PrimaryButton label="新建" onPress={() => onOpen(null)} />
+          </View>
+        }
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {message ? <Text style={styles.message}>{message}</Text> : null}
+
+      <TextInput
+        style={styles.search}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="搜索标题或正文"
+        placeholderTextColor={colors.textDim}
+        accessibilityLabel="搜索笔记"
+      />
 
       <FlatList
-        data={items}
+        data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <GlassCard>
-            <Text style={styles.emptyTitle}>{loading ? '正在读取…' : '还没有笔记'}</Text>
+            <Text style={styles.emptyTitle}>
+              {loading ? '正在读取…' : items.length === 0 ? '还没有笔记' : '没有匹配的笔记'}
+            </Text>
             {!loading ? (
-              <Text style={styles.emptyText}>点右上角「新建」写第一条。所有内容只存在这台设备上。</Text>
+              <Text style={styles.emptyText}>
+                {items.length === 0
+                  ? '点右上角「新建」写第一条，或用「导入」把 .md 文件收进来。所有内容只存在这台设备上。'
+                  : '换个关键词再试试。'}
+              </Text>
             ) : null}
           </GlassCard>
         }
@@ -138,6 +200,25 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm
   },
   list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.lg, gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  search: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.bgPanelSolid,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    color: colors.textHi,
+    fontSize: 14
+  },
+  message: {
+    color: colors.textDim,
+    fontSize: 11,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm
+  },
   item: { gap: 4 },
   itemRow: {
     flexDirection: 'row',

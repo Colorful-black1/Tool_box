@@ -1,13 +1,13 @@
 /**
- * 会话列表：新建、进入、删除。
+ * 会话列表：新建、进入、重命名、删除、搜索。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { GlassCard } from '../../components/placeholder-screen'
 import { ScreenHeader } from '../../components/screen'
-import { GhostButton, PrimaryButton } from '../../components/ui'
+import { GhostButton, PrimaryButton, PromptModal } from '../../components/ui'
 import { useServices } from '../../runtime/services'
 import type { ConversationSummary } from '../../shared-bridge'
 import { colors, fonts, spacing } from '../../theme'
@@ -24,6 +24,8 @@ export function ChatListScreen({
   const [items, setItems] = useState<ConversationSummary[]>([])
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
+  const [query, setQuery] = useState('')
+  const [renaming, setRenaming] = useState<ConversationSummary | null>(null)
 
   const reload = useCallback(async (): Promise<void> => {
     try {
@@ -36,6 +38,13 @@ export function ChatListScreen({
   useEffect(() => {
     void reload()
   }, [reload, reloadSignal])
+
+  /** 搜索：按标题过滤（会话量级不大，本地过滤即可） */
+  const visible = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return items
+    return items.filter((item) => item.title.toLowerCase().includes(keyword))
+  }, [items, query])
 
   const create = async (): Promise<void> => {
     setCreating(true)
@@ -70,6 +79,26 @@ export function ChatListScreen({
     ])
   }
 
+  /** 长按会话：给「重命名 / 删除」两个动作 */
+  const actions = (item: ConversationSummary): void => {
+    Alert.alert(item.title, '选择一个操作', [
+      { text: '重命名', onPress: () => setRenaming(item) },
+      { text: '删除', style: 'destructive', onPress: () => remove(item) },
+      { text: '取消', style: 'cancel' }
+    ])
+  }
+
+  const rename = (target: ConversationSummary, title: string): void => {
+    void (async () => {
+      try {
+        await store.renameConversation(target.id, title)
+        await reload()
+      } catch (renameError) {
+        setError(renameError instanceof Error ? renameError.message : '重命名失败')
+      }
+    })()
+  }
+
   return (
     <View style={styles.root}>
       <ScreenHeader
@@ -80,15 +109,28 @@ export function ChatListScreen({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
+      <TextInput
+        style={styles.search}
+        value={query}
+        onChangeText={setQuery}
+        placeholder="搜索会话标题"
+        placeholderTextColor={colors.textDim}
+        accessibilityLabel="搜索会话"
+      />
+
       <FlatList
-        data={items}
+        data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <GlassCard>
-            <Text style={styles.emptyTitle}>还没有会话</Text>
+            <Text style={styles.emptyTitle}>
+              {items.length === 0 ? '还没有会话' : '没有匹配的会话'}
+            </Text>
             <Text style={styles.emptyText}>
-              点「新建」开始一段对话。首次使用请先到设置页配置一套 AI 档案并启用。
+              {items.length === 0
+                ? '点「新建」开始一段对话。首次使用请先到设置页配置一套 AI 档案并启用。'
+                : '换个关键词再试试。'}
             </Text>
           </GlassCard>
         }
@@ -96,7 +138,7 @@ export function ChatListScreen({
           <Pressable
             accessibilityRole="button"
             onPress={() => onOpen(item)}
-            onLongPress={() => remove(item)}
+            onLongPress={() => actions(item)}
             style={({ pressed }) => [pressed && styles.pressed]}
           >
             <GlassCard style={styles.item}>
@@ -114,8 +156,20 @@ export function ChatListScreen({
 
       <View style={styles.footer}>
         <GhostButton label="刷新" onPress={() => void reload()} />
-        <Text style={styles.footerHint}>长按会话可删除</Text>
+        <Text style={styles.footerHint}>长按会话可重命名或删除</Text>
       </View>
+
+      <PromptModal
+        visible={renaming !== null}
+        title="重命名会话"
+        initialValue={renaming?.title ?? ''}
+        onCancel={() => setRenaming(null)}
+        onConfirm={(title) => {
+          const target = renaming
+          setRenaming(null)
+          if (target) rename(target, title)
+        }}
+      />
     </View>
   )
 }
@@ -135,6 +189,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm
   },
   list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.lg, gap: spacing.sm },
+  search: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.bgPanelSolid,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    color: colors.textHi,
+    fontSize: 14
+  },
   item: { gap: 4 },
   itemRow: {
     flexDirection: 'row',

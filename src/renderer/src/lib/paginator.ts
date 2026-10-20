@@ -10,6 +10,9 @@
  * 优点：与真实渲染结果完全一致（含换行、标点避头尾、字体回退），
  * 不需要重复实现文本排版算法，也不会出现「测量值与渲染值不一致」。
  */
+import type { ChapterSearchHit } from '../../../shared/types'
+
+export type { ChapterSearchHit }
 
 export interface PaginationResult {
   pageCount: number
@@ -53,15 +56,6 @@ export interface ChapterSearchInput {
   idx: number
   title: string
   content: string
-}
-
-export interface ChapterSearchHit {
-  chapterIdx: number
-  chapterTitle: string
-  ratio: number
-  before: string
-  match: string
-  after: string
 }
 
 export function searchChapters(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { UnsupportedTextEncodingError } from '../../data/text-decoder'
-import { readPickedTextFile } from './password-file'
+import { UnsupportedTextEncodingError } from './text-decoder'
+import { readPickedTextFile } from './text-file'
 
 /** 造一个只实现本模块所需三个成员的文件对象，避免测试依赖 expo-file-system */
 function fakeFile(content: string | Uint8Array, size = -1): {

@@ -6,6 +6,7 @@ import type {
   Bookmark,
   ChapterContent,
   ChapterMeta,
+  ChapterSearchHit,
   ChatMessage,
   ChatRole,
   ConversationSummary,
@@ -405,6 +406,52 @@ export class MobileStore {
       title: row.title,
       wordCount: row.word_count
     }))
+  }
+
+  /**
+   * 书内全文搜索。
+   *
+   * 用 SQL 的 instr() 在库里筛，避免把整本书的正文读进内存（手机上尤其吃不消）。
+   * 只取命中章节的正文，命中位置换算成章节内比例，便于直接跳过去。
+   */
+  async searchChapters(
+    bookId: string,
+    keyword: string,
+    limit = 50
+  ): Promise<ChapterSearchHit[]> {
+    const needle = keyword.trim()
+    if (!needle) return []
+
+    const rows = await this.db.getAllAsync<{
+      idx: number
+      title: string
+      body: string
+    }>(
+      `SELECT idx, title, body FROM chapters
+       WHERE book_id = ? AND instr(lower(body), lower(?)) > 0
+       ORDER BY idx ASC
+       LIMIT ?`,
+      bookId,
+      needle,
+      limit
+    )
+
+    return rows.map((row) => {
+      const index = Math.max(0, row.body.toLowerCase().indexOf(needle.toLowerCase()))
+      const start = Math.max(0, index - 20)
+      const end = Math.min(row.body.length, index + needle.length + 20)
+      return {
+        chapterIdx: row.idx,
+        chapterTitle: row.title,
+        ratio: row.body.length === 0 ? 0 : index / row.body.length,
+        before: row.body.slice(start, index).replace(/\s+/g, ' ').trim(),
+        match: row.body.slice(index, index + needle.length),
+        after: row.body
+          .slice(index + needle.length, end)
+          .replace(/\s+/g, ' ')
+          .trim()
+      }
+    })
   }
 
   async chapterContent(chapterId: string): Promise<ChapterContent> {

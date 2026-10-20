@@ -417,6 +417,18 @@ export interface ChapterContent {
   content: string
 }
 
+/** 书内搜索命中（两端同名同义） */
+export interface ChapterSearchHit {
+  chapterIdx: number
+  chapterTitle: string
+  /** 命中位置在章节正文里的比例（0~1），用于直接跳过去 */
+  ratio: number
+  /** 命中前后的正文片段 */
+  before: string
+  match: string
+  after: string
+}
+
 export interface ReadingProgressInput {
   bookId: string
   chapterIdx: number

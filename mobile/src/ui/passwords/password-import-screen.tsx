@@ -28,7 +28,7 @@ import {
 import type { PasswordDraft } from '../../shared-bridge'
 import { parsePasswordText } from '../../shared-bridge'
 import { duplicateKey } from './password-groups'
-import { readPickedTextFile } from './password-file'
+import { readPickedTextFile } from '../../data/text-file'
 import { colors, fonts, radius, spacing } from '../../theme'
 
 type Tab = 'format' | 'ai'
