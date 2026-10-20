@@ -7,8 +7,10 @@ import { ChatOpenAI } from '@langchain/openai'
 import {
   CHAT_TIMEOUT_MS,
   CONVERSATION_TITLE_MAX_CHARS,
-  DEFAULT_CONVERSATION_TITLE
+  DEFAULT_CONVERSATION_TITLE,
+  MAX_HISTORY_CHARS
 } from '../../../shared/constants'
+import { trimHistory, trimmedHistoryNotice } from '../../../shared/history'
 import type {
   AgentPermission,
   AgentToolApprovalInput,
@@ -84,13 +86,15 @@ export class AiGateway {
     })
 
     const updatedConversation = this.autoTitle(conversation, content)
-    const history = this.chatStore.listMessages(conversationId)
+    // 只携带预算内的最近若干轮；更早的内容在提示词里明说没带上
+    const trimmed = trimHistory(this.chatStore.listMessages(conversationId), MAX_HISTORY_CHARS)
     const controller = new AbortController()
     this.active.set(conversationId, controller)
 
     void this.runAgentTurn({
       conversationId,
-      history,
+      history: trimmed.kept,
+      dropped: trimmed.dropped,
       config,
       controller,
       sink
@@ -143,11 +147,12 @@ export class AiGateway {
   private async runAgentTurn(input: {
     conversationId: string
     history: ChatMessage[]
+    dropped: number
     config: AiConfig
     controller: AbortController
     sink: ChatEventSink
   }): Promise<void> {
-    const { conversationId, history, config, controller, sink } = input
+    const { conversationId, history, dropped, config, controller, sink } = input
 
     try {
       const model = new ChatOpenAI({
@@ -169,7 +174,7 @@ export class AiGateway {
         conversationId,
         history,
         model,
-        systemPrompt: this.agentSystemPrompt(),
+        systemPrompt: this.agentSystemPrompt(dropped),
         tools,
         permission: this.currentPermission(),
         gate: this.gate,
@@ -220,7 +225,7 @@ export class AiGateway {
     return isAgentPermission(value) ? value : DEFAULT_AGENT_PERMISSION
   }
 
-  private agentSystemPrompt(): string {
+  private agentSystemPrompt(dropped = 0): string {
     if (this.agentPromptCache === null) {
       try {
         this.agentPromptCache = readFileSync(
@@ -232,7 +237,9 @@ export class AiGateway {
           '你是「私人百宝箱」的内置 AI 助手，可调用工具管理用户的书架、密码箱与记事本。'
       }
     }
-    return this.agentPromptCache
+    return dropped > 0
+      ? `${this.agentPromptCache}\n\n${trimmedHistoryNotice(dropped)}`
+      : this.agentPromptCache
   }
 
   private autoTitle(

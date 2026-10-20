@@ -11,6 +11,15 @@ export const MAX_INPUT_CHARS = 60_000
 export const CONVERSATION_TITLE_MAX_CHARS = 20
 export const DEFAULT_CONVERSATION_TITLE = '新对话'
 
+/**
+ * 单次请求携带的历史对话字符预算。
+ *
+ * 两端此前都把整段历史原样发给模型，聊久了必然撑爆上下文。
+ * 超出预算时按「轮」丢弃最早的部分（只裁剪、不摘要），
+ * 见 `shared/history.ts`。
+ */
+export const MAX_HISTORY_CHARS = 8_000
+
 export const PSEUDO_SPLIT_SIZE = 50_000
 export const READER_PADDING_V = 44
 export const READER_PADDING_H = 20

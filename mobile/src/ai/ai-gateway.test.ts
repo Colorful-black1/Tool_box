@@ -204,6 +204,33 @@ describe('AiGateway.send', () => {
     expect(messages.at(-1)).toEqual({ role: 'user', content: '我的问题' })
   })
 
+  it('超长历史会被裁剪，并在提示词里说明丢了多少条', async () => {
+    const store = new FakeStore()
+    // 造 20 轮长对话，远超单次请求的历史预算
+    for (let index = 0; index < 20; index++) {
+      store.messages.push({ role: 'user', content: `问题${index}${'x'.repeat(1000)}` })
+      store.messages.push({ role: 'assistant', content: `回答${index}${'y'.repeat(1000)}` })
+    }
+
+    let sentBody = ''
+    const fetchImpl: FetchLike = (_url, init) => {
+      sentBody = String(init?.body ?? '')
+      return sseFetch(delta('ok') + 'data: [DONE]\n\n')(_url, init)
+    }
+    const gateway = new AiGateway(fakeSettings(), store as unknown as MobileStore, fetchImpl)
+
+    await gateway.send('c1', '最新问题', recordingSink())
+    await waitFor(() => sentBody !== '')
+
+    const messages = JSON.parse(sentBody).messages as Array<{ role: string; content: string }>
+    // 历史被裁到预算内（21 轮共 42 条不会全带）
+    expect(messages.length).toBeLessThan(42)
+    // 用户刚发的这一轮一定在
+    expect(messages.at(-1)).toEqual({ role: 'user', content: '最新问题' })
+    // 明说更早的对话没带上，免得模型以为自己还记得
+    expect(messages[0]?.content).toContain('因超出上下文长度未包含')
+  })
+
   it('首次对话用内容当标题', async () => {
     const store = new FakeStore()
     const gateway = new AiGateway(

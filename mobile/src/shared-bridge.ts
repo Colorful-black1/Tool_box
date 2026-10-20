@@ -94,3 +94,7 @@ export type { NoteSearchHit } from '../../src/shared/notes-search'
 // 阅读统计的日期逻辑：两端同一套「今天」「最近 N 天」「区间合计」算法
 export { buildStatsRange, isDateKey, resolveStatsRange, shiftDate, todayKey } from '../../src/shared/reading-stats'
 export type { StatsRangeInput } from '../../src/shared/reading-stats'
+
+// 对话历史裁剪：两端同一套「按轮保留最近若干轮」规则
+export { trimHistory, trimmedHistoryNotice } from '../../src/shared/history'
+export type { TrimHistoryResult } from '../../src/shared/history'

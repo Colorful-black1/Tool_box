@@ -26,6 +26,9 @@ export const MAX_INPUT_CHARS = 60_000
 export const CONVERSATION_TITLE_MAX_CHARS = 20
 export const DEFAULT_CONVERSATION_TITLE = '新对话'
 
+/** 单次请求携带的历史对话字符预算（与 shared/constants.ts 对齐） */
+export const MAX_HISTORY_CHARS = 8_000
+
 export const PSEUDO_SPLIT_SIZE = 50_000
 export const READER_PADDING_V = 44
 export const READER_PADDING_H = 20

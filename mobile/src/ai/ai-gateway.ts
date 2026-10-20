@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   ConversationSummary
 } from '../shared-bridge'
+import { trimHistory, trimmedHistoryNotice } from '../shared-bridge'
 
 import { runAgent } from '../agent/agent-loop'
 import { ApprovalGate } from '../agent/approval-gate'
@@ -31,7 +32,7 @@ import { getAgentPermission } from '../agent/permission'
 import { AGENT_SYSTEM_PROMPT } from '../agent/system-prompt'
 import { createAgentToolSet } from '../agent/tools'
 import type { AgentToolDefinition } from '../agent/tool-registry'
-import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TITLE } from '../data/constants'
+import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TITLE, MAX_HISTORY_CHARS } from '../data/constants'
 import type { MobileStore } from '../data/store'
 
 import type { AiSettingsService } from './ai-settings'
@@ -131,14 +132,16 @@ export class AiGateway {
     })
 
     const updated = await this.autoTitle(conversation, trimmed)
-    const history = await this.store.listMessages(conversationId)
+    // 只携带预算内的最近若干轮；更早的内容在提示词里明说没带上
+    const history = trimHistory(await this.store.listMessages(conversationId), MAX_HISTORY_CHARS)
 
     const controller = new AbortController()
     this.active.set(conversationId, controller)
 
     void this.runAgentTurn({
       conversationId,
-      history,
+      history: history.kept,
+      dropped: history.dropped,
       config,
       controller,
       sink
@@ -221,11 +224,12 @@ export class AiGateway {
   private async runAgentTurn(input: {
     conversationId: string
     history: ChatMessage[]
+    dropped: number
     config: { provider: AiProviderId; baseUrl: string; model: string; apiKey: string }
     controller: AbortController
     sink: ChatEventSink
   }): Promise<void> {
-    const { conversationId, history, config, controller, sink } = input
+    const { conversationId, history, dropped, config, controller, sink } = input
 
     try {
       // 每轮都现读权限：用户可能在生成过程中切了档位，下一轮就该生效
@@ -235,7 +239,10 @@ export class AiGateway {
         conversationId,
         history,
         config,
-        systemPrompt: AGENT_SYSTEM_PROMPT,
+        systemPrompt:
+          dropped > 0
+            ? `${AGENT_SYSTEM_PROMPT}\n\n${trimmedHistoryNotice(dropped)}`
+            : AGENT_SYSTEM_PROMPT,
         permission,
         tools: this.tools,
         gate: this.gate,
