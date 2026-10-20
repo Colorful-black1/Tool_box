@@ -456,6 +456,17 @@ export interface StatsSummary {
   recent: ReadingStat[]
 }
 
+/** 任意日期区间的阅读统计 */
+export interface StatsRange {
+  fromDate: string
+  toDate: string
+  totalDurationMs: number
+  totalCharCount: number
+  /** 区间内有阅读记录的天数 */
+  activeDays: number
+  daily: ReadingStat[]
+}
+
 // ============ 密码箱 ============
 
 export interface PasswordInput {

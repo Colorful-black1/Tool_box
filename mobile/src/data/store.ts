@@ -16,9 +16,10 @@ import type {
   PasswordInput,
   ReadingProgressInput,
   ReadingStat,
+  StatsRange,
   StatsSummary
 } from '../shared-bridge'
-import { pinyinFirstLetter } from '../shared-bridge'
+import { buildStatsRange, pinyinFirstLetter, todayKey } from '../shared-bridge'
 import { DEFAULT_CONVERSATION_TITLE } from './constants'
 import type { SecretBox } from './secret-box'
 import type { SecretPayload } from './secret-envelope'
@@ -602,6 +603,33 @@ export class MobileStore {
     )
   }
 
+  /**
+   * 任意日期区间的阅读统计。
+   *
+   * 只加一条 SELECT，不改表结构；区间内的逐日明细按日期升序返回。
+   */
+  async statsRange(fromDate: string, toDate: string): Promise<StatsRange> {
+    const rows = await this.db.getAllAsync<{
+      date: string
+      duration_ms: number
+      char_count: number
+    }>(
+      'SELECT date, duration_ms, char_count FROM reading_stats WHERE date BETWEEN ? AND ? ORDER BY date ASC',
+      fromDate,
+      toDate
+    )
+
+    return buildStatsRange(
+      rows.map((row) => ({
+        date: row.date,
+        durationMs: row.duration_ms,
+        charCount: row.char_count
+      })),
+      fromDate,
+      toDate
+    )
+  }
+
   async statsSummary(): Promise<StatsSummary> {
     const rows = await this.db.getAllAsync<{
       date: string
@@ -883,9 +911,5 @@ export function firstLetterOf(title: string): string {
   return '#'
 }
 
-export function todayKey(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
-}
+/** 本地时区的今天（YYYY-MM-DD），实现与桌面端共用 */
+export { todayKey } from '../shared-bridge'

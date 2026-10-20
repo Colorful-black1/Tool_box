@@ -21,8 +21,10 @@ import type {
   PasswordInput,
   ReadingProgressInput,
   ReadingStat,
+  StatsRange,
   StatsSummary
 } from '../../../shared/types'
+import { buildStatsRange, todayKey } from '../../../shared/reading-stats'
 import type { SecretBox } from '../crypto/secret-box'
 import { pinyinFirstLetter } from '../library/pinyin-util'
 
@@ -596,6 +598,34 @@ export class ToolboxStore {
     }
   }
 
+  /**
+   * 任意日期区间的阅读统计。
+   *
+   * 只加一条 SELECT，不改表结构；区间内的逐日明细按日期升序返回。
+   */
+  statsRange(fromDate: string, toDate: string): StatsRange {
+    const rows = this.db
+      .prepare(
+        `SELECT date, duration_ms, char_count
+         FROM reading_stats WHERE date BETWEEN ? AND ? ORDER BY date ASC`
+      )
+      .all(fromDate, toDate) as Array<{
+      date: string
+      duration_ms: number
+      char_count: number
+    }>
+
+    return buildStatsRange(
+      rows.map((row) => ({
+        date: row.date,
+        durationMs: row.duration_ms,
+        charCount: row.char_count
+      })),
+      fromDate,
+      toDate
+    )
+  }
+
   // ==================== 密码箱 ====================
 
   listPasswords(): PasswordEntryView[] {
@@ -1042,13 +1072,6 @@ function firstLetterOf(title: string): string {
   if (/[a-zA-Z]/.test(first)) return first.toUpperCase()
   if ((trimmed.codePointAt(0) ?? 0) >= 0x4e00) return pinyinFirstLetter(trimmed)
   return '#'
-}
-
-function todayKey(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
 }
 
 /**

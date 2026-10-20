@@ -9,7 +9,7 @@ import { join } from 'node:path'
 
 import { ShimDatabase } from './shims/expo-sqlite'
 import { migrateUp, readUserVersion } from '../src/data/migrate'
-import { MobileStore } from '../src/data/store'
+import { MobileStore, todayKey } from '../src/data/store'
 import { SecureStoreSecretBox } from '../src/data/secret-box'
 import { AI_SETTINGS_MASTER_KEY } from '../src/data/constants'
 import { SCHEMA_VERSION } from '../src/data/schema'
@@ -216,6 +216,22 @@ async function main(): Promise<void> {
   await store.addStatsToday(30_000, 200)
   const stats = await store.statsSummary()
   check('阅读统计累加', stats.todayDurationMs === 90_000 && stats.totalCharCount === 700)
+
+  // 区间统计：只加 SELECT，不改表结构
+  const wideRange = await store.statsRange('2000-01-01', '2999-12-31')
+  check(
+    '区间统计覆盖全部记录',
+    wideRange.totalDurationMs === stats.totalDurationMs &&
+      wideRange.totalCharCount === stats.totalCharCount
+  )
+  check('区间统计返回逐日明细', wideRange.daily.length === 1)
+  const emptyRange = await store.statsRange('1990-01-01', '1990-01-02')
+  check(
+    '空区间统计为零',
+    emptyRange.totalDurationMs === 0 && emptyRange.totalCharCount === 0 && emptyRange.daily.length === 0
+  )
+  const todayRange = await store.statsRange(todayKey(), todayKey())
+  check('当天区间与今日累计一致', todayRange.totalDurationMs === stats.todayDurationMs)
 
   await store.configSet({ fontSize: 21, nightMode: true })
   const config = await store.configGet()

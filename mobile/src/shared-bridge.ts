@@ -60,6 +60,7 @@ export type {
   ReaderTheme,
   ReadingProgressInput,
   ReadingStat,
+  StatsRange,
   StatsSummary
 } from '../../src/shared/types'
 
@@ -89,3 +90,7 @@ export type { MdBlock, MdInline } from '../../src/shared/markdown'
 // 笔记搜索：两端同一套匹配与排序规则
 export { searchNotes } from '../../src/shared/notes-search'
 export type { NoteSearchHit } from '../../src/shared/notes-search'
+
+// 阅读统计的日期逻辑：两端同一套「今天」「最近 N 天」「区间合计」算法
+export { buildStatsRange, isDateKey, resolveStatsRange, shiftDate, todayKey } from '../../src/shared/reading-stats'
+export type { StatsRangeInput } from '../../src/shared/reading-stats'
