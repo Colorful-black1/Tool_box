@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Screen } from '../components/screen'
+import { useQuickActionSignal } from '../navigation/use-quick-action'
 import { ChatDetailScreen } from '../ui/chat/chat-detail-screen'
 import { ChatListScreen } from '../ui/chat/chat-list-screen'
 import type { ConversationSummary } from '../shared-bridge'
@@ -15,6 +16,8 @@ import type { ConversationSummary } from '../shared-bridge'
 export function ChatScreen(): ReactNode {
   const [open, setOpen] = useState<ConversationSummary | null>(null)
   const [reloadSignal, setReloadSignal] = useState(0)
+  /** 长按 Tab「对话」→ 新建并进入一个会话（创建逻辑在列表页里） */
+  const createSignal = useQuickActionSignal()
 
   const leave = useCallback(() => {
     setOpen(null)
@@ -27,7 +30,11 @@ export function ChatScreen(): ReactNode {
       {open ? (
         <ChatDetailScreen conversationId={open.id} onBack={leave} />
       ) : (
-        <ChatListScreen reloadSignal={reloadSignal} onOpen={setOpen} />
+        <ChatListScreen
+          reloadSignal={reloadSignal}
+          createSignal={createSignal}
+          onOpen={setOpen}
+        />
       )}
     </Screen>
   )

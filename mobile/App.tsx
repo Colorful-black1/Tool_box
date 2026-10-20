@@ -1,18 +1,20 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs'
 import { NavigationContainer } from '@react-navigation/native'
 import type { ReactNode } from 'react'
-import { StyleSheet } from 'react-native'
+import { Pressable, StyleSheet } from 'react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, fonts } from './src/theme'
 import { BootGate, ServicesProvider } from './src/runtime/services'
+import type { RootTabParamList } from './src/navigation/tab-params'
 import { ChatScreen } from './src/screens/chat-screen'
 import { NotesScreen } from './src/screens/notes-screen'
 import { PasswordScreen } from './src/screens/password-screen'
 import { SettingsScreen } from './src/screens/settings-screen'
 import { ShelfScreen } from './src/screens/shelf-screen'
 
-const Tab = createBottomTabNavigator()
+const Tab = createBottomTabNavigator<RootTabParamList>()
 
 /** Tab 栏自身的高度（不含底部安全区） */
 const TAB_BAR_HEIGHT = 56
@@ -63,12 +65,92 @@ function Tabs(): ReactNode {
         tabBarLabelStyle: styles.tabLabel
       }}
     >
-      <Tab.Screen name="Chat" component={ChatScreen} options={{ title: '对话' }} />
-      <Tab.Screen name="Shelf" component={ShelfScreen} options={{ title: '书架' }} />
-      <Tab.Screen name="Passwords" component={PasswordScreen} options={{ title: '密码箱' }} />
-      <Tab.Screen name="Notes" component={NotesScreen} options={{ title: '记事本' }} />
+      <Tab.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={({ navigation }) => ({
+          title: '对话',
+          tabBarButton: (props) => (
+            <TabButton
+              {...props}
+              onLongPress={() => navigation.navigate('Chat', { quick: `create-${Date.now()}` })}
+            />
+          )
+        })}
+      />
+      <Tab.Screen
+        name="Shelf"
+        component={ShelfScreen}
+        options={({ navigation }) => ({
+          title: '书架',
+          tabBarButton: (props) => (
+            <TabButton
+              {...props}
+              onLongPress={() => navigation.navigate('Shelf', { quick: `create-${Date.now()}` })}
+            />
+          )
+        })}
+      />
+      <Tab.Screen
+        name="Passwords"
+        component={PasswordScreen}
+        options={({ navigation }) => ({
+          title: '密码箱',
+          tabBarButton: (props) => (
+            <TabButton
+              {...props}
+              onLongPress={() =>
+                navigation.navigate('Passwords', { quick: `create-${Date.now()}` })
+              }
+            />
+          )
+        })}
+      />
+      <Tab.Screen
+        name="Notes"
+        component={NotesScreen}
+        options={({ navigation }) => ({
+          title: '记事本',
+          tabBarButton: (props) => (
+            <TabButton
+              {...props}
+              onLongPress={() => navigation.navigate('Notes', { quick: `create-${Date.now()}` })}
+            />
+          )
+        })}
+      />
       <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: '设置' }} />
     </Tab.Navigator>
+  )
+}
+
+/**
+ * Tab 按钮：默认实现之外补一个「长按 = 该页主操作」。
+ *
+ * 长按对话 → 新建会话、长按书架 → 导入书籍、长按记事本 → 新建笔记、
+ * 长按密码箱 → 新建条目。动作通过路由参数传给对应页面，
+ * 具体怎么做由页面自己决定（这层不碰业务）。
+ */
+function TabButton({
+  children,
+  onPress,
+  onLongPress,
+  style,
+  accessibilityState,
+  accessibilityLabel,
+  accessibilityRole
+}: BottomTabBarButtonProps & { onLongPress?: () => void }): ReactNode {
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={style}
+      accessibilityState={accessibilityState}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityRole}
+    >
+      {children}
+    </Pressable>
   )
 }
 

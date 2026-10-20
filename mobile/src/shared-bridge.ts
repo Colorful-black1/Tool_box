@@ -99,3 +99,7 @@ export type { StatsRangeInput } from '../../src/shared/reading-stats'
 // 对话历史裁剪：两端同一套「按轮保留最近若干轮」规则
 export { trimHistory, trimmedHistoryNotice } from '../../src/shared/history'
 export type { TrimHistoryResult } from '../../src/shared/history'
+
+// 占位封面：两端同一套色板与首字规则
+export { coverInitial, coverPalette } from '../../src/shared/book-cover'
+export type { CoverPalette } from '../../src/shared/book-cover'

@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Screen } from '../components/screen'
+import { useQuickActionSignal } from '../navigation/use-quick-action'
 import { PasswordEditorScreen } from '../ui/passwords/password-editor-screen'
 import { PasswordImportScreen } from '../ui/passwords/password-import-screen'
 import { PasswordListScreen } from '../ui/passwords/password-list-screen'
@@ -19,6 +20,14 @@ export function PasswordScreen(): ReactNode {
   const [editing, setEditing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [reloadSignal, setReloadSignal] = useState(0)
+  /** 长按 Tab「密码箱」→ 直接开一条新记录 */
+  const quickSignal = useQuickActionSignal()
+
+  useEffect(() => {
+    if (quickSignal === 0) return
+    setEntry(null)
+    setEditing(true)
+  }, [quickSignal])
 
   const leave = useCallback(() => {
     setEditing(false)

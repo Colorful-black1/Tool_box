@@ -39,6 +39,7 @@ import { buildImportedBook } from '../../data/book-import'
 import { MAX_BOOK_BYTES, formatSizeError } from '../../data/text-decoder'
 import { useServices } from '../../runtime/services'
 import type { BookGroup, BookSummary } from '../../shared-bridge'
+import { coverInitial, coverPalette } from '../../shared-bridge'
 import { SORT_OPTIONS, sortBooks } from './bookshelf-sort'
 import type { BookshelfSort } from './bookshelf-sort'
 import { colors, fonts, radius, spacing } from '../../theme'
@@ -52,11 +53,14 @@ type GroupDialog =
 export function BookshelfScreen({
   onOpenBook,
   onOpenStats,
-  reloadSignal
+  reloadSignal,
+  createSignal = 0
 }: {
   onOpenBook: (book: BookSummary) => void
   onOpenStats: () => void
   reloadSignal: number
+  /** 长按 Tab 触发的导入信号：变化时走导入流程 */
+  createSignal?: number
 }): ReactNode {
   const { store } = useServices()
   const [books, setBooks] = useState<BookSummary[]>([])
@@ -187,6 +191,14 @@ export function BookshelfScreen({
     }
   }
 
+  // 长按 Tab「书架」→ 直接走导入流程
+  useEffect(() => {
+    if (createSignal === 0) return
+    void importBook()
+    // importBook 每次渲染都是新函数，这里只关心信号变化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createSignal])
+
   return (
     <View style={styles.root}>
       <ScreenHeader
@@ -260,6 +272,15 @@ export function BookshelfScreen({
           >
             <GlassCard style={styles.item}>
               <View style={styles.itemRow}>
+                <View
+                  style={[styles.itemCover, { backgroundColor: coverPalette(item.id).base }]}
+                  accessibilityLabel={`${item.title} 封面`}
+                >
+                  <View style={styles.coverShade} />
+                  <Text style={[styles.coverInitial, { color: coverPalette(item.id).text }]}>
+                    {coverInitial(item.title)}
+                  </Text>
+                </View>
                 <View style={styles.itemMain}>
                   <Text style={styles.itemTitle} numberOfLines={1}>
                     {item.title}
@@ -462,6 +483,26 @@ const styles = StyleSheet.create({
   item: { gap: 4 },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   itemMain: { flex: 1, gap: 2 },
+  // 占位封面：手机端没有封面库，用「首字 + 主题色」自动生成
+  itemCover: {
+    width: 44,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  coverShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '55%',
+    backgroundColor: 'rgba(8, 11, 22, 0.45)'
+  },
+  coverInitial: { fontSize: 22, fontFamily: fonts.serif, letterSpacing: 2 },
   itemTitle: { fontSize: 15, color: colors.textHi },
   itemMeta: { fontSize: 11, color: colors.textMid },
   itemProgress: { fontSize: 10, color: colors.textDim, fontFamily: fonts.mono },

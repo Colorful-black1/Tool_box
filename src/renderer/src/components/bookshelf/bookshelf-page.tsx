@@ -2,13 +2,11 @@
 import type { JSX } from 'react'
 
 import type { BookGroup, BookSummary, BookshelfSort } from '../../../../shared/types'
+import { coverInitial, coverPalette } from '../../../../shared/book-cover'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import { useConfigStore } from '../../stores/config-store'
 import { BookDetailSheet } from './book-detail-sheet'
-
-/** 与旧项目一致：无封面时按 id 哈希取模轮转色块 */
-const CARD_COLORS = ['#5B7C99', '#8A9A5B', '#B0715E', '#7B6D8D', '#4E8069']
 
 const SORT_OPTIONS: Array<{ value: BookshelfSort; label: string }> = [
   { value: 'manual', label: '手动排序' },
@@ -38,6 +36,8 @@ export function BookshelfPage(): JSX.Element {
   const [query, setQuery] = useState('')
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
   const [sortOpen, setSortOpen] = useState(false)
+  /** 网格 / 列表视图切换（不落盘：属于纯观感偏好） */
+  const [view, setView] = useState<'grid' | 'list'>('grid')
   const [editingMode, setEditingMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [detail, setDetail] = useState<BookSummary | null>(null)
@@ -185,6 +185,14 @@ export function BookshelfPage(): JSX.Element {
         ) : (
           <>
             <div className="toolbar-grow" />
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setView(view === 'grid' ? 'list' : 'grid')}
+              title={view === 'grid' ? '切换为列表视图' : '切换为网格视图'}
+            >
+              {view === 'grid' ? '列表' : '网格'}
+            </button>
             <div className="sort-menu-wrap">
               <button
                 type="button"
@@ -280,7 +288,7 @@ export function BookshelfPage(): JSX.Element {
           </div>
         </div>
       ) : (
-        <ul className="shelf-grid">
+        <ul className={`shelf-grid${view === 'list' ? ' list' : ''}`}>
           {visible.map((book) => (
             <li key={book.id}>
               <BookCard
@@ -382,11 +390,8 @@ interface BookCardProps {
 
 function BookCard(props: BookCardProps): JSX.Element {
   const { book } = props
-  const color = useMemo(() => {
-    let hash = 0
-    for (const char of book.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-    return CARD_COLORS[hash % CARD_COLORS.length]
-  }, [book.id])
+  const palette = useMemo(() => coverPalette(book.id), [book.id])
+  const initial = useMemo(() => coverInitial(book.title), [book.title])
 
   const percent = Math.round((book.progress?.percent ?? 0) * 100)
 
@@ -405,7 +410,15 @@ function BookCard(props: BookCardProps): JSX.Element {
           {book.coverPath ? (
             <img src={toFileUrl(book.coverPath)} alt={book.title} />
           ) : (
-            <div className="cover-art" style={{ background: color }}>
+            <div
+              className="cover-art"
+              style={{
+                background: `linear-gradient(160deg, ${palette.base}, #0e1226 72%)`
+              }}
+            >
+              <span className="cover-initial" style={{ color: palette.text }}>
+                {initial}
+              </span>
               <span className="cover-title">{book.title}</span>
             </div>
           )}

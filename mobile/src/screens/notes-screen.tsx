@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Screen } from '../components/screen'
+import { useQuickActionSignal } from '../navigation/use-quick-action'
 import { NoteEditorScreen } from '../ui/notes/note-editor-screen'
 import { NotesListScreen } from '../ui/notes/notes-list-screen'
 import type { NoteView } from '../shared-bridge'
@@ -21,6 +22,14 @@ export function NotesScreen(): ReactNode {
   const [note, setNote] = useState<NoteView | null>(null)
   const [editing, setEditing] = useState(false)
   const [reloadSignal, setReloadSignal] = useState(0)
+  /** 长按 Tab「记事本」→ 直接开一篇新笔记 */
+  const quickSignal = useQuickActionSignal()
+
+  useEffect(() => {
+    if (quickSignal === 0) return
+    setNote(null)
+    setEditing(true)
+  }, [quickSignal])
 
   const close = useCallback(() => {
     setEditing(false)

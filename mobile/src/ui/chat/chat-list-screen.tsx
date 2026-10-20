@@ -14,11 +14,14 @@ import { colors, fonts, spacing } from '../../theme'
 
 export function ChatListScreen({
   onOpen,
-  reloadSignal
+  reloadSignal,
+  createSignal = 0
 }: {
   onOpen: (conversation: ConversationSummary) => void
   /** 详情页返回后自增，触发列表重载 */
   reloadSignal: number
+  /** 长按 Tab 触发的新建信号：变化时新建并进入一个会话 */
+  createSignal?: number
 }): ReactNode {
   const { store } = useServices()
   const [items, setItems] = useState<ConversationSummary[]>([])
@@ -46,7 +49,7 @@ export function ChatListScreen({
     return items.filter((item) => item.title.toLowerCase().includes(keyword))
   }, [items, query])
 
-  const create = async (): Promise<void> => {
+  const create = useCallback(async (): Promise<void> => {
     setCreating(true)
     try {
       const conversation = await store.createConversation()
@@ -57,7 +60,13 @@ export function ChatListScreen({
     } finally {
       setCreating(false)
     }
-  }
+  }, [onOpen, reload, store])
+
+  // 长按 Tab「对话」→ 直接新建并进入
+  useEffect(() => {
+    if (createSignal === 0) return
+    void create()
+  }, [create, createSignal])
 
   const remove = (item: ConversationSummary): void => {
     Alert.alert('删除会话', `确定删除「${item.title}」？该会话的全部消息会一并删除。`, [

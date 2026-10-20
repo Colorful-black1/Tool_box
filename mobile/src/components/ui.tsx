@@ -149,6 +149,41 @@ export function SectionTitle({ children }: { children: ReactNode }): ReactNode {
   return <Text style={styles.sectionTitle}>{children}</Text>
 }
 
+/**
+ * 带图标的分组块：标题 + 一句说明 + 内容。
+ *
+ * 设置页原来只有裸标题，读者不知道每块是干什么的；
+ * 这个块把「图标 + 标题 + 说明」三件套统一起来，
+ * 图标用两个字母的角标（不引图标库，各端渲染一致）。
+ */
+export function SectionBlock({
+  badge,
+  title,
+  description,
+  children
+}: {
+  /** 角标文字，两三个字母为宜 */
+  badge: string
+  title: string
+  description?: string
+  children?: ReactNode
+}): ReactNode {
+  return (
+    <View style={styles.sectionBlock}>
+      <View style={styles.sectionHead}>
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionBadgeText}>{badge}</Text>
+        </View>
+        <View style={styles.sectionHeadText}>
+          <Text style={styles.sectionHeading}>{title}</Text>
+          {description ? <Text style={styles.sectionDesc}>{description}</Text> : null}
+        </View>
+      </View>
+      {children}
+    </View>
+  )
+}
+
 export function Row({
   children,
   style
@@ -319,6 +354,21 @@ const styles = StyleSheet.create({
     borderColor: colors.line
   },
   ghostLabel: { color: colors.textMid, fontSize: 13, fontFamily: fonts.sans },
+  sectionBlock: { gap: spacing.sm },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  sectionBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.goldLine,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sectionBadgeText: { color: colors.gold, fontSize: 11, fontFamily: fonts.mono },
+  sectionHeadText: { flex: 1, gap: 2 },
+  sectionHeading: { color: colors.textHi, fontSize: 14, fontFamily: fonts.serif, letterSpacing: 1 },
+  sectionDesc: { color: colors.textDim, fontSize: 11, lineHeight: 16 },
   field: { gap: 5 },
   fieldLabel: { color: colors.textMid, fontSize: 11, letterSpacing: 1 },
   input: {

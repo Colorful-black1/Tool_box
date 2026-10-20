@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Screen } from '../components/screen'
+import { useQuickActionSignal } from '../navigation/use-quick-action'
 import { BookReaderScreen } from '../ui/reader/book-reader-screen'
 import { BookshelfScreen } from '../ui/reader/bookshelf-screen'
 import { ReadingStatsScreen } from '../ui/reader/reading-stats-screen'
@@ -19,6 +20,8 @@ export function ShelfScreen(): ReactNode {
   const [reading, setReading] = useState(false)
   const [statsOpen, setStatsOpen] = useState(false)
   const [reloadSignal, setReloadSignal] = useState(0)
+  /** 长按 Tab「书架」→ 直接走导入流程（导入逻辑在书架页里） */
+  const createSignal = useQuickActionSignal()
 
   const leaveReader = useCallback(() => {
     setReading(false)
@@ -46,6 +49,7 @@ export function ShelfScreen(): ReactNode {
     <Screen>
       <BookshelfScreen
         reloadSignal={reloadSignal}
+        createSignal={createSignal}
         onOpenBook={(target) => {
           setBook(target)
           setReading(true)
