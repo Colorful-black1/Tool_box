@@ -208,7 +208,8 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
         provider: active.provider,
         baseUrl: active.baseUrl,
         model: next,
-        showRemoteModels: active.showRemoteModels
+        // 勾选清单原样带回：换模型不该动用户在设置里选好的那批
+        selectedModels: active.selectedModels
       })
     } catch (selectError) {
       setError(selectError instanceof Error ? selectError.message : '切换模型失败')

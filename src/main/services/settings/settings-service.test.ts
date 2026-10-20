@@ -51,8 +51,8 @@ describe('SettingsService', () => {
         baseUrl: 'https://api.example.com/v1',
         model: 'test-model',
         hasApiKey: true,
-        // 新档案默认显示供应商实时模型列表
-        showRemoteModels: true
+        // 新档案没有勾选清单：对话下拉回落到内置推荐
+        selectedModels: []
       }
     ])
     // 首个档案自动启用
@@ -88,7 +88,7 @@ describe('SettingsService', () => {
     expect(config.apiKey).toBe('sk-secret-value')
   })
 
-  it('keeps the "show remote models" flag per profile', async () => {
+  it('keeps the selected model list per profile', async () => {
     const service = new SettingsService(directory, new FakeSafeStorage())
     const created = await service.save({
       name: '主力',
@@ -96,10 +96,10 @@ describe('SettingsService', () => {
       baseUrl: 'https://api.example.com',
       model: 'test-model',
       apiKey: 'sk-1',
-      showRemoteModels: false
+      selectedModels: ['model-a', 'model-b']
     })
     const id = created.profiles[0].id
-    expect(created.profiles[0].showRemoteModels).toBe(false)
+    expect(created.profiles[0].selectedModels).toEqual(['model-a', 'model-b'])
 
     // 后续保存不带这个字段时保持原值
     const updated = await service.save({
@@ -109,14 +109,39 @@ describe('SettingsService', () => {
       baseUrl: 'https://api.example.com',
       model: 'test-model-2'
     })
-    expect(updated.profiles[0].showRemoteModels).toBe(false)
+    expect(updated.profiles[0].selectedModels).toEqual(['model-a', 'model-b'])
 
-    // 重新打开（从磁盘读）也还是 false
+    // 重新打开（从磁盘读）也还在
     const reopened = new SettingsService(directory, new FakeSafeStorage())
-    expect((await reopened.getView()).profiles[0].showRemoteModels).toBe(false)
+    expect((await reopened.getView()).profiles[0].selectedModels).toEqual([
+      'model-a',
+      'model-b'
+    ])
   })
 
-  it('treats a legacy config without the flag as "show remote models"', async () => {
+  it('clears the selected model list when an empty array is given', async () => {
+    const service = new SettingsService(directory, new FakeSafeStorage())
+    const created = await service.save({
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'test-model',
+      apiKey: 'sk-1',
+      selectedModels: ['model-a']
+    })
+
+    const cleared = await service.save({
+      id: created.profiles[0].id,
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'test-model',
+      selectedModels: []
+    })
+    expect(cleared.profiles[0].selectedModels).toEqual([])
+  })
+
+  it('treats a legacy config without a selection as an empty list', async () => {
     await writeFile(
       join(directory, SETTINGS_FILE_NAME),
       JSON.stringify({
@@ -138,10 +163,11 @@ describe('SettingsService', () => {
 
     const service = new SettingsService(directory, new FakeSafeStorage())
     const view = await service.getView()
-    expect(view.profiles[0].showRemoteModels).toBe(true)
+    expect(view.profiles[0].selectedModels).toEqual([])
   })
 
-  it('rejects a new profile without any API key', async () => {    const service = new SettingsService(directory, new FakeSafeStorage())
+  it('rejects a new profile without any API key', async () => {
+    const service = new SettingsService(directory, new FakeSafeStorage())
     await expect(
       service.save({
         name: '空 Key',

@@ -164,12 +164,12 @@ export interface AiProfileView {
   model: string
   hasApiKey: boolean
   /**
-   * 对话下拉里是否显示该档案的「供应商实时模型列表」。
+   * 用户在设置里勾选的模型清单。
    *
-   * 缺省为 true（显示）。关掉后下拉只列内置推荐，且不再自动请求供应商接口。
-   * 按档案存：不同供应商的目录规模差很多（opencode 37 个 vs 本地网关几百个）。
+   * 对话下拉**只显示这里勾选的模型**（外加当前正在用的那个）。
+   * 为空时回落到该供应商的内置推荐 —— 这样新配置第一次用也不会是空下拉。
    */
-  showRemoteModels?: boolean
+  selectedModels?: string[]
 }
 
 export interface AiConfigView {
@@ -186,8 +186,8 @@ export interface AiProfileInput {
   model: string
   /** 留空表示沿用已保存的 Key */
   apiKey?: string
-  /** 对话下拉是否显示供应商实时模型列表；留空按 true 处理 */
-  showRemoteModels?: boolean
+  /** 对话下拉要显示的模型清单；留空表示沿用已保存的勾选，空数组表示清空 */
+  selectedModels?: string[]
 }
 
 /** 获取模型列表入参：apiKey 留空时回落到档案已保存的 Key */

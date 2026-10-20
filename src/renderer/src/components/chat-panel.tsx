@@ -8,7 +8,7 @@ import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
-import { RefreshIcon, SendIcon, StopIcon } from './icons'
+import { SendIcon, StopIcon } from './icons'
 
 export function ChatPanel(): JSX.Element {
   const conversations = useAppStore((state) => state.conversations)
@@ -332,53 +332,15 @@ function Composer(): JSX.Element {
             </button>
           )}
         </div>
-        <ModelNotice />
       </div>
     </form>
   )
 }
 
-/**
- * 模型下拉的来源说明。
- *
- * 之前拉取失败是**完全静默**的：主进程降级成内置推荐，界面只看到「8 个模型」，
- * 用户根本不知道是没拉到还是就这些。现在把来源和失败原因摆出来。
- */
-function ModelNotice(): JSX.Element | null {
-  const source = useAppStore((state) => state.chatModelsSource)
-  const notice = useAppStore((state) => state.chatModelsNotice)
-  const remoteCount = useAppStore((state) => state.chatModelsRemoteCount)
-
-  if (notice) {
-    return (
-      <div className="model-notice warn" role="status">
-        {notice} · 可到设置页检查接口地址与 API Key
-      </div>
-    )
-  }
-  if (source === 'remote') {
-    return (
-      <div className="model-notice" role="status">
-        供应商实时列表 · {remoteCount} 个
-      </div>
-    )
-  }
-  if (source === 'preset') {
-    return (
-      <div className="model-notice" role="status">
-        当前只显示内置推荐模型
-      </div>
-    )
-  }
-  return null
-}
-
 function ModelSelect(): JSX.Element | null {
   const settings = useAppStore((state) => state.settings)
   const chatModels = useAppStore((state) => state.chatModels)
-  const loading = useAppStore((state) => state.chatModelsLoading)
   const selectModel = useAppStore((state) => state.selectModel)
-  const refreshChatModels = useAppStore((state) => state.refreshChatModels)
 
   const active = settings?.profiles.find((item) => item.id === settings.activeId) ?? null
   if (!active) return null
@@ -398,16 +360,6 @@ function ModelSelect(): JSX.Element | null {
         searchable
         onChange={(value) => void selectModel(value)}
       />
-      <button
-        type="button"
-        className="icon-btn"
-        title="从供应商拉取模型列表"
-        aria-label="刷新模型列表"
-        disabled={loading}
-        onClick={() => void refreshChatModels()}
-      >
-        <RefreshIcon />
-      </button>
     </div>
   )
 }

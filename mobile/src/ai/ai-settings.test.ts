@@ -86,15 +86,19 @@ describe('AiSettingsService.save', () => {
     expect(view.activeId).toBe(view.profiles[0]?.id)
   })
 
-  it('「显示实时模型列表」按档案保存，留空时保持原值', async () => {
+  it('「勾选的模型清单」按档案保存，留空时保持原值', async () => {
     const { service } = makeService()
-    const created = await service.save({ ...BASE, showRemoteModels: false })
+    const created = await service.save({ ...BASE, selectedModels: ['model-a', 'model-b'] })
     const id = created.profiles[0]?.id
-    expect(created.profiles[0]?.showRemoteModels).toBe(false)
+    expect(created.profiles[0]?.selectedModels).toEqual(['model-a', 'model-b'])
 
-    // 不带该字段再次保存：保持 false
+    // 不带该字段再次保存：保持原值
     const updated = await service.save({ ...BASE, id })
-    expect(updated.profiles[0]?.showRemoteModels).toBe(false)
+    expect(updated.profiles[0]?.selectedModels).toEqual(['model-a', 'model-b'])
+
+    // 传空数组：清空勾选
+    const cleared = await service.save({ ...BASE, id, selectedModels: [] })
+    expect(cleared.profiles[0]?.selectedModels).toEqual([])
   })
 
   it('新增第二套不会顶替已启用的档案', async () => {
@@ -337,8 +341,8 @@ describe('normalizeStoredSettings', () => {
     })
   })
 
-  it('旧档案没有「显示实时模型列表」字段时按 true 处理', () => {
+  it('旧档案没有「勾选的模型清单」字段时按空处理', () => {
     const result = normalizeStoredSettings({ version: 2, profiles: [{ id: 'a' }] }, newId)
-    expect(result.profiles[0]?.showRemoteModels).toBe(true)
+    expect(result.profiles[0]?.selectedModels).toEqual([])
   })
 })

@@ -2916,18 +2916,6 @@ textarea,
   gap: 6px;
 }
 
-/* 模型下拉的来源说明：实时列表 / 降级原因，避免"拉取失败"静默无感 */
-.model-notice {
-  margin-top: 6px;
-  font-size: 10.5px;
-  letter-spacing: 0.5px;
-  color: var(--text-dim);
-}
-
-.model-notice.warn {
-  color: var(--gold-dim);
-}
-
 /* 设置页：拉模型列表的按钮 + 结果说明 */
 .model-fetch-row {
   display: flex;
@@ -2940,12 +2928,114 @@ textarea,
   color: var(--gold-dim);
 }
 
-/* 设置页：开关行（标题在左、开关在右） */
-.settings-toggle-row {
+/* 设置页：模型多选（勾选的模型才会出现在对话下拉里） */
+.model-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.model-pick-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
+}
+
+.model-pick-ops {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.btn-mini {
+  padding: 3px 9px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+}
+
+.model-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 供应商目录动辄三四十条，列表限高可滚 */
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(232, 201, 138, 0.18);
+  border-radius: 10px;
+  background: rgba(8, 11, 22, 0.55);
+}
+
+.model-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.16s;
+}
+
+.model-pick-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-hi);
+}
+
+.model-pick-item:focus-visible {
+  outline: none;
+  border-color: rgba(232, 201, 138, 0.55);
+}
+
+.model-pick-item.on {
+  color: var(--text-hi);
+}
+
+/* 自绘勾选框：原生 checkbox 在深色主题里是一块白，不搭 */
+.model-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 1px solid rgba(232, 201, 138, 0.35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--bg-deep);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.model-pick-item.on .model-check {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.model-pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-pick-current {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid rgba(232, 201, 138, 0.35);
+  border-radius: 999px;
+  color: var(--gold);
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 1px;
 }
 
 /* 输入框在面板底部，下拉向上展开，避免超出可视区域 */

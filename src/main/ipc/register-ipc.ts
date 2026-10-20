@@ -22,6 +22,7 @@ import type { SettingsService } from '../services/settings/settings-service'
 import {
   assertObject,
   optionalString,
+  optionalStringArray,
   requireEnum,
   requireNonNegativeInt,
   requireRatio,
@@ -66,7 +67,12 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       provider: requireEnum(body.provider, '供应商', AI_PROVIDER_IDS),
       baseUrl: requireString(body.baseUrl, '接口地址', { maxLength: 200 }),
       model: requireString(body.model, '模型名称', { maxLength: 80 }),
-      apiKey: optionalString(body.apiKey, 'API Key', { maxLength: 512 })
+      apiKey: optionalString(body.apiKey, 'API Key', { maxLength: 512 }),
+      // 不传 = 不改动已保存的勾选；[] = 清空
+      selectedModels: optionalStringArray(body.selectedModels, '模型清单', {
+        maxItems: 60,
+        maxLength: 80
+      })
     })
   })
 

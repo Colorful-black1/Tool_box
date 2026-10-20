@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { SETTINGS_FILE_NAME } from '../../../shared/constants'
+import { normalizeModelList } from '../../../shared/model-list'
 import type { SafeStorageAdapter } from '../../../shared/safe-storage'
 import { findAiProvider, isAiProviderId, matchProviderByBaseUrl } from '../../../shared/types'
 import type {
@@ -33,10 +34,10 @@ interface StoredProfile {
   model: string
   apiKeyCipher: string
   /**
-   * 对话下拉是否显示供应商实时模型列表。
-   * 旧配置文件没有这个字段，读出来时按 true 处理（加字段，不改 version）。
+   * 用户勾选的模型清单：对话下拉只显示这些（外加当前正在用的那个）。
+   * 旧配置文件没有这个字段，读出来时按空处理（加字段，不改 version）。
    */
-  showRemoteModels?: boolean
+  selectedModels?: string[]
 }
 
 const MAX_NAME_CHARS = 24
@@ -120,8 +121,8 @@ export class SettingsService {
       apiKeyCipher: apiKey
         ? this.safeStorage.encryptString(apiKey).toString('base64')
         : (existing?.apiKeyCipher ?? ''),
-      // 留空视为「显示」：老档案没有这个字段时行为不变
-      showRemoteModels: input.showRemoteModels ?? existing?.showRemoteModels ?? true
+      // 留空表示「不改动已保存的勾选」，空数组表示清空
+      selectedModels: normalizeModelList(input.selectedModels ?? existing?.selectedModels)
     }
 
     const profiles = existing
@@ -266,7 +267,7 @@ function toProfileView(profile: StoredProfile): AiProfileView {
     baseUrl: profile.baseUrl,
     model: profile.model,
     hasApiKey: profile.apiKeyCipher.length > 0,
-    showRemoteModels: profile.showRemoteModels ?? true
+    selectedModels: profile.selectedModels ?? []
   }
 }
 
@@ -310,7 +311,8 @@ export function normalizeStoredSettings(parsed: unknown): StoredSettings {
     provider,
     baseUrl,
     model,
-    apiKeyCipher
+    apiKeyCipher,
+    selectedModels: []
   }
   return { version: 2, activeId: profile.id, profiles: [profile] }
 }
@@ -334,7 +336,7 @@ function toStoredProfile(value: unknown): StoredProfile | null {
     baseUrl,
     model: typeof record.model === 'string' ? record.model.trim() : '',
     apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : '',
-    // 旧档案没有这个字段：按「显示实时列表」处理
-    showRemoteModels: record.showRemoteModels !== false
+    // 旧档案没有勾选清单：按空处理（下拉回落到内置推荐）
+    selectedModels: normalizeModelList(record.selectedModels)
   }
 }

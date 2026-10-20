@@ -37,6 +37,27 @@ export function requireStringArray(value: unknown, name: string): string[] {
   return value.map((item, index) => requireString(item, `${name}[${index}]`))
 }
 
+/**
+ * 可选字符串数组：未传或 null 返回 undefined，其余逐项校验并限量。
+ *
+ * 用于「可选清单」类入参（例如勾选的模型列表）：
+ * 不传 = 不改动，[] = 清空，两种语义要区分开，所以不能用 requireStringArray。
+ */
+export function optionalStringArray(
+  value: unknown,
+  name: string,
+  options: { maxItems?: number; maxLength?: number } = {}
+): string[] | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) throw new Error(`${name}必须是数组`)
+  if (options.maxItems && value.length > options.maxItems) {
+    throw new Error(`${name}最多 ${options.maxItems} 项`)
+  }
+  return value.map((item, index) =>
+    requireString(item, `${name}[${index}]`, { maxLength: options.maxLength })
+  )
+}
+
 /** 枚举 / 白名单校验：动态排序、供应商 id 等外部可控的固定选项必须走这里 */
 export function requireEnum<T extends string>(
   value: unknown,

@@ -103,3 +103,11 @@ export type { TrimHistoryResult } from '../../src/shared/history'
 // 占位封面：两端同一套色板与首字规则
 export { coverInitial, coverPalette } from '../../src/shared/book-cover'
 export type { CoverPalette } from '../../src/shared/book-cover'
+
+// 模型清单：两端同一套「勾选哪些模型就显示哪些」的规则
+export {
+  applyModelToggle,
+  normalizeModelList,
+  resolveChatModels
+} from '../../src/shared/model-list'
+export { MAX_MODEL_NAME_CHARS, MAX_SELECTED_MODELS } from '../../src/shared/model-list'

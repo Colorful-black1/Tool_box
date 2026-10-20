@@ -7,9 +7,9 @@
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { AI_PROVIDER_PRESETS, findAiProvider } from '../../shared-bridge'
+import { AI_PROVIDER_PRESETS, applyModelToggle, findAiProvider } from '../../shared-bridge'
 import type { AiProfileView, AiProviderId, AiProviderPreset } from '../../shared-bridge'
 import { Banner, ChipRow, Field, GhostButton, PrimaryButton, SectionTitle } from '../../components/ui'
 import { fetchModels } from '../../ai/model-fetcher'
@@ -38,8 +38,10 @@ export function AiProfileEditor({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
-  /** 对话下拉是否显示供应商实时模型列表 */
-  const [showRemoteModels, setShowRemoteModels] = useState(existing?.showRemoteModels ?? true)
+  /** 勾选的模型清单：只有这些会出现在对话页的模型选择里 */
+  const [selectedModels, setSelectedModels] = useState<string[]>(
+    existing?.selectedModels?.length ? existing.selectedModels : []
+  )
 
   const pickProvider = (next: AiProviderId): void => {
     const preset = findAiProvider(next)
@@ -47,6 +49,8 @@ export function AiProfileEditor({
     // 换供应商时带出默认地址与推荐模型，但允许用户随后手改
     setBaseUrl(preset.baseUrl)
     setModel(preset.models[0] ?? model)
+    // 勾选清单跟着供应商走：上一个供应商的模型在这里多半不存在
+    setSelectedModels(preset.models[0] ? [preset.models[0]] : [])
     setModels([])
     setNote('')
     // 顺手拉一次该供应商的实时模型列表：省得用户再点一次「拉取模型列表」
@@ -81,7 +85,7 @@ export function AiProfileEditor({
       )
       setModels(result.models)
       if (result.message) setNote(result.message)
-      if (!result.models.includes(model)) setModel(result.models[0] ?? model)
+      if (!model && result.models.length > 0) setModel(result.models[0])
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : '获取模型列表失败'
       if (silent) setNote(message)
@@ -89,6 +93,19 @@ export function AiProfileEditor({
     } finally {
       setLoadingModels(false)
     }
+  }
+
+  /**
+   * 勾选 / 取消勾选一个模型。
+   *
+   * 勾选清单同时决定「对话页模型选择里有哪些」与「当前用哪个」：
+   * 勾上一个 → 当前模型切过去（勾哪个用哪个）；
+   * 取消勾选当前正在用的模型 → 顺延到清单里剩下的第一个。
+   */
+  const toggleModel = (name: string): void => {
+    const next = applyModelToggle(model, selectedModels, name)
+    setSelectedModels(next.selectedModels)
+    setModel(next.model)
   }
 
   const save = async (): Promise<void> => {
@@ -102,7 +119,7 @@ export function AiProfileEditor({
         baseUrl,
         model,
         apiKey: apiKey || undefined,
-        showRemoteModels
+        selectedModels
       })
       onDone()
     } catch (saveError) {
@@ -111,6 +128,20 @@ export function AiProfileEditor({
       setBusy(false)
     }
   }
+
+  // 候选清单：拉到的实时列表 + 供应商内置推荐 + 已勾选的 + 当前正在用的
+  const candidates: string[] = []
+  const seenCandidates = new Set<string>()
+  const pushCandidate = (name: string): void => {
+    const value = name.trim()
+    if (!value || seenCandidates.has(value)) return
+    seenCandidates.add(value)
+    candidates.push(value)
+  }
+  for (const item of models) pushCandidate(item)
+  for (const item of findAiProvider(provider).models) pushCandidate(item)
+  for (const item of selectedModels) pushCandidate(item)
+  pushCandidate(model)
 
   // 同上：嵌在设置页的纵向 ScrollView 里，这里用 View 避免嵌套滚动
   return (
@@ -158,23 +189,8 @@ export function AiProfileEditor({
           onChangeText={setModel}
           placeholder="deepseek-v4-pro"
           autoCapitalize="none"
+          hint="当前正在用的模型；下面勾选的模型会出现在对话页的模型选择里"
         />
-
-        <View style={styles.switchRow}>
-          <View style={styles.switchText}>
-            <Text style={styles.switchTitle}>对话下拉显示实时模型列表</Text>
-            <Text style={styles.switchHint}>
-              关闭后只列内置推荐模型，也不再自动请求供应商接口
-            </Text>
-          </View>
-          <Switch
-            value={showRemoteModels}
-            onValueChange={setShowRemoteModels}
-            trackColor={{ false: colors.line, true: colors.goldDim }}
-            thumbColor={showRemoteModels ? colors.gold : colors.textDim}
-            accessibilityLabel="对话下拉显示实时模型列表"
-          />
-        </View>
 
         <View style={styles.actions}>
           <GhostButton
@@ -188,23 +204,33 @@ export function AiProfileEditor({
         {note ? <Banner tone="info" message={note} /> : null}
         {error ? <Banner message={error} /> : null}
 
-        {models.length > 0 ? (
-          <View style={styles.modelList}>
-            <SectionTitle>可选模型（{models.length}）</SectionTitle>
-            {models.slice(0, 60).map((item) => (
+        <View style={styles.modelList}>
+          <View style={styles.modelListHead}>
+            <SectionTitle>可选模型（{candidates.length}）</SectionTitle>
+            <Text style={styles.modelCount}>已选 {selectedModels.length}</Text>
+          </View>
+          <Text style={styles.modelHint}>
+            勾选的模型会出现在对话页的模型选择里；勾上即切为当前模型
+          </Text>
+          {candidates.slice(0, 60).map((item) => {
+            const checked = selectedModels.includes(item)
+            return (
               <Pressable
                 key={item}
-                accessibilityRole="button"
-                onPress={() => setModel(item)}
-                style={[styles.modelRow, item === model && styles.modelRowActive]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked }}
+                onPress={() => toggleModel(item)}
+                style={[styles.modelRow, checked && styles.modelRowActive]}
               >
-                <Text style={[styles.modelText, item === model && styles.modelTextActive]}>
-                  {item}
-                </Text>
+                <View style={[styles.modelCheck, checked && styles.modelCheckOn]}>
+                  {checked ? <Text style={styles.modelCheckMark}>✓</Text> : null}
+                </View>
+                <Text style={[styles.modelText, checked && styles.modelTextActive]}>{item}</Text>
+                {item === model ? <Text style={styles.modelCurrent}>当前</Text> : null}
               </Pressable>
-            ))}
-          </View>
-        ) : null}
+            )
+          })}
+        </View>
 
         <GhostButton label="取消" onPress={onDone} />
       </View>
@@ -235,16 +261,6 @@ function Chip({
 
 const styles = StyleSheet.create({
   root: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  switchText: { flex: 1, gap: 2 },
-  switchTitle: { color: colors.textHi, fontSize: 13 },
-  switchHint: { color: colors.textDim, fontSize: 11, lineHeight: 16 },
   chips: { paddingVertical: spacing.xs, paddingRight: spacing.lg },
   chip: {
     paddingVertical: 6,
@@ -259,13 +275,36 @@ const styles = StyleSheet.create({
   form: { gap: spacing.md, marginTop: spacing.sm },
   actions: { flexDirection: 'row', gap: spacing.sm },
   modelList: { gap: 4 },
+  modelListHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm
+  },
+  modelCount: { color: colors.gold, fontSize: 11 },
+  modelHint: { color: colors.textDim, fontSize: 11, lineHeight: 16, marginBottom: 2 },
   modelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: 8,
     paddingHorizontal: spacing.md,
     borderRadius: radius.sm,
     backgroundColor: colors.bgPanelSolid
   },
   modelRowActive: { backgroundColor: 'rgba(232, 201, 138, 0.16)' },
-  modelText: { color: colors.textMid, fontSize: 12, fontFamily: fonts.mono },
-  modelTextActive: { color: colors.gold }
+  modelCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.goldLine,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modelCheckOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  modelCheckMark: { color: colors.bgDeep, fontSize: 10, lineHeight: 12 },
+  modelText: { flex: 1, color: colors.textMid, fontSize: 12, fontFamily: fonts.mono },
+  modelTextActive: { color: colors.gold },
+  modelCurrent: { color: colors.goldDim, fontSize: 10, letterSpacing: 1 }
 })

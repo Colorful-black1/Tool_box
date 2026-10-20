@@ -9,6 +9,7 @@ import type {
   AiProfileView,
   AiProviderId
 } from '@shared/types'
+import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
 
 /** 表单草稿：与落盘档案解耦，未保存的修改不会污染 store */
@@ -19,8 +20,8 @@ interface ProfileDraft {
   baseUrl: string
   model: string
   apiKey: string
-  /** 对话下拉是否显示供应商实时模型列表 */
-  showRemoteModels: boolean
+  /** 勾选的模型清单：只有这些会出现在对话下拉里 */
+  selectedModels: string[]
 }
 
 type SaveStatus =
@@ -74,6 +75,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   /** 拉取模型列表的结果：数量 + 来源（实时 / 降级）+ 原因 */
   const [modelList, setModelList] = useState<ModelListState | null>(null)
   const [loadingModels, setLoadingModels] = useState(false)
+  /** 最近一次拉到的模型（候选清单的一部分） */
+  const [fetchedModels, setFetchedModels] = useState<string[]>([])
 
   // 当前编辑的档案被外部删除时关闭草稿；新建草稿（id 为 null）不受影响
   useEffect(() => {
@@ -94,37 +97,50 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const openProfile = (profile: AiProfileView): void => {
     setDraft(toDraft(profile))
     setStatus({ type: 'idle' })
+    // 换档案时清掉上一套的拉取结果与提示
+    setFetchedModels([])
+    setModelList(null)
   }
 
   /** 新建草稿：以首个内置供应商为默认值，Key 留空（id 为 null 表示尚未落盘） */
   const startNew = (): void => {
     const preset = AI_PROVIDER_PRESETS[0]
+    const defaultModel = preset.models[0] ?? ''
     setDraft({
       id: null,
       name: preset.name,
       provider: preset.id,
       baseUrl: preset.baseUrl,
-      model: preset.models[0] ?? '',
+      model: defaultModel,
       apiKey: '',
-      showRemoteModels: true
+      // 默认勾上推荐模型：新配置保存后对话下拉直接可用
+      selectedModels: defaultModel ? [defaultModel] : []
     })
     setStatus({ type: 'idle' })
+    setFetchedModels([])
+    setModelList(null)
   }
 
   /** 切换供应商：自动填入官方端点与首个推荐模型（模型仅供默认值，界面不在设置页选择） */
   const pickProvider = (provider: AiProviderId): void => {
     const preset = findAiProvider(provider)
+    const defaultModel = preset.models[0] ?? ''
     setDraft((current) =>
       current
         ? {
             ...current,
             provider,
             baseUrl: preset.baseUrl || current.baseUrl,
-            model: preset.models[0] ?? '',
-            name: current.id ? current.name : preset.name
+            model: defaultModel,
+            name: current.id ? current.name : preset.name,
+            // 勾选清单跟着供应商走：上一个供应商的模型在这里多半不存在
+            selectedModels: defaultModel ? [defaultModel] : []
           }
         : current
     )
+    // 上一个供应商的实时列表对新供应商无意义
+    setFetchedModels([])
+    setModelList(null)
   }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -138,7 +154,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       baseUrl: draft.baseUrl,
       model: draft.model,
       apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
-      showRemoteModels: draft.showRemoteModels
+      selectedModels: draft.selectedModels
     }
 
     setStatus({ type: 'saving' })
@@ -178,6 +194,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
    *
    * 这是「当场验证 Key 是否有效」的最快方式：远端能列出来就说明 Key 与地址都对，
    * 列不出来时主进程会降级为内置推荐并给出原因，这里原样显示。
+   *
+   * 拉到的模型只进「候选清单」，勾选哪些由用户决定 —— 供应商目录动辄三四十个，
+   * 全塞进对话下拉既难看又难找。
    */
   const onFetchModels = async (): Promise<void> => {
     if (!draft || loadingModels) return
@@ -190,6 +209,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
         baseUrl: draft.baseUrl,
         apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined
       })
+      setFetchedModels(result.models)
       setModelList({
         count: result.models.length,
         source: result.source,
@@ -210,6 +230,19 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     }
   }
 
+  /**
+   * 勾选 / 取消勾选一个模型。
+   *
+   * 勾选清单同时决定「对话下拉里有哪些」与「当前用哪个」：
+   * 勾上一个 → 当前模型切过去（勾哪个用哪个）；
+   * 取消勾选当前正在用的模型 → 顺延到清单里剩下的第一个。
+   */
+  const toggleModel = (name: string): void => {
+    if (!draft) return
+    const next = applyModelToggle(draft.model, draft.selectedModels, name)
+    patchDraft({ selectedModels: next.selectedModels, model: next.model })
+  }
+
   const onActivate = async (): Promise<void> => {
     if (!draft?.id || status.type === 'saving') return
     setStatus({ type: 'saving' })
@@ -223,6 +256,25 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       })
     }
   }
+
+  /**
+   * 候选清单：拉到的实时列表 + 供应商内置推荐 + 已勾选的 + 当前正在用的。
+   *
+   * 去重后作为多选列表的条目 —— 任何时候都能看到并调整已有的勾选，
+   * 不必为了改一个勾选重新拉一次接口。
+   */
+  const candidates: string[] = []
+  const seenCandidates = new Set<string>()
+  const pushCandidate = (name: string): void => {
+    const value = name.trim()
+    if (!value || seenCandidates.has(value)) return
+    seenCandidates.add(value)
+    candidates.push(value)
+  }
+  for (const name of fetchedModels) pushCandidate(name)
+  for (const name of findAiProvider(draft?.provider ?? 'custom').models) pushCandidate(name)
+  for (const name of draft?.selectedModels ?? []) pushCandidate(name)
+  if (draft?.model) pushCandidate(draft.model)
 
   return (
     <div className="settings-layout settings-layout-wide view-enter">
@@ -345,7 +397,26 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                   onChange={(event) => patchDraft({ apiKey: event.target.value })}
                 />
                 <p className="field-hint">
-                  选好供应商、填入 API Key 即可保存。具体用哪个模型，在「对话」页右下角的下拉里选择。
+                  选好供应商、填入 API Key 即可保存。下面勾选常用的几个模型，它们才会出现在「对话」页的下拉里。
+                </p>
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="profile-model">
+                  当前模型 · MODEL
+                </label>
+                <input
+                  id="profile-model"
+                  className="field-input"
+                  type="text"
+                  value={draft.model}
+                  placeholder="gpt-6-luna"
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => patchDraft({ model: event.target.value })}
+                />
+                <p className="field-hint">
+                  实际发请求用的模型；下面勾选任一模型会自动切到它。自定义供应商可直接手填模型名。
                 </p>
               </div>
 
@@ -377,24 +448,53 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                     </span>
                   )}
                 </div>
-              </div>
 
-              <div className="settings-toggle-row">
-                <span className="field-label" id="show-remote-models-label">
-                  对话下拉显示供应商实时模型列表
-                </span>
-                <button
-                  type="button"
-                  className={`toggle-switch${draft.showRemoteModels ? ' on' : ''}`}
-                  role="switch"
-                  aria-checked={draft.showRemoteModels}
-                  aria-labelledby="show-remote-models-label"
-                  onClick={() =>
-                    patchDraft({ showRemoteModels: !draft.showRemoteModels })
-                  }
-                >
-                  <span />
-                </button>
+                <div className="model-pick">
+                  <div className="model-pick-head">
+                    <span className="field-hint">
+                      已选 {draft.selectedModels.length} 个 · 勾选的模型会出现在对话下拉里，勾上即切为当前模型
+                    </span>
+                    <span className="model-pick-ops">
+                      <button
+                        type="button"
+                        className="btn-ghost btn-mini"
+                        onClick={() => patchDraft({ selectedModels: candidates })}
+                      >
+                        全选
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-mini"
+                        onClick={() => patchDraft({ selectedModels: [] })}
+                      >
+                        清空
+                      </button>
+                    </span>
+                  </div>
+                  <div className="model-pick-list">
+                    {candidates.map((name) => {
+                      const checked = draft.selectedModels.includes(name)
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={checked}
+                          className={`model-pick-item${checked ? ' on' : ''}`}
+                          onClick={() => toggleModel(name)}
+                        >
+                          <span className="model-check" aria-hidden="true">
+                            {checked ? '✓' : ''}
+                          </span>
+                          <span className="model-pick-name">{name}</span>
+                          {name === draft.model ? (
+                            <span className="model-pick-current">当前</span>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="settings-actions">
@@ -447,6 +547,6 @@ function toDraft(profile: AiProfileView | null): ProfileDraft | null {
     baseUrl: profile.baseUrl,
     model: profile.model,
     apiKey: '',
-    showRemoteModels: profile.showRemoteModels ?? true
+    selectedModels: profile.selectedModels ?? []
   }
 }

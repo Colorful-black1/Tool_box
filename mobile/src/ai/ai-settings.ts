@@ -21,6 +21,7 @@ import {
   findAiProvider,
   isAiProviderId,
   matchProviderByBaseUrl,
+  normalizeModelList,
   normalizeOpenAiBaseUrl
 } from '../shared-bridge'
 import type { AiConfigView, AiProfileInput, AiProfileView, AiProviderId } from '../shared-bridge'
@@ -49,10 +50,10 @@ export interface StoredAiProfile {
   /** API Key 的 AES-GCM 信封（JSON 字符串） */
   apiKeyCipher: string
   /**
-   * 对话下拉是否显示供应商实时模型列表。
-   * 旧档案没有这个字段，读出来时按 true 处理（加字段，不改 version）。
+   * 用户勾选的模型清单：对话下拉只显示这些（外加当前正在用的那个）。
+   * 旧档案没有这个字段，读出来时按空处理（加字段，不改 version）。
    */
-  showRemoteModels?: boolean
+  selectedModels?: string[]
 }
 
 export interface StoredAiSettings {
@@ -72,7 +73,7 @@ function toView(profile: StoredAiProfile): AiProfileView {
     baseUrl: profile.baseUrl,
     model: profile.model,
     hasApiKey: Boolean(profile.apiKeyCipher),
-    showRemoteModels: profile.showRemoteModels ?? true
+    selectedModels: profile.selectedModels ?? []
   }
 }
 
@@ -143,8 +144,8 @@ export class AiSettingsService {
       apiKeyCipher: apiKey
         ? await this.secretBox.encryptText(apiKey)
         : (existing?.apiKeyCipher ?? ''),
-      // 留空视为「显示」：老档案没有这个字段时行为不变
-      showRemoteModels: input.showRemoteModels ?? existing?.showRemoteModels ?? true
+      // 留空表示「不改动已保存的勾选」，空数组表示清空
+      selectedModels: normalizeModelList(input.selectedModels ?? existing?.selectedModels)
     }
 
     const profiles = existing
@@ -257,7 +258,8 @@ export function normalizeStoredSettings(parsed: unknown, newId: () => string): S
     provider,
     baseUrl,
     model,
-    apiKeyCipher
+    apiKeyCipher,
+    selectedModels: []
   }
   return { version: 2, activeId: profile.id, profiles: [profile] }
 }
@@ -275,7 +277,7 @@ function toStoredProfile(item: unknown): StoredAiProfile | null {
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : '',
     model: typeof record.model === 'string' ? record.model : '',
     apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : '',
-    // 旧档案没有这个字段：按「显示实时列表」处理
-    showRemoteModels: record.showRemoteModels !== false
+    // 旧档案没有勾选清单：按空处理（下拉回落到内置推荐）
+    selectedModels: normalizeModelList(record.selectedModels)
   }
 }
