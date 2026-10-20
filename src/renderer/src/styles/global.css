@@ -2590,45 +2590,7 @@ textarea,
   font-family: var(--mono);
 }
 
-/* ---------- Agent 工具调用卡片 ---------- */
-
-.tool-call {
-  margin: 0 0 10px 4px;
-  padding: 8px 12px;
-  border: 1px dashed rgba(127, 231, 255, 0.28);
-  border-left: 2px solid var(--cyan);
-  border-radius: 8px;
-  background: rgba(127, 231, 255, 0.05);
-  font-size: 11.5px;
-}
-
-.tool-call.ok {
-  border-left-color: var(--gold-dim);
-  border-color: rgba(232, 201, 138, 0.22);
-  background: rgba(232, 201, 138, 0.04);
-}
-
-.tool-call.error {
-  border-left-color: var(--pink);
-  border-color: rgba(255, 158, 199, 0.28);
-  background: rgba(255, 158, 199, 0.05);
-}
-
-.tool-call-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.tool-call-name {
-  font-family: var(--mono);
-  color: var(--cyan);
-  letter-spacing: 0.5px;
-}
-
-.tool-call.ok .tool-call-name {
-  color: var(--gold-dim);
-}
+/* ---------- Agent 审批卡（工具调用本身不在界面展示，只有需要确认的写操作才露出来） ---------- */
 
 .tool-call-status {
   color: var(--text-dim);
@@ -2644,8 +2606,7 @@ textarea,
   color: var(--gold);
 }
 
-.tool-call-args,
-.tool-call-summary {
+.tool-call-args {
   margin-top: 4px;
   color: var(--text-mid);
   font-family: var(--mono);
@@ -2655,10 +2616,6 @@ textarea,
   white-space: pre-wrap;
   max-height: 120px;
   overflow: hidden;
-}
-
-.tool-call-summary {
-  color: var(--text-dim);
 }
 
 .tool-approval {

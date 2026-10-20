@@ -74,6 +74,13 @@ interface AppState {
   activeConversationId: string | null
   messages: ChatMessage[]
   streaming: StreamingState | null
+  /**
+   * AI 的工具调用记录。
+   *
+   * **界面不展示**：查书架、读分组这类是后台动作，摆出来只会让人以为出了错
+   * （见 `chat-panel.tsx` 的说明）。这里仍然记着，是给「查看 AI 操作记录」这类
+   * 排查场景留的底子，真要用时不必再改主进程与 IPC。
+   */
   toolCalls: ToolCallView[]
   pendingApproval: PendingApprovalView | null
   agentPermission: AgentPermission

@@ -37,8 +37,6 @@ import { colors, fonts, radius, spacing } from '../../theme'
 import { ApprovalCard } from './approval-card'
 import type { PendingApprovalView } from './approval-card'
 import { ModelPickerSheet } from './model-picker-sheet'
-import { ToolCallList } from './tool-call-list'
-import type { ToolCallView } from './tool-call-list'
 
 interface Props {
   conversationId: string
@@ -49,7 +47,6 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   const { store, gateway, aiSettings } = useServices()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState('')
-  const [toolCalls, setToolCalls] = useState<ToolCallView[]>([])
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalView | null>(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -118,13 +115,13 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
     return () => gateway.cancelApprovals(conversationId)
   }, [conversationId, gateway])
 
-  // 增量或工具卡片有变化就滚到底部，让用户始终看到最新内容；
+  // 增量正文有变化就滚到底部，让用户始终看到最新内容；
   // 但用户主动往回翻时不再抢滚动位置
   useEffect(() => {
-    if (!streaming && toolCalls.length === 0) return
+    if (!streaming) return
     if (!stickToBottom.current) return
     listRef.current?.scrollToEnd({ animated: true })
-  }, [streaming, toolCalls.length])
+  }, [streaming])
 
   const send = async (): Promise<void> => {
     const content = draft.trim()
@@ -132,7 +129,6 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
     setError('')
     setNotice('')
-    setToolCalls([])
     setPendingApproval(null)
     setSending(true)
     setDraft('')
@@ -146,19 +142,11 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
     const sink: ChatEventSink = {
       onDelta: (event) => setStreaming((prev) => prev + event.delta),
-      onToolCall: (event) =>
-        setToolCalls((prev) => [
-          ...prev,
-          { callId: event.callId, name: event.name, args: event.args, status: 'running' }
-        ]),
-      onToolResult: (event) =>
-        setToolCalls((prev) =>
-          prev.map((call) =>
-            call.callId === event.callId
-              ? { ...call, status: event.ok ? 'ok' : 'error', summary: event.summary }
-              : call
-          )
-        ),
+      // 工具调用是 AI 的后台动作，界面不展示（与桌面端一致）：
+      // 查书架、读分组这类过程消息摆在回答旁边只会让人以为出了错。
+      // 需要人工确认的写操作走 onToolApprovalRequest，审批卡必须露出来。
+      onToolCall: () => undefined,
+      onToolResult: () => undefined,
       onToolApprovalRequest: (event) =>
         setPendingApproval({
           callId: event.callId,
@@ -282,15 +270,13 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
           listRef.current?.scrollToEnd({ animated: false })
         }}
         ListEmptyComponent={
-          messages.length === 0 && !streaming && toolCalls.length === 0 ? (
+          messages.length === 0 && !streaming ? (
             <Text style={styles.empty}>试试让 AI 帮你查书架、整理记事本或找密码条目</Text>
           ) : null
         }
         renderItem={({ item }) => <Bubble message={item} />}
         ListFooterComponent={
           <View style={styles.footer}>
-            {/* 顺序与桌面端一致：消息 → 工具卡片 → 正在流式的正文 */}
-            <ToolCallList calls={toolCalls} />
             {streaming ? (
               <View style={[styles.bubble, styles.bubbleAssistant]}>
                 <Text style={styles.bubbleText}>{streaming}</Text>

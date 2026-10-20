@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 
 import type { ChatMessage } from '@shared/types'
 import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
-import type { PendingApprovalView, ToolCallView } from '../stores/app-store'
+import type { PendingApprovalView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
 import { Dropdown } from './dropdown'
@@ -16,7 +16,6 @@ export function ChatPanel(): JSX.Element {
   const messages = useAppStore((state) => state.messages)
   const streaming = useAppStore((state) => state.streaming)
   const error = useAppStore((state) => state.error)
-  const toolCalls = useAppStore((state) => state.toolCalls)
   const pendingApproval = useAppStore((state) => state.pendingApproval)
 
   const activeConversation = conversations.find(
@@ -42,11 +41,7 @@ export function ChatPanel(): JSX.Element {
         </div>
       </header>
 
-      <MessageList
-        messages={messages}
-        streamingContent={streamingContent}
-        toolCalls={toolCalls}
-      />
+      <MessageList messages={messages} streamingContent={streamingContent} />
 
       {pendingApproval ? <ApprovalCard approval={pendingApproval} /> : null}
 
@@ -84,23 +79,26 @@ function PermissionSelect(): JSX.Element {
 interface MessageListProps {
   messages: ChatMessage[]
   streamingContent: string | null
-  toolCalls: ToolCallView[]
 }
 
-function MessageList({
-  messages,
-  streamingContent,
-  toolCalls
-}: MessageListProps): JSX.Element {
+/**
+ * 消息流。
+ *
+ * **不渲染工具调用卡片**：查书架、读分组这些是 AI 的后台动作，
+ * 属于「过程」而不是「回答」，摆在回答旁边只会让人以为出了什么错。
+ * 需要人工确认的写操作由单独的审批卡承担（见 {@link ApprovalCard}），
+ * 那种必须露出来。
+ */
+function MessageList({ messages, streamingContent }: MessageListProps): JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const element = listRef.current
     if (!element) return
     element.scrollTop = element.scrollHeight
-  }, [messages.length, streamingContent, toolCalls.length])
+  }, [messages.length, streamingContent])
 
-  const empty = messages.length === 0 && streamingContent === null && toolCalls.length === 0
+  const empty = messages.length === 0 && streamingContent === null
 
   return (
     <div className="message-list" ref={listRef}>
@@ -123,31 +121,11 @@ function MessageList({
               createdAtMs={message.createdAtMs}
             />
           ))}
-          {toolCalls.map((call) => (
-            <ToolCallCard key={call.callId} call={call} />
-          ))}
           {streamingContent !== null ? (
             <MessageBubble role="assistant" content={streamingContent} streaming />
           ) : null}
         </>
       )}
-    </div>
-  )
-}
-
-function ToolCallCard({ call }: { call: ToolCallView }): JSX.Element {
-  return (
-    <div className={`tool-call ${call.status}`}>
-      <div className="tool-call-head">
-        <span className="tool-call-name">{call.name}</span>
-        <span className="tool-call-status">
-          {call.status === 'running' ? '执行中…' : call.status === 'ok' ? '完成' : '失败'}
-        </span>
-      </div>
-      {call.args ? <div className="tool-call-args">{call.args}</div> : null}
-      {call.summary && call.status !== 'running' ? (
-        <div className="tool-call-summary">{call.summary}</div>
-      ) : null}
     </div>
   )
 }
