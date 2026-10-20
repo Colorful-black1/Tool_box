@@ -48,4 +48,16 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
   })
+
+  it('列表渲染成连续的 li', () => {
+    expect(renderMarkdown('- 一\n- 二')).toContain('<ul>\n<li>一</li>\n<li>二</li>\n</ul>')
+  })
+
+  it('代码块里的 HTML 也会被转义', () => {
+    expect(renderMarkdown('```\n<b>x</b>\n```')).toContain('&lt;b&gt;x&lt;/b&gt;')
+  })
+
+  it('非 http 协议的链接不会变成 a 标签', () => {
+    expect(renderMarkdown('[x](javascript:alert(1))')).not.toContain('<a href')
+  })
 })

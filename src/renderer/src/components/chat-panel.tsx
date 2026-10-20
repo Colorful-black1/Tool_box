@@ -5,6 +5,7 @@ import type { ChatMessage } from '@shared/types'
 import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
 import type { PendingApprovalView, ToolCallView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
+import { renderMarkdown } from '../lib/markdown'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
 import { RefreshIcon, SendIcon, StopIcon } from './icons'
@@ -119,6 +120,7 @@ function MessageList({
               key={message.id}
               role={message.role}
               content={message.content}
+              createdAtMs={message.createdAtMs}
             />
           ))}
           {toolCalls.map((call) => (
@@ -186,20 +188,55 @@ function ApprovalCard({ approval }: { approval: PendingApprovalView }): JSX.Elem
 interface MessageBubbleProps {
   role: ChatMessage['role']
   content: string
+  createdAtMs?: number
   streaming?: boolean
 }
 
 function MessageBubble({
   role,
   content,
+  createdAtMs,
   streaming = false
 }: MessageBubbleProps): JSX.Element {
+  const copyText = useAppStore((state) => state.copyText)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const copy = (): void => {
+    void copyText(content)
+      .then(() => {
+        setCopyState('copied')
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setCopyState('idle'), 1500)
+      })
+      .catch(() => setCopyState('failed'))
+  }
+
+  const isAssistant = role === 'assistant'
+
   return (
     <div className={`message-row ${role}`}>
       <div className="message-bubble">
-        <div className="message-role">{role === 'user' ? '我 · USER' : 'AI · ASSISTANT'}</div>
+        <div className="message-role">{isAssistant ? 'AI · ASSISTANT' : '我 · USER'}</div>
         <div className="message-content">
-          {content || (streaming ? '正在连接模型…' : '')}
+          {isAssistant ? (
+            content.trim() ? (
+              <div
+                className="message-md markdown-body md-chat"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+              />
+            ) : (
+              streaming && '正在连接模型…'
+            )
+          ) : (
+            content
+          )}
           {streaming ? (
             <span className="typing-dots" aria-hidden="true">
               <i />
@@ -208,9 +245,29 @@ function MessageBubble({
             </span>
           ) : null}
         </div>
+        {createdAtMs !== undefined ? (
+          <div className="message-foot">
+            <span className="message-time">{formatTime(createdAtMs)}</span>
+            <button
+              type="button"
+              className="message-copy"
+              onClick={() => void copy()}
+              aria-label="复制消息"
+            >
+              {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
+}
+
+/** 消息时间戳：只到分钟 */
+function formatTime(createdAtMs: number): string {
+  const date = new Date(createdAtMs)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function Composer(): JSX.Element {

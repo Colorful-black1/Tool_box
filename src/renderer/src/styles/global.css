@@ -2643,6 +2643,82 @@ textarea,
   overflow-wrap: anywhere;
 }
 
+/* 聊天里的 Markdown：沿用 .markdown-body 的排版，只压缩间距到气泡尺度 */
+.message-md {
+  white-space: normal;
+}
+
+.markdown-body.md-chat {
+  font-size: 13px;
+  line-height: 1.85;
+}
+
+.markdown-body.md-chat h1,
+.markdown-body.md-chat h2,
+.markdown-body.md-chat h3 {
+  margin: 10px 0 6px;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.markdown-body.md-chat p {
+  margin: 0 0 8px;
+}
+
+.markdown-body.md-chat ul,
+.markdown-body.md-chat ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.markdown-body.md-chat li {
+  margin: 2px 0;
+}
+
+.markdown-body.md-chat pre {
+  margin: 8px 0;
+  padding: 9px 11px;
+}
+
+.markdown-body.md-chat blockquote {
+  margin: 8px 0;
+  padding-left: 11px;
+}
+
+.message-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.message-time {
+  font-family: var(--mono);
+  letter-spacing: 1px;
+}
+
+.message-copy {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.message-copy:hover {
+  color: var(--gold);
+}
+
+.message-copy:focus-visible {
+  outline: 1px solid var(--gold-line);
+  outline-offset: 2px;
+}
+
 .message-empty {
   height: 100%;
   display: grid;

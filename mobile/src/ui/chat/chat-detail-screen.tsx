@@ -22,9 +22,12 @@ import {
   TextInput,
   View
 } from 'react-native'
+import { Clipboard } from 'react-native'
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 
 import { useServices } from '../../runtime/services'
 import { PrimaryButton } from '../../components/ui'
+import { MarkdownView } from '../../components/markdown'
 import { useKeyboardInset } from '../keyboard'
 import { getAgentPermission } from '../../agent/permission'
 import type { ChatEventSink } from '../../ai/ai-gateway'
@@ -53,6 +56,14 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
   const [draft, setDraft] = useState('')
   const [permission, setPermission] = useState<AgentPermission>(DEFAULT_AGENT_PERMISSION)
   const listRef = useRef<FlatList<ChatMessage> | null>(null)
+  /**
+   * 是否贴着底部。
+   *
+   * 用户往回翻历史时必须停止自动滚底，否则新内容会把正在看的内容顶走；
+   * 这时用「回到最新」按钮把用户带回去。
+   */
+  const stickToBottom = useRef(true)
+  const [showJumpButton, setShowJumpButton] = useState(false)
   const keyboard = useKeyboardInset()
 
   const streamingNow = sending || streaming.length > 0
@@ -91,9 +102,11 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
     return () => gateway.cancelApprovals(conversationId)
   }, [conversationId, gateway])
 
-  // 增量或工具卡片有变化就滚到底部，让用户始终看到最新内容
+  // 增量或工具卡片有变化就滚到底部，让用户始终看到最新内容；
+  // 但用户主动往回翻时不再抢滚动位置
   useEffect(() => {
     if (!streaming && toolCalls.length === 0) return
+    if (!stickToBottom.current) return
     listRef.current?.scrollToEnd({ animated: true })
   }, [streaming, toolCalls.length])
 
@@ -166,6 +179,23 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
   const stop = (): void => gateway.stop(conversationId)
 
+  /** 记录是否还贴着底部：离底超过一屏就认为用户在看历史 */
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const distance = contentSize.height - contentOffset.y - layoutMeasurement.height
+    const atBottom = distance < 80
+    if (atBottom === stickToBottom.current) return
+    stickToBottom.current = atBottom
+    setShowJumpButton(!atBottom)
+  }
+
+  /** 「回到最新」：重新贴底并恢复自动滚动 */
+  const jumpToLatest = (): void => {
+    stickToBottom.current = true
+    setShowJumpButton(false)
+    listRef.current?.scrollToEnd({ animated: true })
+  }
+
   /** 审批回执：先收起卡片，再通知主进程放行 / 拒绝 */
   const respondApproval = (approved: boolean): void => {
     const pending = pendingApproval
@@ -207,8 +237,12 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={120}
+        onScroll={handleScroll}
         onContentSizeChange={() => {
-          if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false })
+          if (messages.length === 0) return
+          if (!stickToBottom.current) return
+          listRef.current?.scrollToEnd({ animated: false })
         }}
         ListEmptyComponent={
           messages.length === 0 && !streaming && toolCalls.length === 0 ? (
@@ -232,6 +266,17 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
       {pendingApproval ? (
         <ApprovalCard approval={pendingApproval} onRespond={respondApproval} />
+      ) : null}
+
+      {showJumpButton ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="回到最新消息"
+          onPress={jumpToLatest}
+          style={styles.jumpButton}
+        >
+          <Text style={styles.jumpText}>↓ 回到最新</Text>
+        </Pressable>
       ) : null}
 
       {/*
@@ -264,11 +309,55 @@ export function ChatDetailScreen({ conversationId, onBack }: Props): ReactNode {
 
 function Bubble({ message }: { message: ChatMessage }): ReactNode {
   const isUser = message.role === 'user'
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const copy = (): void => {
+    // 剪贴板用 react-native core 的 Clipboard：它已被标记 @deprecated，
+    // 但换库要新增第三方依赖（未授权），密码箱那边也是同一个用法。
+    Clipboard.setString(message.content)
+    setCopied(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 1500)
+  }
+
   return (
     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
-      <Text style={styles.bubbleText}>{message.content}</Text>
+      {isUser ? (
+        <Text style={styles.bubbleText}>{message.content}</Text>
+      ) : message.content.trim() ? (
+        // 只有已落库的完整回答才按 Markdown 渲染；
+        // 流式过程用纯文本，避免半截语法（未闭合的 ``` ）来回闪烁
+        <MarkdownView source={message.content} />
+      ) : (
+        <Text style={styles.bubbleText}>（空回复）</Text>
+      )}
+      <View style={styles.bubbleFooter}>
+        <Text style={styles.bubbleTime}>{formatTime(message.createdAtMs)}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="复制消息"
+          hitSlop={8}
+          onPress={copy}
+        >
+          <Text style={styles.bubbleCopy}>{copied ? '已复制' : '复制'}</Text>
+        </Pressable>
+      </View>
     </View>
   )
+}
+
+/** 消息时间戳：只到分钟，跨天由日期分组负责 */
+function formatTime(createdAtMs: number): string {
+  const date = new Date(createdAtMs)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 const styles = StyleSheet.create({
@@ -320,6 +409,27 @@ const styles = StyleSheet.create({
   bubbleUser: { alignSelf: 'flex-end', backgroundColor: 'rgba(232, 201, 138, 0.14)' },
   bubbleAssistant: { alignSelf: 'flex-start', backgroundColor: colors.bgPanelSolid },
   bubbleText: { color: colors.textHi, fontSize: 14, lineHeight: 21, fontFamily: fonts.sans },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.md,
+    marginTop: 4
+  },
+  bubbleTime: { color: colors.textDim, fontSize: 10, fontFamily: fonts.mono },
+  bubbleCopy: { color: colors.textDim, fontSize: 10, fontFamily: fonts.sans },
+  jumpButton: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: 96,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.goldLine,
+    backgroundColor: colors.bgPanelSolid
+  },
+  jumpText: { color: colors.gold, fontSize: 11, fontFamily: fonts.sans },
   cursor: { color: colors.gold, fontSize: 12 },
   // 外层只负责挂 marginBottom，内容样式留给 composer，两层职责分开
   composerWrap: { backgroundColor: colors.bgPanelSolid },
