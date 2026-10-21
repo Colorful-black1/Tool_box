@@ -10,6 +10,8 @@
  * - 不做任何 I/O，纯字符串计算，便于单测。
  */
 
+import { formatLosslessJson } from './json-tools'
+
 /** Base64 字母表 */
 const BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -215,13 +217,9 @@ export type JsonResult =
   | { ok: true; output: string; error?: undefined }
   | { ok: false; output: ''; error: string }
 
-function parseJson(
-  text: string
-): { ok: true; value: unknown } | { ok: false; output: ''; error: string } {
-  const trimmed = text.trim()
-  if (!trimmed) return { ok: false, output: '', error: '请输入 JSON 文本' }
+function transformJson(text: string, indent: number): JsonResult {
   try {
-    return { ok: true, value: JSON.parse(trimmed) }
+    return { ok: true, output: formatLosslessJson(text, indent) }
   } catch (error) {
     return {
       ok: false,
@@ -233,16 +231,12 @@ function parseJson(
 
 /** JSON 格式化（缩进 2 空格） */
 export function formatJson(text: string): JsonResult {
-  const parsed = parseJson(text)
-  if (!parsed.ok) return parsed
-  return { ok: true, output: JSON.stringify(parsed.value, null, 2) }
+  return transformJson(text, 2)
 }
 
 /** JSON 压缩（去掉所有空白） */
 export function minifyJson(text: string): JsonResult {
-  const parsed = parseJson(text)
-  if (!parsed.ok) return parsed
-  return { ok: true, output: JSON.stringify(parsed.value) }
+  return transformJson(text, 0)
 }
 
 // ==================== 文本统计与行处理 ====================

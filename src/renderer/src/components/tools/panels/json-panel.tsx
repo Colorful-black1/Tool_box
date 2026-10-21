@@ -1,55 +1,90 @@
 /**
- * JSON 工具：格式化 / 压缩。
- *
- * 解析失败时给出 JSON.parse 的原始错误信息（带位置），
- * 不吞异常也不显示栈。
+ * JSON 工具箱：无损数字、排序、字符串展开和安全的常用路径提取。
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
-import { formatJson, minifyJson } from '@shared/dev-tools'
+import { expandJsonStrings, extractJsonPath, formatLosslessJson } from '@shared/json-tools'
 
+import { Dropdown } from '../../dropdown'
+import { useToolTransferStore } from '../../../stores/tool-transfer-store'
 import { Workbench } from '../workbench'
+import { ToolOutputActions } from '../output-actions'
+
+type JsonMode = 'format' | 'minify' | 'sort' | 'expand' | 'path'
+const MODES = [
+  { value: 'format', label: '格式化' },
+  { value: 'minify', label: '压缩' },
+  { value: 'sort', label: '字段排序' },
+  { value: 'expand', label: '解除转义 / 展开' },
+  { value: 'path', label: 'JSONPath 提取' }
+]
 
 export function JsonPanel(): JSX.Element {
   const [input, setInput] = useState('')
-  const [mode, setMode] = useState<'format' | 'minify'>('format')
+  const [mode, setMode] = useState<JsonMode>('format')
+  const [path, setPath] = useState('$.data[*].id')
+  const pending = useToolTransferStore((state) => state.pending)
+  useEffect(() => {
+    if (pending?.target !== 'json') return
+    setInput(pending.text)
+    useToolTransferStore.getState().consume(pending.sequence)
+  }, [pending])
 
   const { output, error } = useMemo(() => {
     if (!input.trim()) return { output: '', error: undefined }
-    const result = mode === 'format' ? formatJson(input) : minifyJson(input)
-    return result.ok
-      ? { output: result.output, error: undefined }
-      : { output: '', error: result.error ?? 'JSON 解析失败' }
-  }, [input, mode])
+    try {
+      const output =
+        mode === 'expand'
+          ? expandJsonStrings(input)
+          : mode === 'path'
+            ? extractJsonPath(input, path)
+            : formatLosslessJson(input, mode === 'minify' ? 0 : 2, mode === 'sort')
+      return { output, error: undefined }
+    } catch (error) {
+      return { output: '', error: error instanceof Error ? error.message : 'JSON 处理失败' }
+    }
+  }, [input, mode, path])
 
   return (
-    <Workbench
-      inputLabel="JSON 输入"
-      outputLabel="处理结果"
-      value={input}
-      onChange={setInput}
-      output={output}
-      error={error}
-      placeholder='{"hello": "world"}'
-      actions={
-        <span className="tool-segment">
-          <button
-            type="button"
-            className={`tool-segment-item${mode === 'format' ? ' active' : ''}`}
-            onClick={() => setMode('format')}
-          >
-            格式化
+    <div className="tool-stack">
+      <div className="tool-controls">
+        <Dropdown
+          ariaLabel="JSON 操作"
+          value={mode}
+          options={MODES}
+          onChange={(value) => setMode(value as JsonMode)}
+        />
+        <span className="field-hint">保留长整数与小数原文 · 最多 20 万字符</span>
+      </div>
+      {mode === 'path' ? (
+        <label className="tool-path-field">
+          <span className="field-label">JSONPath</span>
+          <input
+            className="field-input"
+            aria-label="JSONPath"
+            value={path}
+            maxLength={512}
+            onChange={(event) => setPath(event.target.value)}
+          />
+          <span className="field-hint">支持 $.字段、$["带点的键"]、[0] 和 [*]；不执行表达式</span>
+        </label>
+      ) : null}
+      <Workbench
+        inputLabel="JSON 输入"
+        outputLabel="处理结果"
+        value={input}
+        onChange={setInput}
+        output={output}
+        error={error}
+        placeholder='{"hello": "world"}'
+        actions={
+          <button type="button" className="btn-ghost btn-mini" onClick={() => setInput('')}>
+            清空
           </button>
-          <button
-            type="button"
-            className={`tool-segment-item${mode === 'minify' ? ' active' : ''}`}
-            onClick={() => setMode('minify')}
-          >
-            压缩
-          </button>
-        </span>
-      }
-    />
+        }
+      />
+      <ToolOutputActions text={output} title="JSON 处理" />
+    </div>
   )
 }

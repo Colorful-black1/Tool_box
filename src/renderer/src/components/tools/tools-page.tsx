@@ -24,7 +24,15 @@ export function ToolsPage(): JSX.Element {
         <ToolTree
           groups={TOOL_GROUPS}
           activeId={tool.id}
-          onSelect={(toolId) => setToolsActive(toolId)}
+          onSelect={(toolId) => {
+            if (toolId === tool.id) return
+            if (
+              useAppStore.getState().hasUnsavedChanges &&
+              !window.confirm('当前模板有未保存的修改，是否放弃模板修改并切换工具？')
+            )
+              return
+            setToolsActive(toolId)
+          }}
         />
       </aside>
 

@@ -1,4 +1,5 @@
 import { APP_THEMES } from '../../shared/appearance'
+import { validatePromptLibrary } from '../../shared/prompt-tools'
 
 export function requireString(
   value: unknown,
@@ -89,14 +90,17 @@ export function assertObject(value: unknown, name: string): Record<string, unkno
   return value as Record<string, unknown>
 }
 
-/** 只校验本次新增的外观字段，保留既有阅读配置和快捷键的合并语义。 */
+/** 校验工具与外观的新增字段，保留既有阅读配置和快捷键的合并语义。 */
 export function validateConfigPatch(value: unknown): Record<string, unknown> {
   const patch = assertObject(value, '配置')
-  if (!Object.hasOwn(patch, 'appearance')) return patch
-  const appearance = assertObject(patch.appearance, '外观配置')
-  const theme = requireEnum(appearance.theme, '应用主题', APP_THEMES)
-  if (typeof appearance.backgroundMotion !== 'boolean') {
-    throw new Error('背景动效设置无效')
+  const validated = { ...patch }
+  if (Object.hasOwn(patch, 'appearance')) {
+    const appearance = assertObject(patch.appearance, '外观配置')
+    const theme = requireEnum(appearance.theme, '应用主题', APP_THEMES)
+    if (typeof appearance.backgroundMotion !== 'boolean') throw new Error('背景动效设置无效')
+    validated.appearance = { theme, backgroundMotion: appearance.backgroundMotion }
   }
-  return { ...patch, appearance: { theme, backgroundMotion: appearance.backgroundMotion } }
+  if (Object.hasOwn(patch, 'promptTemplates'))
+    validated.promptTemplates = validatePromptLibrary(patch.promptTemplates)
+  return validated
 }

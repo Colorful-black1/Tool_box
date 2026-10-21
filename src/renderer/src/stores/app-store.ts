@@ -83,6 +83,8 @@ interface AppState {
   settings: AiConfigView | null
   conversations: ConversationSummary[]
   activeConversationId: string | null
+  /** 用户手动从工具填入的内容也留在草稿，发送仍由对话页触发。 */
+  chatDraft: string
   messages: ChatMessage[]
   streaming: StreamingState | null
   /**
@@ -122,6 +124,7 @@ interface AppState {
   renameConversation(id: string, title: string): Promise<void>
   deleteConversation(id: string): Promise<void>
   sendMessage(content: string): Promise<void>
+  setChatDraft(content: string): void
   stopGeneration(): Promise<void>
   appendDelta(event: ChatDeltaEvent): void
   completeChat(event: ChatCompletedEvent): void
@@ -195,6 +198,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: null,
   conversations: [],
   activeConversationId: null,
+  chatDraft: '',
   messages: [],
   streaming: null,
   toolCalls: [],
@@ -272,6 +276,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   // ---------- AI 对话 ----------
+  setChatDraft: (content) => set({ chatDraft: content }),
   refreshConversations: async () => {
     const conversations = await window.toolbox.chat.listConversations()
     set({ conversations })

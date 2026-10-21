@@ -7,6 +7,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
+const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
 async function main() {
   const tempRoot = path.resolve(os.tmpdir())
@@ -43,6 +44,20 @@ async function main() {
         const element = document.querySelector('.message-list')
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
+
+    if (process.argv.includes('--tools-only')) {
+      await verifyDevTools({ page, app, check, capture })
+      await check('重启后恢复模板及历史，变量值不恢复', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyTemplatesAfterRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`开发工具验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
 
     await check('搜索笔记直接打开目标', async () => {
       await page.getByRole('button', { name: '工具', exact: true }).waitFor()
@@ -277,6 +292,7 @@ async function main() {
         if (width === 1024) await capture('text-result-narrow')
       })
     }
+    await verifyDevTools({ page, app, check, capture })
     await verifyThemes({ page, app, check, capture })
     await check('重启 Electron 后恢复主题和动效设置', async () => {
       await app.close()
@@ -299,6 +315,7 @@ async function main() {
         await restarted.getByRole('switch', { name: '星空背景动效' }).getAttribute('aria-checked'),
         'false'
       )
+      await verifyTemplatesAfterRestart(restarted)
     })
     assert.deepEqual(errors, [], '验收期间不应出现页面异常')
     process.stdout.write(`UI 验收通过 ${passed.length} 项，页面异常 0 项\n`)

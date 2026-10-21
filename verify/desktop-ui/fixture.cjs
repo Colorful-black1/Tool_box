@@ -54,6 +54,9 @@ module.exports = function createFixture() {
   let copied = ''
   let streamingId = 'c0'
   let failNotes = false
+  let failNoteSave = false
+  let noteSaveCount = 0
+  let chatSendCount = 0
 
   return {
     controls: {
@@ -64,7 +67,13 @@ module.exports = function createFixture() {
       failNextNotesLoad: () => {
         failNotes = true
       },
-      copiedText: () => copied
+      copiedText: () => copied,
+      noteSaveCount: () => noteSaveCount,
+      chatSendCount: () => chatSendCount,
+      lastNote: () => copy(notes.at(-1)),
+      failNextNoteSave: () => {
+        failNoteSave = true
+      }
     },
     toolbox: {
       app: { info: async () => ({ name: '隔离验收', version: '0.2.0', platform: 'win32' }) },
@@ -104,7 +113,17 @@ module.exports = function createFixture() {
           return copy(notes)
         },
         save: async (input) => {
-          const note = { ...input, id: input.id || 'new-note', createdAtMs: 1, updatedAtMs: 2 }
+          if (failNoteSave) {
+            failNoteSave = false
+            throw new Error('合成保存失败')
+          }
+          noteSaveCount++
+          const note = {
+            ...input,
+            id: input.id || `new-note-${noteSaveCount}`,
+            createdAtMs: 1,
+            updatedAtMs: 2
+          }
           notes = [...notes.filter((item) => item.id !== note.id), note]
           return copy(note)
         }
@@ -126,6 +145,7 @@ module.exports = function createFixture() {
             createdAtMs: index
           })),
         send: async ({ conversationId, content }) => {
+          chatSendCount++
           streamingId = conversationId
           return {
             conversation: copy(conversations.find((item) => item.id === conversationId)),

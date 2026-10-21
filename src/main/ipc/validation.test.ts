@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_APP_APPEARANCE, readAppAppearance, resolveAppTheme } from '../../shared/appearance'
 import { validateConfigPatch } from './validation'
+import { defaultPromptTemplates } from '../../shared/prompt-tools'
 
 describe('桌面外观配置', () => {
+  it('同时校验模板和外观，并保留其他配置', () => {
+    const promptTemplates = defaultPromptTemplates()
+    expect(
+      validateConfigPatch({ appearance: DEFAULT_APP_APPEARANCE, promptTemplates, fontSize: 23 })
+    ).toEqual({ appearance: DEFAULT_APP_APPEARANCE, promptTemplates, fontSize: 23 })
+    expect(() => validateConfigPatch({ promptTemplates: 'invalid' })).toThrow('模板')
+  })
   it('兼容旧配置与损坏的缓存', () => {
     for (const value of [undefined, null, [], 'paper', { theme: 'unknown' }]) {
       expect(readAppAppearance(value)).toEqual(DEFAULT_APP_APPEARANCE)

@@ -302,7 +302,8 @@ function Composer(): JSX.Element {
   const streaming = useAppStore((state) => state.streaming)
   const sendMessage = useAppStore((state) => state.sendMessage)
   const stopGeneration = useAppStore((state) => state.stopGeneration)
-  const [value, setValue] = useState('')
+  const value = useAppStore((state) => state.chatDraft)
+  const setValue = useAppStore((state) => state.setChatDraft)
 
   const isStreaming = streaming !== null
   const canSend = !isStreaming && activeConversationId !== null && value.trim().length > 0

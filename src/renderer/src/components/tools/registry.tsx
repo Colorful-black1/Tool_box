@@ -7,6 +7,10 @@
 import type { JSX } from 'react'
 
 import { EncodingPanel } from './panels/encoding-panel'
+import { DiffPanel } from './panels/diff-panel'
+import { JavaLogPanel } from './panels/java-log-panel'
+import { RedactionPanel } from './panels/redaction-panel'
+import { PromptPanel } from './panels/prompt-panel'
 import { HashPanel } from './panels/hash-panel'
 import { JsonPanel } from './panels/json-panel'
 import { RegexPanel } from './panels/regex-panel'
@@ -35,7 +39,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
   {
     id: 'dev',
     name: '开发者工具',
-    description: '编码、文本与时间戳的常用小工具，全部在本机离线运行',
+    description: '本机处理开发数据，结果可复制、脱敏或填入 AI 对话草稿',
     tools: [
       {
         id: 'regex',
@@ -45,9 +49,33 @@ export const TOOL_GROUPS: ToolGroup[] = [
       },
       {
         id: 'json',
-        name: 'JSON 格式化',
-        description: '格式化 / 压缩 JSON，出错时给出具体位置',
+        name: 'JSON 工具箱',
+        description: '无损格式化 / 压缩、字段排序、解除转义与常用 JSONPath',
         render: () => <JsonPanel />
+      },
+      {
+        id: 'diff',
+        name: '差异比较',
+        description: '文本逐行或 JSON 字段比较，保留长整数精度',
+        render: () => <DiffPanel />
+      },
+      {
+        id: 'redact',
+        name: '数据脱敏',
+        description: '本机识别常见凭据和个人信息，预览替换结果',
+        render: () => <RedactionPanel />
+      },
+      {
+        id: 'java-log',
+        name: 'Java 日志整理',
+        description: '清理颜色、展开转义、查看异常链与筛选 traceId',
+        render: () => <JavaLogPanel />
+      },
+      {
+        id: 'prompt',
+        name: 'Prompt 模板库',
+        description: '模板变量填充、保存历史版本与差异比较，结果可填入对话草稿',
+        render: () => <PromptPanel />
       },
       {
         id: 'base64',
