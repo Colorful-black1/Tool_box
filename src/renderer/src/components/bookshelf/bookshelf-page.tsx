@@ -29,6 +29,8 @@ export function BookshelfPage(): JSX.Element {
   const setBooksGroup = useAppStore((state) => state.setBooksGroup)
   const reorderBooks = useAppStore((state) => state.reorderBooks)
   const setCover = useAppStore((state) => state.setCover)
+  const searchTarget = useAppStore((state) => state.searchTarget)
+  const clearSearchTarget = useAppStore((state) => state.clearSearchTarget)
 
   const sort = useConfigStore((state) => state.config.bookshelfSort)
   const patchConfig = useConfigStore((state) => state.patch)
@@ -44,11 +46,38 @@ export function BookshelfPage(): JSX.Element {
   const [groupMenu, setGroupMenu] = useState<BookGroup | null>(null)
   const [moveSheet, setMoveSheet] = useState(false)
   const [notice, setNotice] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
 
   useEffect(() => {
-    void refreshBooks()
-    void refreshGroups()
+    let active = true
+    void Promise.all([refreshBooks(), refreshGroups()])
+      .catch(() => {
+        if (active) {
+          setLoadFailed(true)
+          setNotice('加载书架失败，请重新进入书架重试')
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [refreshBooks, refreshGroups])
+
+  useEffect(() => {
+    if (loading || loadFailed || searchTarget?.kind !== 'group') return
+    setQuery('')
+    if (groups.some((group) => group.id === searchTarget.id)) {
+      setActiveGroup(searchTarget.id)
+      setEditingMode(false)
+      setSelected(new Set())
+    } else {
+      setNotice('该分组已不存在，请重新搜索')
+    }
+    clearSearchTarget()
+  }, [loading, loadFailed, searchTarget, groups, clearSearchTarget])
 
   const visible = useMemo(() => {
     let list = books
@@ -246,6 +275,7 @@ export function BookshelfPage(): JSX.Element {
         <button
           type="button"
           className={`group-chip${activeGroup === null ? ' active' : ''}`}
+          aria-pressed={activeGroup === null}
           onClick={() => setActiveGroup(null)}
         >
           全部
@@ -255,6 +285,7 @@ export function BookshelfPage(): JSX.Element {
             key={group.id}
             type="button"
             className={`group-chip${activeGroup === group.id ? ' active' : ''}`}
+            aria-pressed={activeGroup === group.id}
             onClick={() => setActiveGroup(group.id)}
             onContextMenu={(event) => {
               event.preventDefault()

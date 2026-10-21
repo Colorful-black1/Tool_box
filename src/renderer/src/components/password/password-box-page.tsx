@@ -31,6 +31,8 @@ export function PasswordBoxPage(): JSX.Element {
   const deletePasswordEntry = useAppStore((state) => state.deletePasswordEntry)
   const togglePasswordFavorite = useAppStore((state) => state.togglePasswordFavorite)
   const copyText = useAppStore((state) => state.copyText)
+  const searchTarget = useAppStore((state) => state.searchTarget)
+  const clearSearchTarget = useAppStore((state) => state.clearSearchTarget)
 
   const [query, setQuery] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('all')
@@ -59,6 +61,19 @@ export function PasswordBoxPage(): JSX.Element {
     void reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (loading || loadError || searchTarget?.kind !== 'password') return
+    if (entries.some((entry) => entry.id === searchTarget.id)) {
+      setEditing(null)
+      setImportOpen(false)
+      setConfirmId(null)
+      setDetailId(searchTarget.id)
+    } else {
+      setFlash('该条目已不存在，请重新搜索')
+    }
+    clearSearchTarget()
+  }, [loading, loadError, searchTarget, entries, clearSearchTarget])
 
   const filtered = useMemo(() => {
     let list = entries
@@ -255,6 +270,7 @@ export function PasswordBoxPage(): JSX.Element {
 
       {detail ? (
         <PasswordDetailSheet
+          key={detail.id}
           entry={detail}
           onClose={() => setDetailId(null)}
           onEdit={() => {
@@ -415,6 +431,7 @@ function PasswordEditor(props: {
   onClose(): void
   onSave(input: EditorInput & { id?: string }): Promise<void>
 }): JSX.Element {
+  const setUnsavedChanges = useAppStore((state) => state.setUnsavedChanges)
   const [form, setForm] = useState<EditorInput>(() => ({
     title: props.initial?.title ?? '',
     url: props.initial?.url ?? '',
@@ -427,6 +444,14 @@ function PasswordEditor(props: {
   const [error, setError] = useState('')
   /** 生成密码的长度（12 ~ 32） */
   const [genLength, setGenLength] = useState(DEFAULT_PASSWORD_OPTIONS.length)
+  const dirty = (Object.keys(form) as Array<keyof EditorInput>).some(
+    (key) => form[key] !== (props.initial?.[key] ?? '')
+  )
+
+  useEffect(() => {
+    setUnsavedChanges(dirty)
+    return () => setUnsavedChanges(false)
+  }, [dirty, setUnsavedChanges])
 
   useOverlayEscape(props.onClose)
 

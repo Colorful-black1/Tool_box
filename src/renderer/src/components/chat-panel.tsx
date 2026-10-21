@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { ChatMessage } from '@shared/types'
@@ -41,7 +41,11 @@ export function ChatPanel(): JSX.Element {
         </div>
       </header>
 
-      <MessageList messages={messages} streamingContent={streamingContent} />
+      <MessageList
+        key={activeConversationId ?? 'empty'}
+        messages={messages}
+        streamingContent={streamingContent}
+      />
 
       {pendingApproval ? <ApprovalCard approval={pendingApproval} /> : null}
 
@@ -91,41 +95,86 @@ interface MessageListProps {
  */
 function MessageList({ messages, streamingContent }: MessageListProps): JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const following = useRef(true)
+  const [awayFromBottom, setAwayFromBottom] = useState(false)
 
-  useEffect(() => {
+  const scrollToLatest = useCallback(() => {
     const element = listRef.current
     if (!element) return
+    following.current = true
     element.scrollTop = element.scrollHeight
-  }, [messages.length, streamingContent])
+    setAwayFromBottom(false)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (following.current) scrollToLatest()
+  }, [messages, streamingContent, scrollToLatest])
+
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      const element = listRef.current
+      if (!element) return
+      if (following.current) scrollToLatest()
+      else if (element.scrollHeight - element.clientHeight - element.scrollTop <= 48) {
+        following.current = true
+        setAwayFromBottom(false)
+      }
+    })
+    if (listRef.current) observer.observe(listRef.current)
+    if (contentRef.current) observer.observe(contentRef.current)
+    return () => observer.disconnect()
+  }, [scrollToLatest])
 
   const empty = messages.length === 0 && streamingContent === null
 
   return (
-    <div className="message-list" ref={listRef}>
-      {empty ? (
-        <div className="message-empty">
-          <div>
-            <p className="empty-title">开始新的星轨对话</p>
-            <p className="empty-text">
-              在右侧配置 OpenAI 兼容接口后，即可让 AI 帮你管理书架、密码箱与记事本。
-            </p>
-          </div>
+    <div className="message-thread">
+      <div
+        className="message-list"
+        ref={listRef}
+        tabIndex={0}
+        aria-label="对话消息"
+        onScroll={(event) => {
+          const element = event.currentTarget
+          const atBottom = element.scrollHeight - element.clientHeight - element.scrollTop <= 48
+          // 记录用户的跟随意图，避免新内容增加高度后把正在阅读历史的用户拉回底部。
+          following.current = atBottom
+          setAwayFromBottom(!atBottom)
+        }}
+      >
+        <div ref={contentRef} className={empty ? 'message-empty-fill' : undefined}>
+          {empty ? (
+            <div className="message-empty">
+              <div>
+                <p className="empty-title">开始新的星轨对话</p>
+                <p className="empty-text">
+                  先在设置页配置 AI 接口，即可让 AI 帮你管理书架、密码箱与记事本。
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  role={message.role}
+                  content={message.content}
+                  createdAtMs={message.createdAtMs}
+                />
+              ))}
+              {streamingContent !== null ? (
+                <MessageBubble role="assistant" content={streamingContent} streaming />
+              ) : null}
+            </>
+          )}
         </div>
-      ) : (
-        <>
-          {messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              role={message.role}
-              content={message.content}
-              createdAtMs={message.createdAtMs}
-            />
-          ))}
-          {streamingContent !== null ? (
-            <MessageBubble role="assistant" content={streamingContent} streaming />
-          ) : null}
-        </>
-      )}
+      </div>
+      {awayFromBottom ? (
+        <button type="button" className="btn-ghost message-jump" onClick={scrollToLatest}>
+          回到最新
+        </button>
+      ) : null}
     </div>
   )
 }

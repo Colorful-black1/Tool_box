@@ -35,7 +35,8 @@ export interface WorkbenchProps {
 /** 一键复制：复制走主进程剪贴板，失败时给出提示 */
 export function CopyButton({ text, label = '复制' }: { text: string; label?: string }): JSX.Element {
   const copyText = useAppStore((state) => state.copyText)
-  const [state, setState] = useState<'idle' | 'ok' | 'fail'>('idle')
+  const [feedback, setFeedback] = useState<{ text: string; status: 'ok' | 'fail' } | null>(null)
+  const state = feedback?.text === text ? feedback.status : 'idle'
 
   return (
     <button
@@ -44,8 +45,8 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
       disabled={!text}
       onClick={() => {
         void copyText(text)
-          .then(() => setState('ok'))
-          .catch(() => setState('fail'))
+          .then(() => setFeedback({ text, status: 'ok' }))
+          .catch(() => setFeedback({ text, status: 'fail' }))
       }}
     >
       {state === 'ok' ? '已复制' : state === 'fail' ? '复制失败' : label}
@@ -91,6 +92,7 @@ export function Workbench({
             type="text"
             value={value}
             placeholder={placeholder}
+            aria-label={inputLabel}
             spellCheck={false}
             onChange={(event) => onChange(event.target.value)}
           />
@@ -99,6 +101,7 @@ export function Workbench({
             className="field-input field-textarea tool-input"
             value={value}
             placeholder={placeholder}
+            ariaLabel={inputLabel}
             onChange={onChange}
             wrap={wrap}
           />
@@ -132,6 +135,7 @@ export function Workbench({
           value={output}
           readOnly
           placeholder="结果会显示在这里"
+          ariaLabel={outputLabel}
           wrap={wrap}
         />
       </section>

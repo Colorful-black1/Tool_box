@@ -40,6 +40,12 @@ export type AppView =
   | 'tools'
   | 'settings'
 
+/** 全局搜索的一次性定位请求，仅用于渲染层导航，不落盘。 */
+export interface SearchTarget {
+  kind: 'note' | 'password' | 'group'
+  id: string
+}
+
 interface StreamingState {
   conversationId: string
   content: string
@@ -69,6 +75,8 @@ interface AppState {
   view: AppView
   /** 工具页当前选中的工具 id */
   toolsActiveId: string | null
+  searchTarget: SearchTarget | null
+  hasUnsavedChanges: boolean
   error: string | null
   appInfo: AppInfo | null
 
@@ -102,6 +110,9 @@ interface AppState {
   setView(view: AppView): void
   /** 工具页当前选中的工具 id（切走再切回来仍是同一个） */
   setToolsActive(toolId: string): void
+  openSearchTarget(target: SearchTarget): void
+  clearSearchTarget(): void
+  setUnsavedChanges(dirty: boolean): void
   clearError(): void
 
   // AI 对话
@@ -177,6 +188,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: true,
   view: 'chat',
   toolsActiveId: null,
+  searchTarget: null,
+  hasUnsavedChanges: false,
   error: null,
   appInfo: null,
   settings: null,
@@ -247,8 +260,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setView: (view) => set({ view }),
+  setView: (view) => set({ view, searchTarget: null }),
   setToolsActive: (toolId) => set({ toolsActiveId: toolId }),
+  openSearchTarget: (target) =>
+    set({
+      view: target.kind === 'note' ? 'notes' : target.kind === 'password' ? 'passwords' : 'shelf',
+      searchTarget: target
+    }),
+  clearSearchTarget: () => set({ searchTarget: null }),
+  setUnsavedChanges: (dirty) => set({ hasUnsavedChanges: dirty }),
   clearError: () => set({ error: null }),
 
   // ---------- AI 对话 ----------
@@ -463,7 +483,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (book) set((state) => ({ books: [book, ...state.books] }))
   },
 
-  openReader: (bookId) => set({ view: 'reading', activeBookId: bookId }),
+  openReader: (bookId) => set({ view: 'reading', activeBookId: bookId, searchTarget: null }),
   closeReader: () => set({ view: 'shelf', activeBookId: null }),
 
   deleteBook: async (bookId) => {

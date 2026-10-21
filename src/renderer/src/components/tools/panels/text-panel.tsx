@@ -8,10 +8,27 @@ import { dedupeLines, sortLines, textStats, trimLines } from '@shared/dev-tools'
 
 import { Workbench } from '../workbench'
 
+type TextOperation = 'dedupe' | 'asc' | 'desc' | 'trim'
+
 export function TextPanel(): JSX.Element {
   const [input, setInput] = useState('')
+  const [operation, setOperation] = useState<TextOperation | null>(null)
 
   const stats = useMemo(() => textStats(input), [input])
+  const output = useMemo(() => {
+    switch (operation) {
+      case 'dedupe':
+        return dedupeLines(input)
+      case 'asc':
+        return sortLines(input, 'asc')
+      case 'desc':
+        return sortLines(input, 'desc')
+      case 'trim':
+        return trimLines(input)
+      default:
+        return ''
+    }
+  }, [input, operation])
 
   return (
     <div className="tool-stack">
@@ -48,35 +65,39 @@ export function TextPanel(): JSX.Element {
         outputLabel="处理结果"
         value={input}
         onChange={setInput}
-        output=""
+        output={output}
         placeholder="粘贴要统计的文本"
         actions={
           <>
             <button
               type="button"
               className="btn-ghost btn-mini"
-              onClick={() => setInput(dedupeLines(input))}
+              aria-pressed={operation === 'dedupe'}
+              onClick={() => setOperation('dedupe')}
             >
               按行去重
             </button>
             <button
               type="button"
               className="btn-ghost btn-mini"
-              onClick={() => setInput(sortLines(input, 'asc'))}
+              aria-pressed={operation === 'asc'}
+              onClick={() => setOperation('asc')}
             >
               升序
             </button>
             <button
               type="button"
               className="btn-ghost btn-mini"
-              onClick={() => setInput(sortLines(input, 'desc'))}
+              aria-pressed={operation === 'desc'}
+              onClick={() => setOperation('desc')}
             >
               降序
             </button>
             <button
               type="button"
               className="btn-ghost btn-mini"
-              onClick={() => setInput(trimLines(input))}
+              aria-pressed={operation === 'trim'}
+              onClick={() => setOperation('trim')}
             >
               去空白
             </button>

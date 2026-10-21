@@ -14,7 +14,7 @@ import { SEARCH_KIND_LABELS, searchAll } from '@shared/global-search'
 import type { SearchSource } from '@shared/global-search'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
-import type { AppView } from '../../stores/app-store'
+import type { AppView, SearchTarget } from '../../stores/app-store'
 import { TOOL_GROUPS } from '../tools/registry'
 
 /** 面板里能执行的动作 */
@@ -23,6 +23,7 @@ type PaletteAction =
   | { type: 'openBook'; bookId: string }
   | { type: 'openConversation'; conversationId: string }
   | { type: 'openTool'; toolId: string }
+  | { type: 'openTarget'; target: SearchTarget }
   | { type: 'newConversation' }
 
 interface PaletteSource extends SearchSource {
@@ -59,11 +60,15 @@ export function CommandPalette(): JSX.Element | null {
   const selectConversation = useAppStore((state) => state.selectConversation)
   const createConversation = useAppStore((state) => state.createConversation)
   const setToolsActive = useAppStore((state) => state.setToolsActive)
+  const openSearchTarget = useAppStore((state) => state.openSearchTarget)
+  const clearSearchTarget = useAppStore((state) => state.clearSearchTarget)
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const restoreFocus = useRef(true)
 
   useOverlayEscape(() => setOpen(false))
 
@@ -84,7 +89,14 @@ export function CommandPalette(): JSX.Element | null {
     if (!open) return
     setQuery('')
     setActive(0)
+    const previous = document.activeElement
+    restoreFocus.current = true
     inputRef.current?.focus()
+    return () => {
+      if (restoreFocus.current && previous instanceof HTMLElement && previous.isConnected) {
+        previous.focus()
+      }
+    }
   }, [open])
 
   /** 候选集合：命令 + 工具 + 本地数据 */
@@ -129,7 +141,7 @@ export function CommandPalette(): JSX.Element | null {
         kind: 'group',
         id: group.id,
         title: group.name,
-        action: { type: 'view', view: 'shelf' }
+        action: { type: 'openTarget', target: { kind: 'group', id: group.id } }
       })
     }
     for (const note of notes) {
@@ -140,17 +152,17 @@ export function CommandPalette(): JSX.Element | null {
         subtitle: formatDate(note.updatedAtMs),
         // 笔记正文参与匹配（但界面上只显示标题）
         keywords: note.content,
-        action: { type: 'view', view: 'notes' }
+        action: { type: 'openTarget', target: { kind: 'note', id: note.id } }
       })
     }
     for (const entry of passwords) {
-      // 密码箱只匹配标题与网址：明文密码与账号本来也不在内存里
+      // 全局搜索只索引标题与网址，不把账号、密码或备注加入候选集合。
       list.push({
         kind: 'password',
         id: entry.id,
         title: entry.title,
         subtitle: entry.url,
-        action: { type: 'view', view: 'passwords' }
+        action: { type: 'openTarget', target: { kind: 'password', id: entry.id } }
       })
     }
     for (const conversation of conversations) {
@@ -185,7 +197,25 @@ export function CommandPalette(): JSX.Element | null {
     return searchAll(trimmed, sources, 24)
   }, [query, sources])
 
+  const activeIndex = Math.min(active, Math.max(0, hits.length - 1))
+  useEffect(() => {
+    if (!open) return
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex, hits])
+
   const run = (action: PaletteAction): void => {
+    if (
+      useAppStore.getState().hasUnsavedChanges &&
+      !window.confirm('当前有未保存的编辑，跳转将放弃这些内容。是否继续？')
+    ) {
+      return
+    }
+    // 导航后让目标页面接管焦点；只有取消面板才恢复原输入框的焦点。
+    restoreFocus.current = false
+    clearSearchTarget()
+    const reportError = (error: unknown): void => {
+      useAppStore.setState({ error: error instanceof Error ? error.message : '无法打开目标，请重试' })
+    }
     switch (action.type) {
       case 'view':
         setView(action.view)
@@ -194,15 +224,18 @@ export function CommandPalette(): JSX.Element | null {
         openReader(action.bookId)
         break
       case 'openConversation':
-        void selectConversation(action.conversationId)
+        void selectConversation(action.conversationId).catch(reportError)
         setView('chat')
         break
       case 'openTool':
         setToolsActive(action.toolId)
         setView('tools')
         break
+      case 'openTarget':
+        openSearchTarget(action.target)
+        break
       case 'newConversation':
-        void createConversation()
+        void createConversation().catch(reportError)
         setView('chat')
         break
     }
@@ -210,6 +243,7 @@ export function CommandPalette(): JSX.Element | null {
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.nativeEvent.isComposing) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       setActive((current) => (hits.length === 0 ? 0 : (current + 1) % hits.length))
@@ -224,7 +258,7 @@ export function CommandPalette(): JSX.Element | null {
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      const hit = hits[active]
+      const hit = hits[activeIndex]
       if (hit) run(hit.action)
     }
   }
@@ -243,6 +277,19 @@ export function CommandPalette(): JSX.Element | null {
         aria-modal="true"
         aria-label="全局搜索"
         onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Escape') {
+            // 只关闭最上层命令面板，不让下层编辑弹层同时收到 Esc。
+            event.preventDefault()
+            event.stopPropagation()
+            setOpen(false)
+          }
+          if (event.key === 'Tab') {
+            event.preventDefault()
+            inputRef.current?.focus()
+          }
+        }}
       >
         <input
           ref={inputRef}
@@ -250,6 +297,12 @@ export function CommandPalette(): JSX.Element | null {
           type="text"
           value={query}
           placeholder="搜索书架 / 笔记 / 密码 / 会话，或输入命令…"
+          role="combobox"
+          aria-label="搜索内容或命令"
+          aria-expanded="true"
+          aria-autocomplete="list"
+          aria-controls="palette-results"
+          aria-activedescendant={hits.length > 0 ? `palette-hit-${activeIndex}` : undefined}
           spellCheck={false}
           onChange={(event) => {
             setQuery(event.target.value)
@@ -259,27 +312,36 @@ export function CommandPalette(): JSX.Element | null {
         />
 
         {hits.length === 0 ? (
-          <p className="palette-empty">没有匹配项</p>
-        ) : (
-          <ul className="palette-list">
-            {hits.map((hit, index) => (
-              <li key={`${hit.kind}-${hit.id}`}>
-                <button
-                  type="button"
-                  className={`palette-item${index === active ? ' active' : ''}`}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => run(hit.action)}
-                >
-                  <span className="palette-item-kind">{SEARCH_KIND_LABELS[hit.kind]}</span>
-                  <span className="palette-item-title">{hit.title}</span>
-                  {hit.subtitle ? (
-                    <span className="palette-item-sub">{hit.subtitle}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+          <p className="palette-empty" role="status">没有匹配项</p>
+        ) : null}
+        <ul
+          className="palette-list"
+          id="palette-results"
+          role="listbox"
+          aria-label="搜索结果"
+          ref={listRef}
+        >
+          {hits.map((hit, index) => (
+            <li key={`${hit.kind}-${hit.id}`} role="presentation">
+              <button
+                type="button"
+                className={`palette-item${index === activeIndex ? ' active' : ''}`}
+                role="option"
+                id={`palette-hit-${index}`}
+                aria-selected={index === activeIndex}
+                tabIndex={-1}
+                onMouseEnter={() => setActive(index)}
+                onClick={() => run(hit.action)}
+              >
+                <span className="palette-item-kind">{SEARCH_KIND_LABELS[hit.kind]}</span>
+                <span className="palette-item-title">{hit.title}</span>
+                {hit.subtitle ? (
+                  <span className="palette-item-sub">{hit.subtitle}</span>
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
 
         <footer className="palette-footer">
           <span>↑↓ 选择</span>

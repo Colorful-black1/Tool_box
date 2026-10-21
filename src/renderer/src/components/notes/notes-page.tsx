@@ -11,9 +11,12 @@ export function NotesPage(): JSX.Element {
   const refreshNotes = useAppStore((state) => state.refreshNotes)
   const importNote = useAppStore((state) => state.importNote)
   const deleteNote = useAppStore((state) => state.deleteNote)
+  const searchTarget = useAppStore((state) => state.searchTarget)
+  const clearSearchTarget = useAppStore((state) => state.clearSearchTarget)
 
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<NoteView | 'new' | null>(null)
+  const [searchRevision, setSearchRevision] = useState(0)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [flash, setFlash] = useState('')
   const [loading, setLoading] = useState(true)
@@ -36,6 +39,19 @@ export function NotesPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (loading || loadError || searchTarget?.kind !== 'note') return
+    const note = notes.find((item) => item.id === searchTarget.id)
+    if (note) {
+      setEditing(note)
+      // 同一条目再次命中也需重建编辑器，兑现命令面板中已确认的放弃草稿操作。
+      setSearchRevision((revision) => revision + 1)
+    } else {
+      setFlash('该笔记已不存在，请重新搜索')
+    }
+    clearSearchTarget()
+  }, [loading, loadError, searchTarget, notes, clearSearchTarget])
+
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return notes
@@ -54,6 +70,7 @@ export function NotesPage(): JSX.Element {
   if (editing !== null) {
     return (
       <NoteEditor
+        key={`${editing === 'new' ? 'new' : editing.id}-${searchRevision}`}
         note={editing === 'new' ? null : editing}
         onClose={() => setEditing(null)}
         onSaved={async () => {
@@ -202,6 +219,7 @@ function NoteEditor(props: {
   const saveNote = useAppStore((state) => state.saveNote)
   const exportNote = useAppStore((state) => state.exportNote)
   const deleteNote = useAppStore((state) => state.deleteNote)
+  const setUnsavedChanges = useAppStore((state) => state.setUnsavedChanges)
 
   const [title, setTitle] = useState(props.note?.title ?? '')
   const [content, setContent] = useState(props.note?.content ?? '')
@@ -209,6 +227,11 @@ function NoteEditor(props: {
   const [saving, setSaving] = useState(false)
   const [flash, setFlash] = useState('')
   const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    setUnsavedChanges(dirty)
+    return () => setUnsavedChanges(false)
+  }, [dirty, setUnsavedChanges])
 
   const html = useMemo(
     () => (preview ? renderMarkdown(content) : ''),
@@ -262,6 +285,7 @@ function NoteEditor(props: {
           className="field-input note-title-input"
           type="text"
           placeholder="笔记标题"
+          aria-label="笔记标题"
           value={title}
           maxLength={60}
           onChange={(event) => {
@@ -319,6 +343,7 @@ function NoteEditor(props: {
         <textarea
           className="field-input note-body-input"
           placeholder={EDITOR_PLACEHOLDER}
+          aria-label="笔记正文"
           value={content}
           onChange={(event) => {
             setContent(event.target.value)
