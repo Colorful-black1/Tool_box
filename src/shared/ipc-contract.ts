@@ -63,7 +63,9 @@ export const IPC = {
   backgroundPick: 'background:pick',
   backgroundClear: 'background:clear',
 
-  systemCopy: 'system:copy'
+  systemCopy: 'system:copy',
+  systemShortcutGet: 'system:shortcut:get',
+  systemShortcutSet: 'system:shortcut:set'
 } as const
 
 export const CHAT_EVENT = {

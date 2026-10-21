@@ -17,7 +17,8 @@ import type {
   NoteSaveInput,
   PasswordDraft,
   PasswordInput,
-  ReadingProgressInput
+  ReadingProgressInput,
+  ShortcutConfig
 } from '../shared/types'
 import type { ToolboxBridge } from '../shared/bridge'
 
@@ -142,7 +143,10 @@ const bridge: ToolboxBridge = {
     clear: () => ipcRenderer.invoke(IPC.backgroundClear)
   },
   system: {
-    copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text)
+    copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),
+    getShortcut: () => ipcRenderer.invoke(IPC.systemShortcutGet),
+    setShortcut: (config: ShortcutConfig) =>
+      ipcRenderer.invoke(IPC.systemShortcutSet, config)
   }
 }
 

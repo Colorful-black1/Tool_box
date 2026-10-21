@@ -37,6 +37,7 @@ export type AppView =
   | 'stats'
   | 'passwords'
   | 'notes'
+  | 'tools'
   | 'settings'
 
 interface StreamingState {
@@ -66,6 +67,8 @@ interface AppState {
   bootstrapped: boolean
   loading: boolean
   view: AppView
+  /** 工具页当前选中的工具 id */
+  toolsActiveId: string | null
   error: string | null
   appInfo: AppInfo | null
 
@@ -97,6 +100,8 @@ interface AppState {
 
   bootstrap(): Promise<void>
   setView(view: AppView): void
+  /** 工具页当前选中的工具 id（切走再切回来仍是同一个） */
+  setToolsActive(toolId: string): void
   clearError(): void
 
   // AI 对话
@@ -171,6 +176,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   bootstrapped: false,
   loading: true,
   view: 'chat',
+  toolsActiveId: null,
   error: null,
   appInfo: null,
   settings: null,
@@ -242,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setView: (view) => set({ view }),
+  setToolsActive: (toolId) => set({ toolsActiveId: toolId }),
   clearError: () => set({ error: null }),
 
   // ---------- AI 对话 ----------

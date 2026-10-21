@@ -7,10 +7,20 @@ import type {
   AiModelSource,
   AiProfileInput,
   AiProfileView,
-  AiProviderId
+  AiProviderId,
+  ShortcutConfig
 } from '@shared/types'
+import { DEFAULT_SHORTCUT_CONFIG, SHORTCUT_ACCELERATORS } from '@shared/types'
 import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
+
+/** 快捷键的中文说明（accelerator 本身是技术写法，界面上给中文） */
+const ACCELERATOR_LABELS: Record<string, string> = {
+  'Control+Shift+Space': 'Ctrl + Shift + 空格',
+  'Control+Shift+K': 'Ctrl + Shift + K',
+  'Control+Alt+T': 'Ctrl + Alt + T',
+  'Alt+Space': 'Alt + 空格'
+}
 
 /** 表单草稿：与落盘档案解耦，未保存的修改不会污染 store */
 interface ProfileDraft {
@@ -77,6 +87,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const [loadingModels, setLoadingModels] = useState(false)
   /** 最近一次拉到的模型（候选清单的一部分） */
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  /** 全局快捷键配置（主进程持有，这里只做展示与修改） */
+  const [shortcut, setShortcut] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUT_CONFIG })
+  const [shortcutError, setShortcutError] = useState('')
 
   // 当前编辑的档案被外部删除时关闭草稿；新建草稿（id 为 null）不受影响
   useEffect(() => {
@@ -84,6 +97,30 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     if (settings.profiles.some((item) => item.id === draft.id)) return
     setDraft(null)
   }, [settings, draft])
+
+  // 读一次全局快捷键配置（主进程持有真正的注册状态）
+  useEffect(() => {
+    if (!window.toolbox) return
+    void window.toolbox.system
+      .getShortcut()
+      .then(setShortcut)
+      .catch(() => {
+        // 读不到就保持默认值，不打扰用户
+      })
+  }, [])
+
+  /** 写快捷键配置：失败（被占用）时保留原状并说明原因 */
+  const applyShortcut = async (next: ShortcutConfig): Promise<void> => {
+    if (!window.toolbox) return
+    setShortcutError('')
+    try {
+      const result = await window.toolbox.system.setShortcut(next)
+      setShortcut(result.config)
+      if (!result.ok) setShortcutError(result.error ?? '设置失败')
+    } catch (error) {
+      setShortcutError(error instanceof Error ? error.message : '设置失败')
+    }
+  }
 
   const activeProfile = useMemo(
     () => settings.profiles.find((item) => item.id === draft?.id) ?? null,
@@ -277,7 +314,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   if (draft?.model) pushCandidate(draft.model)
 
   return (
-    <div className="settings-layout settings-layout-wide view-enter">
+    <div className="settings-layout settings-layout-wide settings-stack view-enter">
       <section className="glass settings-card" aria-label="AI 设置">
         <div className="sec-head">
           <h2 className="sec-title">星轨链路</h2>
@@ -531,6 +568,57 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
               </p>
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="glass settings-card" aria-label="桌面端设置">
+        <div className="sec-head">
+          <h2 className="sec-title">桌面端</h2>
+        </div>
+
+        <div className="settings-extra">
+          <span className="field-label">全局快捷键 · SHORTCUT</span>
+          <div className="settings-shortcut-row">
+            <button
+              type="button"
+              className={`toggle-switch${shortcut.enabled ? ' on' : ''}`}
+              role="switch"
+              aria-checked={shortcut.enabled}
+              aria-label="启用全局快捷键"
+              onClick={() => void applyShortcut({ ...shortcut, enabled: !shortcut.enabled })}
+            >
+              <span />
+            </button>
+            <span className="field-hint">
+              按下快捷键可从任意程序唤回百宝箱。默认关闭 —— 全局占用快捷键容易和别的程序打架。
+            </span>
+          </div>
+
+          <div className="settings-shortcut-row">
+            <select
+              className="field-select field-select-narrow"
+              value={shortcut.accelerator}
+              aria-label="快捷键组合"
+              onChange={(event) =>
+                void applyShortcut({ ...shortcut, accelerator: event.target.value })
+              }
+            >
+              {SHORTCUT_ACCELERATORS.map((accelerator) => (
+                <option key={accelerator} value={accelerator}>
+                  {ACCELERATOR_LABELS[accelerator] ?? accelerator}
+                </option>
+              ))}
+            </select>
+            {shortcutError ? (
+              <span className="field-hint warn" role="alert">
+                {shortcutError}
+              </span>
+            ) : (
+              <span className="field-hint">
+                关闭窗口后应用会缩到托盘，按这个组合键就能唤回来。
+              </span>
+            )}
+          </div>
         </div>
       </section>
     </div>

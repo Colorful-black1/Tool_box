@@ -589,3 +589,41 @@ export const RELOCK_OPTIONS: Array<{ value: RelockDelay; label: string }> = [
   { value: 60_000, label: '1 分钟' },
   { value: 300_000, label: '5 分钟' }
 ]
+
+// ============ 全局快捷键 ============
+
+/**
+ * 全局快捷键配置：唤起百宝箱窗口。
+ *
+ * 默认关闭 —— 全局占用快捷键容易和别的程序打架，该由用户自己开。
+ */
+export interface ShortcutConfig {
+  /** 是否启用 */
+  enabled: boolean
+  /** Electron accelerator 写法，例如 Control+Shift+Space */
+  accelerator: string
+}
+
+/** 可选的快捷键组合：给用户选而不是手输，避免拼错 */
+export const SHORTCUT_ACCELERATORS: readonly string[] = [
+  'Control+Shift+Space',
+  'Control+Shift+K',
+  'Control+Alt+T',
+  'Alt+Space'
+]
+
+/** 默认配置：关闭状态 + 默认组合 */
+export const DEFAULT_SHORTCUT_CONFIG: ShortcutConfig = {
+  enabled: false,
+  accelerator: 'Control+Shift+Space'
+}
+
+/** 设置全局快捷键的结果 */
+export interface ShortcutSetResult {
+  /** 是否设置成功 */
+  ok: boolean
+  /** 失败原因（快捷键被占用等），成功时为空 */
+  error?: string
+  /** 当前生效的配置（失败时是原来的那一份） */
+  config: ShortcutConfig
+}

@@ -2,6 +2,11 @@
 import type { JSX } from 'react'
 
 import type { PasswordEntryView } from '../../../../shared/types'
+import {
+  DEFAULT_PASSWORD_OPTIONS,
+  generatePassword,
+  passwordStrength
+} from '@shared/password-generator'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import { PasswordImportSheet } from './password-import-sheet'
@@ -383,6 +388,28 @@ interface EditorInput {
   remark: string
 }
 
+/** 密码强度条：颜色随强度变化，并给出最要紧的一条改进建议 */
+function StrengthBar({ password }: { password: string }): JSX.Element {
+  const strength = passwordStrength(password)
+  return (
+    <div className="pwd-strength">
+      <span className="pwd-strength-label">强度</span>
+      <span className="pwd-strength-track" aria-hidden="true">
+        {[0, 1, 2, 3].map((index) => (
+          <span
+            key={index}
+            className={`pwd-strength-seg s${strength.score}${index < strength.score ? ' on' : ''}`}
+          />
+        ))}
+      </span>
+      <span className="pwd-strength-text">{strength.label}</span>
+      {strength.hints.length > 0 ? (
+        <span className="pwd-strength-hint">{strength.hints[0]}</span>
+      ) : null}
+    </div>
+  )
+}
+
 function PasswordEditor(props: {
   initial: PasswordEntryView | null
   onClose(): void
@@ -398,8 +425,22 @@ function PasswordEditor(props: {
   const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  /** 生成密码的长度（12 ~ 32） */
+  const [genLength, setGenLength] = useState(DEFAULT_PASSWORD_OPTIONS.length)
 
   useOverlayEscape(props.onClose)
+
+  /** 生成一个随机密码填进输入框 */
+  function generate(): void {
+    try {
+      const password = generatePassword({ ...DEFAULT_PASSWORD_OPTIONS, length: genLength })
+      setForm({ ...form, password })
+      setShowPassword(true)
+      setError('')
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : '生成失败')
+    }
+  }
 
   async function submit(): Promise<void> {
     if (!form.title.trim()) {
@@ -509,7 +550,34 @@ function PasswordEditor(props: {
               >
                 {showPassword ? '隐藏' : '显示'}
               </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                aria-label="生成随机密码"
+                onClick={generate}
+              >
+                生成
+              </button>
             </div>
+
+            <div className="pwd-gen-row">
+              <label className="field-hint" htmlFor="pwd-gen-length">
+                长度 {genLength}
+              </label>
+              <input
+                id="pwd-gen-length"
+                className="pwd-gen-slider"
+                type="range"
+                min={12}
+                max={32}
+                step={1}
+                value={genLength}
+                aria-label="生成密码的长度"
+                onChange={(event) => setGenLength(Number(event.target.value))}
+              />
+            </div>
+
+            {form.password ? <StrengthBar password={form.password} /> : null}
           </div>
           <div>
             <label className="field-label" htmlFor="pwd-remark">

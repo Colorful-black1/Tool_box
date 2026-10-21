@@ -1,6 +1,8 @@
 ﻿import type { JSX } from 'react'
 
+import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
+import { ChevronIcon } from './icons'
 
 interface RailItem {
   view: AppView
@@ -60,6 +62,13 @@ function RailIcon({ name }: { name: string }): JSX.Element {
           />
         </svg>
       )
+    case 'tool':
+      return (
+        <svg {...common}>
+          <path d="M14.7 6.3a4 4 0 0 0 5 5L15 16l-3 3-2-2-3 3-1.5-1.5 3-3-2-2 3-3z" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M17.5 3.5 20.5 6.5" strokeLinecap="round" />
+        </svg>
+      )
     case 'settings':
       return (
         <svg {...common}>
@@ -86,11 +95,23 @@ function RailIcon({ name }: { name: string }): JSX.Element {
 }
 
 export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element {
+  const collapsed = useRailStore((state) => state.collapsed || state.narrow)
+  const toggle = useRailStore((state) => state.toggle)
+
   return (
-    <nav className="side-rail" aria-label="主导航">
+    <nav className={`side-rail${collapsed ? ' collapsed' : ''}`} aria-label="主导航">
       <div className="logo-mark" aria-hidden="true">
         智
       </div>
+      <button
+        type="button"
+        className="rail-toggle"
+        aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        onClick={toggle}
+      >
+        <ChevronIcon direction={collapsed ? 'right' : 'left'} />
+      </button>
       {items.map((item) => (
         <button
           key={item.view}
@@ -101,10 +122,12 @@ export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element 
               : ''
           }`}
           aria-current={view === item.view ? 'page' : undefined}
+          aria-label={item.label}
+          title={item.label}
           onClick={() => onChange(item.view)}
         >
           <RailIcon name={item.icon} />
-          {item.label}
+          <span className="nav-label">{item.label}</span>
         </button>
       ))}
       <div className="rail-spacer" />

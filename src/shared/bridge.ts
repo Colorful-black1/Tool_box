@@ -29,6 +29,8 @@ import type {
   PasswordEntryView,
   PasswordInput,
   ReadingProgressInput,
+  ShortcutConfig,
+  ShortcutSetResult,
   StatsSummary
 } from './types'
 
@@ -135,5 +137,9 @@ export interface ToolboxBridge {
   }
   system: {
     copyText(text: string): Promise<void>
+    /** 读取全局快捷键配置 */
+    getShortcut(): Promise<ShortcutConfig>
+    /** 修改全局快捷键配置（会立刻生效） */
+    setShortcut(config: ShortcutConfig): Promise<ShortcutSetResult>
   }
 }

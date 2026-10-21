@@ -19,6 +19,7 @@ import type { ImportService } from '../services/library/import-service'
 import { parsePasswordText } from '../services/library/password-text-parser'
 import { PasswordAiService } from '../services/password/password-ai-service'
 import type { SettingsService } from '../services/settings/settings-service'
+import type { ShortcutManager } from '../shortcuts'
 import {
   assertObject,
   optionalString,
@@ -36,10 +37,11 @@ export interface IpcDependencies {
   aiGateway: AiGateway
   importService: ImportService
   passwordAi: PasswordAiService
+  shortcuts: ShortcutManager
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
-  const { settings, store, aiGateway, importService, passwordAi } = dependencies
+  const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
   const assetsDir = app.getAppPath()
   const userDataDir = app.getPath('userData')
 
@@ -375,6 +377,16 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   // ---------- 系统 ----------
   ipcMain.handle(IPC.systemCopy, (_event, text: unknown) => {
     clipboard.writeText(requireString(text, '复制内容', { allowEmpty: true }))
+  })
+
+  // ---------- 全局快捷键 ----------
+  ipcMain.handle(IPC.systemShortcutGet, () => shortcuts.read())
+  ipcMain.handle(IPC.systemShortcutSet, (_event, input: unknown) => {
+    const body = assertObject(input, '快捷键配置')
+    return shortcuts.set({
+      enabled: body.enabled === true,
+      accelerator: requireString(body.accelerator, '快捷键组合', { maxLength: 40 })
+    })
   })
 
   void assetsDir

@@ -85,3 +85,21 @@ export function RefreshIcon(): JSX.Element {
     </svg>
   )
 }
+
+/** 双箭头：侧边栏折叠 / 展开按钮 */
+export function ChevronIcon({ direction = 'right' }: { direction?: 'left' | 'right' }): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path
+        d={direction === 'right' ? 'm11 6 6 6-6 6' : 'm13 6-6 6 6 6'}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={direction === 'right' ? 'm5 6 6 6-6 6' : 'm11 6-6 6 6 6'}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}

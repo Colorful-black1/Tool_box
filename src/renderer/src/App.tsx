@@ -7,13 +7,16 @@ import { ConversationSidebar } from './components/conversation-sidebar'
 import { NotesPage } from './components/notes/notes-page'
 import { PasswordBoxPage } from './components/password/password-box-page'
 import { Reader } from './components/reader/reader'
+import { CommandPalette } from './components/search/command-palette'
 import { SideRail, TopBar } from './components/shell'
 import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
+import { ToolsPage } from './components/tools/tools-page'
 import { SettingsPage } from './routes/settings-page'
 import type { AppView } from './stores/app-store'
 import { useAppStore } from './stores/app-store'
 import { useConfigStore } from './stores/config-store'
+import { useRailStore } from './stores/rail-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
@@ -22,6 +25,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   stats: { title: '阅读统计', subtitle: 'STATS · 旅程的刻度' },
   passwords: { title: '密码宝匣', subtitle: 'PASSWORD VAULT · 秘语封存于此' },
   notes: { title: '星笺手记', subtitle: 'NOTES · 星语落笔成笺' },
+  tools: { title: '开发者工具', subtitle: 'DEV TOOLS · 本机离线小工具' },
   settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
 }
 
@@ -31,6 +35,7 @@ const RAIL_ITEMS: Array<{ view: AppView; label: string; icon: string }> = [
   { view: 'stats', label: '统计', icon: 'stats' },
   { view: 'passwords', label: '密码箱', icon: 'lock' },
   { view: 'notes', label: '记事本', icon: 'note' },
+  { view: 'tools', label: '工具', icon: 'tool' },
   { view: 'settings', label: '设置', icon: 'settings' }
 ]
 
@@ -44,12 +49,21 @@ export default function App(): JSX.Element {
   const closeReader = useAppStore((state) => state.closeReader)
   const openReader = useAppStore((state) => state.openReader)
   const loadConfig = useConfigStore((state) => state.load)
+  const railCollapsed = useRailStore((state) => state.collapsed || state.narrow)
 
   useEffect(() => {
     void loadConfig()
     void useAppStore.getState().bootstrap()
     void useAppStore.getState().loadAgentPermission()
   }, [loadConfig])
+
+  // 窗口太窄时侧边栏自动收成只显示图标；变宽后恢复用户手动的那份偏好
+  useEffect(() => {
+    const onResize = (): void => useRailStore.getState().syncWidth(window.innerWidth)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     const bridge = window.toolbox?.chat
@@ -74,7 +88,9 @@ export default function App(): JSX.Element {
   return (
     <>
       <Starfield />
-      <div className="app-shell">
+      {/* 全局命令面板：⌘K / Ctrl+K 唤起，挂在壳层外，任何页面都能用 */}
+      <CommandPalette />
+      <div className={`app-shell${railCollapsed ? ' rail-collapsed' : ' rail-expanded'}`}>
         <SideRail
           view={view}
           onChange={setView}
@@ -123,6 +139,7 @@ export default function App(): JSX.Element {
                 ) : null}
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
+                {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}
               </>
             )}
