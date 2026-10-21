@@ -23,7 +23,9 @@ const MAX_REGEX_MATCHES = 200
 function utf8Bytes(text: string): number[] {
   const out: number[] = []
   for (const char of text) {
-    const code = char.codePointAt(0) ?? 0
+    const point = char.codePointAt(0) ?? 0
+    // 孤立 UTF-16 代理项不是 Unicode 标量，按 UTF-8 约定编码为替换字符。
+    const code = point >= 0xd800 && point <= 0xdfff ? 0xfffd : point
     if (code > 0xffff) {
       // 四字节（emoji 等）：按原始码点取 3 / 6 / 6 / 6 位
       out.push(
@@ -57,21 +59,26 @@ function utf8String(bytes: number[]): string {
       out += String.fromCharCode(byte)
       continue
     }
-    if (byte >= 0xc0 && byte < 0xe0) {
-      out += String.fromCharCode(((byte & 0x1f) << 6) | (bytes[i++] & 0x3f))
-      continue
+    let size = 0
+    if (byte >= 0xc2 && byte <= 0xdf) size = 2
+    else if (byte >= 0xe0 && byte <= 0xef) size = 3
+    else if (byte >= 0xf0 && byte <= 0xf4) size = 4
+    if (size === 0 || i + size - 1 > bytes.length) {
+      throw new Error('Base64 解码结果不是有效的 UTF-8 文本')
     }
-    if (byte >= 0xe0 && byte < 0xf0) {
-      out += String.fromCharCode(
-        ((byte & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f)
-      )
-      continue
+    let code = byte & (0x7f >> size)
+    for (let offset = 1; offset < size; offset += 1) {
+      const next = bytes[i++]
+      if ((next & 0xc0) !== 0x80) {
+        throw new Error('Base64 解码结果不是有效的 UTF-8 文本')
+      }
+      code = (code << 6) | (next & 0x3f)
     }
-    const code =
-      ((byte & 0x07) << 18) |
-      ((bytes[i++] & 0x3f) << 12) |
-      ((bytes[i++] & 0x3f) << 6) |
-      (bytes[i++] & 0x3f)
+    // 拒绝过长编码、代理项与超过 Unicode 上限的码点，不能悄悄生成乱码。
+    const minimum = size === 2 ? 0x80 : size === 3 ? 0x800 : 0x10000
+    if (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+      throw new Error('Base64 解码结果不是有效的 UTF-8 文本')
+    }
     out += String.fromCodePoint(code)
   }
   return out
@@ -101,6 +108,13 @@ export function decodeBase64(text: string): string {
     throw new Error('不是合法的 Base64 文本')
   }
   const body = clean.replace(/=+$/, '')
+  const padding = clean.length - body.length
+  if (
+    body.length % 4 === 1 ||
+    (padding > 0 && (clean.length % 4 !== 0 || padding !== (4 - (body.length % 4)) % 4))
+  ) {
+    throw new Error('不是合法的 Base64 文本（长度或补位无效）')
+  }
   const bytes: number[] = []
   let buffer = 0
   let bits = 0
@@ -113,6 +127,9 @@ export function decodeBase64(text: string): string {
       bits -= 8
       bytes.push((buffer >> bits) & 0xff)
     }
+  }
+  if (bits > 0 && (buffer & ((1 << bits) - 1)) !== 0) {
+    throw new Error('不是合法的 Base64 文本（填充位必须为零）')
   }
   return utf8String(bytes)
 }
@@ -139,6 +156,7 @@ export function decodeUrl(text: string): string {
 export function formatTimestamp(ms: number): string {
   if (!Number.isFinite(ms)) throw new Error('时间戳无效')
   const date = new Date(ms)
+  if (Number.isNaN(date.getTime())) throw new Error('时间戳超出有效范围')
   const pad = (value: number): string => String(value).padStart(2, '0')
   return (
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
@@ -158,7 +176,8 @@ export function parseTimestamp(input: string): number | null {
   const value = Number(trimmed)
   if (!Number.isSafeInteger(value)) return null
   // 10 位当秒、13 位当毫秒；其余位数按毫秒处理
-  return trimmed.length <= 10 ? value * 1000 : value
+  const ms = trimmed.length <= 10 ? value * 1000 : value
+  return Number.isNaN(new Date(ms).getTime()) ? null : ms
 }
 
 /** 日期字符串（YYYY-MM-DD[ HH:mm[:ss]]）→ 毫秒数，非法返回 null */
@@ -168,15 +187,25 @@ export function parseDateTime(input: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(trimmed)
   if (!match) return null
   const [, y, m, d, hh = '0', mm = '0', ss = '0'] = match
-  const ms = new Date(
-    Number(y),
-    Number(m) - 1,
-    Number(d),
-    Number(hh),
-    Number(mm),
-    Number(ss)
-  ).getTime()
-  return Number.isNaN(ms) ? null : ms
+  const [year, month, day, hour, minute, second] = [y, m, d, hh, mm, ss].map(Number)
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+    return null
+  }
+  // setFullYear 保留 0~99 年；回读各字段，拒绝 Date 自动进位及夏令时缺失时刻。
+  const date = new Date(0)
+  date.setFullYear(year, month - 1, day)
+  date.setHours(hour, minute, second, 0)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute ||
+    date.getSeconds() !== second
+  ) {
+    return null
+  }
+  return date.getTime()
 }
 
 // ==================== JSON ====================
@@ -350,14 +379,17 @@ export function testRegex(pattern: string, flags: string, text: string): RegexRe
     }
   }
   const matches: RegexMatch[] = []
-  let guard = 0
-  let match = regex.exec(text)
-  while (match !== null && matches.length < MAX_REGEX_MATCHES && guard < 100000) {
-    guard += 1
+  while (matches.length < MAX_REGEX_MATCHES) {
+    const match = regex.exec(text)
+    if (!match) break
     matches.push({ index: match.index, length: match[0].length, text: match[0] })
-    // 零宽匹配要手动推进，否则会死循环
-    if (match[0].length === 0) regex.lastIndex += 1
-    match = regex.exec(text)
+    if (!regex.global && !regex.sticky) break
+    // Unicode 模式需跨过完整代理对，否则引擎可能退回同一码点，重复命中。
+    if (match[0].length === 0) {
+      const point = text.codePointAt(regex.lastIndex) ?? 0
+      const unicode = regex.unicode || regex.flags.includes('v')
+      regex.lastIndex += unicode && point > 0xffff ? 2 : 1
+    }
   }
   return { matches }
 }

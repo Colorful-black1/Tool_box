@@ -42,11 +42,17 @@ export function TimestampPanel(): JSX.Element {
           className="field-input tool-input-line"
           type="text"
           value={stamp}
+          aria-label="待转换的时间戳"
           placeholder="1760000000 或 1760000000000"
           spellCheck={false}
           onChange={(event) => setStamp(event.target.value)}
         />
         <output className="tool-result-line">{stampToDate || '—'}</output>
+        {stamp.trim() && !stampToDate ? (
+          <div className="tool-error" role="alert">
+            请输入有效范围内的数字时间戳
+          </div>
+        ) : null}
       </section>
 
       <section className="tool-io">
@@ -57,11 +63,17 @@ export function TimestampPanel(): JSX.Element {
           className="field-input tool-input-line"
           type="text"
           value={dateText}
+          aria-label="待转换的本地日期时间"
           placeholder="2026-10-20 21:05:09"
           spellCheck={false}
           onChange={(event) => setDateText(event.target.value)}
         />
         <output className="tool-result-line">{dateToStamp || '—'}</output>
+        {dateText.trim() && !dateToStamp ? (
+          <div className="tool-error" role="alert">
+            请输入有效的本地日期时间，格式为 YYYY-MM-DD HH:mm:ss
+          </div>
+        ) : null}
       </section>
     </div>
   )

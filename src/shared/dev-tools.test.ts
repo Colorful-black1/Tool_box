@@ -58,6 +58,27 @@ describe('Base64', () => {
   it('非法输入抛错', () => {
     expect(() => decodeBase64('!!!')).toThrow('Base64')
   })
+
+  it('接受省略补位的完整字节', () => {
+    expect(decodeBase64('YQ')).toBe('a')
+    expect(decodeBase64('YWI')).toBe('ab')
+  })
+
+  it.each(['A', 'YWJjA', '=', 'YQ=', 'YWI==', 'YWJj=', 'YR==', 'YWJ='])(
+    '拒绝非法长度、补位或非零填充位：%s',
+    (text) => expect(() => decodeBase64(text)).toThrow('Base64')
+  )
+
+  it.each(['gA==', 'wA==', '4rg=', 'wK8=', '7aCA', '9JCAgA==', '/w=='])(
+    '拒绝非法或截断的 UTF-8 字节：%s',
+    (text) => expect(() => decodeBase64(text)).toThrow('UTF-8')
+  )
+
+  it('孤立代理项按 UTF-8 替换字符编码，与 Node 保持一致', () => {
+    const text = '\ud800a\udfff'
+    expect(encodeBase64(text)).toBe(Buffer.from(text, 'utf8').toString('base64'))
+    expect(decodeBase64(encodeBase64(text))).toBe('\ufffda\ufffd')
+  })
 })
 
 describe('URL 编解码', () => {
@@ -95,6 +116,32 @@ describe('时间戳', () => {
     expect(ms).not.toBeNull()
     expect(formatTimestamp(ms as number)).toBe('2026-10-20 21:05:09')
     expect(parseDateTime('2026/10/20')).toBeNull()
+  })
+
+  it.each([
+    '2026-02-31',
+    '2026-02-29',
+    '2026-04-31',
+    '2026-00-01',
+    '2026-13-01',
+    '2026-01-00',
+    '2026-01-01 24:00',
+    '2026-01-01 12:60',
+    '2026-01-01 12:00:60'
+  ])('越界日期时间返回 null，不自动进位：%s', (text) => {
+    expect(parseDateTime(text)).toBeNull()
+  })
+
+  it('接受闰年，并保留 0 到 99 年的实际年份', () => {
+    expect(parseDateTime('2024-02-29 12:30')).not.toBeNull()
+    const ms = parseDateTime('0099-01-01')
+    expect(ms).not.toBeNull()
+    expect(new Date(ms as number).getFullYear()).toBe(99)
+  })
+
+  it('拒绝超出 Date 范围的时间戳', () => {
+    expect(parseTimestamp('8640000000000001')).toBeNull()
+    expect(() => formatTimestamp(8640000000000001)).toThrow('时间戳')
   })
 })
 
@@ -177,7 +224,8 @@ describe('UUID', () => {
   })
 })
 
-describe('正则测试', () => {  it('返回命中位置', () => {
+describe('正则测试', () => {
+  it('返回命中位置', () => {
     const result = testRegex('a(b)', 'g', 'ab ab')
     expect(result.error).toBeUndefined()
     expect(result.matches.map((item) => item.index)).toEqual([0, 3])
@@ -201,5 +249,22 @@ describe('正则测试', () => {  it('返回命中位置', () => {
     const result = testRegex('(unclosed', '', 'text')
     expect(result.error).toBeTruthy()
     expect(result.matches).toHaveLength(0)
+  })
+
+  it('没有 g 或 y 时只返回第一次命中', () => {
+    expect(testRegex('a', '', 'aaa').matches).toEqual([{ index: 0, length: 1, text: 'a' }])
+    expect(testRegex('a*', '', 'bbb').matches).toHaveLength(1)
+  })
+
+  it('粘连模式只连续匹配，遇到不匹配的位置就停止', () => {
+    expect(testRegex('a', 'y', 'aa ba').matches.map((match) => match.index)).toEqual([0, 1])
+  })
+
+  it('Unicode 零宽匹配按完整码点推进', () => {
+    expect(testRegex('(?:)', 'gu', '😀a').matches.map((match) => match.index)).toEqual([0, 2, 3])
+  })
+
+  it('命中数量最多返回 200 条', () => {
+    expect(testRegex('a', 'g', 'a'.repeat(201)).matches).toHaveLength(200)
   })
 })
