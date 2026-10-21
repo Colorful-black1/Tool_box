@@ -1,0 +1,320 @@
+/** npm run build 后执行：node verify/desktop-ui/run.cjs */
+/* global document:readonly, window:readonly, Event:readonly, innerWidth:readonly, innerHeight:readonly */
+// 上述浏览器全局只在 Playwright 的页面回调中使用，不在 Node 侧读取。
+const assert = require('node:assert/strict')
+const fs = require('node:fs/promises')
+const os = require('node:os')
+const path = require('node:path')
+const { _electron } = require('playwright')
+const verifyThemes = require('./themes.cjs')
+
+async function main() {
+  const tempRoot = path.resolve(os.tmpdir())
+  const profile = await fs.mkdtemp(path.join(tempRoot, 'toolbox-ui-'))
+  const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
+  delete env.ELECTRON_RUN_AS_NODE
+  let app
+  const passed = []
+  try {
+    app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+    const page = await app.firstWindow()
+    page.setDefaultTimeout(10000)
+    const errors = []
+    const artifactDir = path.join(__dirname, '../../.playwright-mcp/desktop-ui')
+    const capture = async (name) => {
+      if (!process.argv.includes('--screenshots')) return
+      await fs.mkdir(artifactDir, { recursive: true })
+      await page.screenshot({ path: path.join(artifactDir, `${name}.png`), animations: 'disabled' })
+    }
+    page.on('pageerror', (error) => errors.push(error.message))
+    const check = async (name, action) => {
+      await action()
+      passed.push(name)
+      process.stdout.write(`PASS ${name}\n`)
+    }
+    const search = async (query) => {
+      await page.keyboard.press('Control+k')
+      await page.getByRole('combobox', { name: '搜索内容或命令' }).fill(query)
+      await page.getByRole('option').first().waitFor()
+    }
+    const select = () => page.keyboard.press('Enter')
+    const bottom = () =>
+      page.waitForFunction(() => {
+        const element = document.querySelector('.message-list')
+        return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
+      })
+
+    await check('搜索笔记直接打开目标', async () => {
+      await page.getByRole('button', { name: '工具', exact: true }).waitFor()
+      await search('验收笔记甲')
+      await select()
+      await page.getByRole('textbox', { name: '笔记正文' }).waitFor()
+      assert.equal(await page.getByRole('textbox', { name: '笔记标题' }).inputValue(), '验收笔记甲')
+    })
+    await check('取消跳转保留草稿并恢复焦点', async () => {
+      await page.getByRole('textbox', { name: '笔记正文' }).fill('未保存的合成草稿')
+      await search('验收笔记乙')
+      page.once('dialog', (dialog) => dialog.dismiss())
+      await select()
+      assert.equal(
+        await page.getByRole('textbox', { name: '笔记正文' }).inputValue(),
+        '未保存的合成草稿'
+      )
+      await page.keyboard.press('Escape')
+      await page.getByRole('dialog', { name: '全局搜索' }).waitFor({ state: 'hidden' })
+      assert.equal(
+        await page
+          .getByRole('textbox', { name: '笔记正文' })
+          .evaluate((element) => element === document.activeElement),
+        true
+      )
+    })
+    await check('同页切换笔记重置编辑器', async () => {
+      await search('验收笔记乙')
+      page.once('dialog', (dialog) => dialog.accept())
+      await select()
+      await page.waitForFunction(
+        () => document.querySelector('.note-title-input')?.value === '验收笔记乙'
+      )
+      assert.equal(await page.getByRole('textbox', { name: '笔记正文' }).inputValue(), '乙笔记正文')
+    })
+    await check('重复打开同一笔记也重置已确认放弃的草稿', async () => {
+      await page.getByRole('textbox', { name: '笔记正文' }).fill('准备放弃的同页草稿')
+      await search('验收笔记乙')
+      page.once('dialog', (dialog) => dialog.accept())
+      await select()
+      await page.waitForFunction(
+        () => document.querySelector('.note-body-input')?.value === '乙笔记正文'
+      )
+    })
+    await check('密码搜索打开详情且 Esc 只关顶层搜索', async () => {
+      await search('验收账号')
+      await select()
+      await page.getByRole('dialog', { name: '条目详情' }).waitFor()
+      await search('验收分组乙')
+      await page.keyboard.press('Escape')
+      assert.equal(await page.getByRole('dialog', { name: '条目详情' }).isVisible(), true)
+    })
+    await check('切换密码条目后恢复遮罩', async () => {
+      await page.getByRole('button', { name: '显示', exact: true }).click()
+      await search('验收账号乙')
+      await select()
+      const detail = page.getByRole('dialog', { name: '条目详情' })
+      await detail.getByRole('heading', { name: '验收账号乙', exact: true }).waitFor()
+      assert.match(await detail.locator('.field-value.mono').innerText(), /^•+$/)
+    })
+    await check('密码编辑中取消跳转保留草稿，Esc 只关闭搜索', async () => {
+      await page
+        .getByRole('dialog', { name: '条目详情' })
+        .getByRole('button', { name: '编辑', exact: true })
+        .click()
+      await page.getByRole('textbox', { name: '名称 *', exact: true }).fill('未保存的合成条目')
+      await search('验收分组乙')
+      page.once('dialog', (dialog) => dialog.dismiss())
+      await select()
+      await page.keyboard.press('Escape')
+      assert.equal(await page.getByRole('dialog', { name: '密码编辑' }).isVisible(), true)
+      assert.equal(
+        await page.getByRole('textbox', { name: '名称 *', exact: true }).inputValue(),
+        '未保存的合成条目'
+      )
+    })
+    await check('分组搜索选中过滤目标分组', async () => {
+      await search('验收分组乙')
+      page.once('dialog', (dialog) => dialog.accept())
+      await select()
+      await page.getByRole('button', { name: '验收分组乙', exact: true }).waitFor()
+      await page.waitForFunction(
+        () => document.querySelector('.group-chip.active')?.textContent === '验收分组乙'
+      )
+      assert.equal(
+        await page.locator('.book-name').filter({ hasText: '乙组小说' }).isVisible(),
+        true
+      )
+      assert.equal(await page.locator('.book-name').filter({ hasText: '甲组小说' }).count(), 0)
+    })
+    await check('加载失败可重试，已删除搜索目标给出失效提示', async () => {
+      await search('验收笔记甲')
+      await page.evaluate(() => {
+        window.uiVerification.removeNote('n1')
+        window.uiVerification.failNextNotesLoad()
+      })
+      await select()
+      await page.getByRole('button', { name: '重试', exact: true }).click()
+      await page.getByText('该笔记已不存在，请重新搜索', { exact: true }).waitFor()
+      assert.equal(await page.locator('.note-editor-page').count(), 0)
+    })
+    await check('键盘选中项自动滚入可视区，Tab 留在搜索中', async () => {
+      await search('验收会话')
+      for (let index = 0; index < 20; index += 1) await page.keyboard.press('ArrowDown')
+      await page.waitForFunction(() => document.querySelector('.palette-list').scrollTop > 0)
+      const visible = await page.getByRole('option', { selected: true }).evaluate((element) => {
+        const item = element.getBoundingClientRect()
+        const list = element.closest('.palette-list').getBoundingClientRect()
+        return item.top >= list.top - 1 && item.bottom <= list.bottom + 1
+      })
+      assert.equal(visible, true)
+      await page.keyboard.press('Tab')
+      assert.equal(
+        await page.getByRole('combobox').evaluate((element) => element === document.activeElement),
+        true
+      )
+      await page.keyboard.press('Escape')
+    })
+    await check('底部跟随流式消息，上滚后保持阅读位置', async () => {
+      await page.getByRole('button', { name: '对话', exact: true }).click()
+      await bottom()
+      await page.getByRole('textbox', { name: '输入消息' }).fill('开始流式验收')
+      await page.getByRole('button', { name: '发送', exact: true }).click()
+      await page.getByRole('button', { name: '停止', exact: true }).waitFor()
+      await page.evaluate(() => window.uiVerification.delta('新增段落。'.repeat(80)))
+      await bottom()
+      await page.getByLabel('对话消息', { exact: true }).evaluate((element) => {
+        element.scrollTop = 100
+        element.dispatchEvent(new Event('scroll'))
+      })
+      await page.getByRole('button', { name: '回到最新', exact: true }).waitFor()
+      const before = await page.locator('.message-list').evaluate((element) => element.scrollTop)
+      await page.evaluate(() => window.uiVerification.delta('流式继续。'.repeat(80)))
+      await page.getByText(/流式继续。/).waitFor()
+      assert.ok(
+        Math.abs(
+          (await page.locator('.message-list').evaluate((element) => element.scrollTop)) - before
+        ) < 2
+      )
+      await capture('chat-history')
+    })
+    await check('缩放窗口时保持历史阅读状态', async () => {
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setContentSize(1024, 680)
+      )
+      await page.waitForFunction(() => innerWidth === 1024)
+      assert.equal(
+        await page.getByRole('button', { name: '回到最新', exact: true }).isVisible(),
+        true
+      )
+      const before = await page.locator('.message-list').evaluate((element) => element.scrollTop)
+      await page.evaluate(() => window.uiVerification.delta('缩放后追加。'.repeat(80)))
+      await page.getByText(/缩放后追加。/).waitFor()
+      assert.ok(
+        Math.abs(
+          (await page.locator('.message-list').evaluate((element) => element.scrollTop)) - before
+        ) < 2
+      )
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
+      )
+      await page.waitForFunction(() => innerWidth === 1280)
+    })
+    await check('回到最新后恢复自动跟随', async () => {
+      await page.getByRole('button', { name: '回到最新', exact: true }).click()
+      await bottom()
+      await page.evaluate(() => window.uiVerification.delta('再次追加。'.repeat(80)))
+      await bottom()
+      assert.equal(await page.getByRole('button', { name: '回到最新', exact: true }).count(), 0)
+      await page.getByRole('button', { name: '停止', exact: true }).click()
+    })
+    await check('切换会话后重新定位到消息末尾', async () => {
+      await page.locator('.message-list').evaluate((element) => {
+        element.scrollTop = 0
+        element.dispatchEvent(new Event('scroll'))
+      })
+      await search('验收会话 1')
+      await select()
+      await page.waitForFunction(() => document.querySelectorAll('.message-row').length === 1)
+      await bottom()
+    })
+    await check('文本清洗保留原文，输出可复制且反馈随内容更新', async () => {
+      await page.getByRole('button', { name: '工具', exact: true }).click()
+      await page.getByRole('button', { name: '文本统计', exact: true }).click()
+      await page.getByRole('textbox', { name: '文本', exact: true }).fill('b\na\nb\n')
+      await page.getByRole('button', { name: '按行去重', exact: true }).click()
+      assert.equal(
+        await page.getByRole('textbox', { name: '文本', exact: true }).inputValue(),
+        'b\na\nb\n'
+      )
+      assert.equal(
+        await page.getByRole('textbox', { name: '处理结果', exact: true }).inputValue(),
+        'b\na'
+      )
+      await page.getByRole('button', { name: '复制', exact: true }).click()
+      await page.getByRole('button', { name: '已复制', exact: true }).waitFor()
+      assert.equal(await page.evaluate(() => window.uiVerification.copiedText()), 'b\na')
+      await capture('text-result')
+      await page.getByRole('textbox', { name: '文本', exact: true }).fill('c\nc')
+      assert.equal(
+        await page.getByRole('textbox', { name: '处理结果', exact: true }).inputValue(),
+        'c'
+      )
+      assert.equal(await page.getByRole('button', { name: '复制', exact: true }).isEnabled(), true)
+    })
+    for (const [width, height] of [
+      [1280, 820],
+      [1024, 680],
+      [1920, 1080]
+    ]) {
+      await check(`${width}×${height} 布局无横向溢出`, async () => {
+        await app.evaluate(
+          ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(...size),
+          [width, height]
+        )
+        await page.waitForFunction(
+          (size) => innerWidth === size[0] && innerHeight === size[1],
+          [width, height]
+        )
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+          false
+        )
+        const boxes = await page.locator('.tool-workbench .tool-input').evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect()
+            return { top: box.top, bottom: box.bottom }
+          })
+        )
+        if (width === 1024) assert.ok(boxes[1].top > boxes[0].bottom, '窄窗应上下排列')
+        else assert.ok(Math.abs(boxes[1].top - boxes[0].top) < 2, '宽窗输入输出应对齐')
+        if (width === 1024) await capture('text-result-narrow')
+      })
+    }
+    await verifyThemes({ page, app, check, capture })
+    await check('重启 Electron 后恢复主题和动效设置', async () => {
+      await app.close()
+      app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+      const restarted = await app.firstWindow()
+      restarted.on('pageerror', (error) => errors.push(error.message))
+      await restarted.getByRole('button', { name: '设置', exact: true }).click()
+      await restarted.waitForFunction(
+        () =>
+          document.documentElement.dataset.theme === 'paper' &&
+          document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
+      )
+      assert.equal(
+        await restarted
+          .getByRole('button', { name: '晨光纸白', exact: true })
+          .getAttribute('aria-pressed'),
+        'true'
+      )
+      assert.equal(
+        await restarted.getByRole('switch', { name: '星空背景动效' }).getAttribute('aria-checked'),
+        'false'
+      )
+    })
+    assert.deepEqual(errors, [], '验收期间不应出现页面异常')
+    process.stdout.write(`UI 验收通过 ${passed.length} 项，页面异常 0 项\n`)
+  } finally {
+    if (app) await app.close()
+    // 只清理本脚本创建的临时目录，先验证绝对路径和固定前缀。
+    if (
+      path.dirname(path.resolve(profile)) === tempRoot &&
+      path.basename(profile).startsWith('toolbox-ui-')
+    ) {
+      await fs.rm(profile, { recursive: true, force: true })
+    }
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(String(error) + '\n')
+  process.exitCode = 1
+})

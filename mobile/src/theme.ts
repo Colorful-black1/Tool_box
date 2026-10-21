@@ -20,7 +20,7 @@ export const colors = {
   pink: '#ff9ec7',
   textHi: '#f4eedd',
   textMid: '#a9b0c8',
-  textDim: '#5d6480',
+  textDim: '#8791ad',
   /** 输入框 / 卡片描边 */
   line: 'rgba(232, 201, 138, 0.22)',
   lineSoft: 'rgba(255, 255, 255, 0.045)',

@@ -79,19 +79,19 @@ export function StatsPage({ onOpenBook }: Props): JSX.Element {
 
       <div className="stat-grid">
         <div className="glass stat-card">
-          <div className="stat-num" style={{ color: '#7fe7ff' }}>
+          <div className="stat-num" style={{ color: 'var(--cyan)' }}>
             {formatDuration(summary?.todayDurationMs ?? 0)}
           </div>
           <div className="stat-label">今日时长</div>
         </div>
         <div className="glass stat-card">
-          <div className="stat-num" style={{ color: '#a8d08a' }}>
+          <div className="stat-num" style={{ color: 'var(--success)' }}>
             {formatDuration(summary?.totalDurationMs ?? 0)}
           </div>
           <div className="stat-label">累计时长</div>
         </div>
         <div className="glass stat-card">
-          <div className="stat-num" style={{ color: '#e8c98a' }}>
+          <div className="stat-num" style={{ color: 'var(--gold)' }}>
             {formatCount(summary?.totalCharCount ?? 0)}
           </div>
           <div className="stat-label">累计字数</div>

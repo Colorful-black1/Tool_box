@@ -28,7 +28,8 @@ import {
   requireNonNegativeInt,
   requireRatio,
   requireString,
-  requireStringArray
+  requireStringArray,
+  validateConfigPatch
 } from './validation'
 
 export interface IpcDependencies {
@@ -52,10 +53,10 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     platform: process.platform
   }))
 
-  // ---------- 阅读配置 kv ----------
+  // ---------- 阅读与桌面外观配置 kv ----------
   ipcMain.handle(IPC.configGet, () => store.configGet())
   ipcMain.handle(IPC.configSet, (_event, patch: unknown) => {
-    return store.configSet(assertObject(patch, '配置'))
+    return store.configSet(validateConfigPatch(patch))
   })
 
   // ---------- AI 配置（多档案） ----------

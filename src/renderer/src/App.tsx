@@ -13,6 +13,8 @@ import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
 import { SettingsPage } from './routes/settings-page'
+import { applyAppAppearance } from './lib/app-appearance'
+import { useAppearanceStore } from './stores/appearance-store'
 import type { AppView } from './stores/app-store'
 import { useAppStore } from './stores/app-store'
 import { useConfigStore } from './stores/config-store'
@@ -56,6 +58,20 @@ export default function App(): JSX.Element {
     void useAppStore.getState().bootstrap()
     void useAppStore.getState().loadAgentPermission()
   }, [loadConfig])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = (): void =>
+      applyAppAppearance(useAppearanceStore.getState().appearance, media.matches)
+    const unsubscribe = useAppearanceStore.subscribe(apply)
+    media.addEventListener('change', apply)
+    apply()
+    void useAppearanceStore.getState().load()
+    return () => {
+      unsubscribe()
+      media.removeEventListener('change', apply)
+    }
+  }, [])
 
   // 窗口太窄时侧边栏自动收成只显示图标；变宽后恢复用户手动的那份偏好
   useEffect(() => {

@@ -13,6 +13,7 @@ import type {
 import { DEFAULT_SHORTCUT_CONFIG, SHORTCUT_ACCELERATORS } from '@shared/types'
 import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
+import { AppearanceSettings } from '../components/settings/appearance-settings'
 
 /** 快捷键的中文说明（accelerator 本身是技术写法，界面上给中文） */
 const ACCELERATOR_LABELS: Record<string, string> = {
@@ -315,6 +316,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
 
   return (
     <div className="settings-layout settings-layout-wide settings-stack view-enter">
+      <AppearanceSettings />
       <section className="glass settings-card" aria-label="AI 设置">
         <div className="sec-head">
           <h2 className="sec-title">星轨链路</h2>
