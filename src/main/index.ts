@@ -11,6 +11,7 @@ import { SafeStorageSecretBox } from './services/crypto/safe-storage-secret-box'
 import { ImportService } from './services/library/import-service'
 import { PasswordAiService } from './services/password/password-ai-service'
 import { SettingsService } from './services/settings/settings-service'
+import { OpenCodeService } from './services/opencode/opencode-service'
 import { ShortcutManager } from './shortcuts'
 import { createTray, showMainWindow } from './tray'
 
@@ -77,7 +78,8 @@ function initializeServices(): void {
 
   shortcuts = new ShortcutManager(store, () => showMainWindow(mainWindow))
 
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts })
+  const opencode = new OpenCodeService(store)
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode })
 
   app.on('quit', () => {
     store.close()

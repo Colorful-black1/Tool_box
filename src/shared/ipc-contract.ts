@@ -6,6 +6,18 @@ export const IPC = {
   settingsModelsFetch: 'settings:models:fetch',
 
   appInfo: 'app:info',
+  opencodeInspect: 'opencode:inspect',
+  opencodeExecutable: 'opencode:executable:choose',
+  opencodeDirectory: 'opencode:directory:choose',
+  opencodeConnect: 'opencode:connect',
+  opencodeDisconnect: 'opencode:disconnect',
+  opencodeSessions: 'opencode:sessions',
+  opencodeSessionOpen: 'opencode:session:open',
+  opencodeOption: 'opencode:option:set',
+  opencodeSend: 'opencode:send',
+  opencodeStop: 'opencode:stop',
+  opencodeApprove: 'opencode:approve',
+  opencodeDesktop: 'opencode:desktop:open',
   configGet: 'config:get',
   configSet: 'config:set',
 
@@ -79,6 +91,7 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  opencode: 'opencode:event:state',
   blur: 'window:event:blur',
   focus: 'window:event:focus'
 } as const

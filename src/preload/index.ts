@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-import { CHAT_EVENT, IPC } from '../shared/ipc-contract'
+import { CHAT_EVENT, IPC, WINDOW_EVENT } from '../shared/ipc-contract'
 import type {
   AgentPermission,
   AgentToolApprovalInput,
@@ -15,6 +15,7 @@ import type {
   ChatSendRequest,
   ChatStoppedEvent,
   NoteSaveInput,
+  OpenCodeEvent,
   PasswordDraft,
   PasswordInput,
   ReadingProgressInput,
@@ -33,6 +34,21 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  opencode: {
+    inspect: () => ipcRenderer.invoke(IPC.opencodeInspect),
+    chooseExecutable: () => ipcRenderer.invoke(IPC.opencodeExecutable),
+    chooseDirectory: () => ipcRenderer.invoke(IPC.opencodeDirectory),
+    connect: (directory) => ipcRenderer.invoke(IPC.opencodeConnect, directory),
+    disconnect: () => ipcRenderer.invoke(IPC.opencodeDisconnect),
+    listSessions: () => ipcRenderer.invoke(IPC.opencodeSessions),
+    openSession: (id) => ipcRenderer.invoke(IPC.opencodeSessionOpen, id),
+    setOption: (input) => ipcRenderer.invoke(IPC.opencodeOption, input),
+    send: (input) => ipcRenderer.invoke(IPC.opencodeSend, input),
+    stop: (id) => ipcRenderer.invoke(IPC.opencodeStop, id),
+    approve: (input) => ipcRenderer.invoke(IPC.opencodeApprove, input),
+    openDesktop: () => ipcRenderer.invoke(IPC.opencodeDesktop),
+    onEvent: (listener: (event: OpenCodeEvent) => void) => subscribe(WINDOW_EVENT.opencode, listener)
+  },
   app: {
     info: () => ipcRenderer.invoke(IPC.appInfo)
   },

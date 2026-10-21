@@ -1,5 +1,57 @@
 export type ChatRole = 'user' | 'assistant'
 
+// ============ 外部编程 Agent：OpenCode ============
+
+/** 仅包含程序与目录信息，不包含 OpenCode 登录凭据。 */
+export interface OpenCodeInfo {
+  executablePath: string | null
+  directory: string
+  version: string | null
+  connected: boolean
+  canLoadSession: boolean
+}
+
+/** ACP 握手/会话返回的可选配置，不假设模型与模式名称固定。 */
+export interface OpenCodeOption {
+  id: string
+  name: string
+  category: string
+  currentValue: string
+  options: Array<{ value: string; label: string }>
+}
+
+/** 待用户单次允许或拒绝的外部工具操作。 */
+export interface OpenCodeApproval {
+  id: string
+  title: string
+  details: string
+  canAllow: boolean
+}
+
+/** 工作台的有界文本/工具视图；完整会话由 OpenCode 保存。 */
+export interface OpenCodeSession {
+  id: string
+  title: string
+  directory: string
+  status: 'ready' | 'running' | 'stopping' | 'disconnected' | 'error'
+  messages: Array<{ id: string; role: ChatRole; content: string }>
+  tools: Array<{ id: string; title: string; status: string }>
+  options: OpenCodeOption[]
+  approvals: OpenCodeApproval[]
+  error: string
+}
+
+/** OpenCode 原生会话列表摘要，恢复时仍校验工作目录。 */
+export interface OpenCodeSessionSummary {
+  id: string
+  title: string
+}
+
+/** 连接状态与会话更新分别推送，避免退出连接后残留运行中状态。 */
+export type OpenCodeEvent =
+  | { kind: 'connection'; connected: boolean }
+  | { kind: 'session'; session: OpenCodeSession }
+
 /** 主进程内部使用：含明文 Key，绝不跨 IPC 传输 */
 export interface AiConfig {
   provider: AiProviderId

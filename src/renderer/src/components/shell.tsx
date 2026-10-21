@@ -2,7 +2,7 @@
 
 import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
-import { ChevronIcon } from './icons'
+import { ChevronIcon, CodeIcon } from './icons'
 
 interface RailItem {
   view: AppView
@@ -26,6 +26,8 @@ function RailIcon({ name }: { name: string }): JSX.Element {
   } as const
 
   switch (name) {
+    case 'code':
+      return <CodeIcon />
     case 'book':
       return (
         <svg {...common}>

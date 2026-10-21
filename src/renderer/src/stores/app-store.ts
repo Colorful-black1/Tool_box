@@ -31,6 +31,7 @@ import { DEFAULT_AGENT_PERMISSION, findAiProvider } from '../../../shared/types'
 import { resolveChatModels } from '../../../shared/model-list'
 
 export type AppView =
+  | 'opencode'
   | 'chat'
   | 'shelf'
   | 'reading'

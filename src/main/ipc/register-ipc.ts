@@ -20,6 +20,8 @@ import { parsePasswordText } from '../services/library/password-text-parser'
 import { PasswordAiService } from '../services/password/password-ai-service'
 import type { SettingsService } from '../services/settings/settings-service'
 import type { ShortcutManager } from '../shortcuts'
+import type { OpenCodeService } from '../services/opencode/opencode-service'
+import { registerOpenCodeIpc } from './opencode-ipc'
 import {
   assertObject,
   optionalString,
@@ -39,9 +41,11 @@ export interface IpcDependencies {
   importService: ImportService
   passwordAi: PasswordAiService
   shortcuts: ShortcutManager
+  opencode: OpenCodeService
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerOpenCodeIpc(dependencies.opencode)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
   const assetsDir = app.getAppPath()
   const userDataDir = app.getPath('userData')

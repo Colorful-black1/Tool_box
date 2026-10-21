@@ -11,6 +11,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入；重复检测、拼音分组、字母索引；**随机密码生成器**（密码学安全随机数 + 拒绝采样，可调长度，带强度评估） |
 | 记事本 | Markdown 编辑与预览、导入导出 `.md`；**支持按标题与正文搜索** |
 | 开发者工具 | 树形目录下的 **JSON 工具箱、文本 / JSON 差异比较、数据脱敏、Java 日志整理、Prompt 模板库**，以及正则、Base64 / URL、时间戳、哈希、文本清洗、UUID；本机处理，不自动联网。结果可脱敏、填入 Prompt、保存笔记或放入对话草稿；输入输出框自适应高度并支持换行 |
+| 编程 Agent | 独立的 **OpenCode 工作台**：复用 Desktop 内置 CLI，选择项目、模型和模式，支持文本回复、工具状态、单次审批、停止和原生会话恢复；Prompt 与工具结果可直接填入编程草稿 |
 | 全局搜索 | **⌘K / Ctrl+K** 唤起命令面板：搜书架、记事本（正文也搜）、密码箱、分组、会话，并直接执行命令（切模块、开工具、新建对话）；数据全在内存，输入即出结果 |
 
 ### 桌面端常驻与快捷键
@@ -52,6 +53,40 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 放入草稿不调用 AI，只有在对话页点击发送后才联网；替换已有草稿前会确认。
 模板定义存在未保存修改时，切换模板/工具和通过命令面板跳转会提示。
 本轮入口在桌面端，手机端未新增这五项界面。
+
+### OpenCode 编程工作台
+
+首版已在 Windows 的 **OpenCode Desktop 2.1.1** 上验证，无需另装 CLI 或新增 npm 依赖。
+自动检测 `%LOCALAPPDATA%/Programs/@opencodedesktop/resources/opencode-cli.exe`，
+自定义安装位置可通过「选择程序」指定原生 `opencode-cli.exe` / `opencode.exe`。
+其他平台仅提供标准路径尝试和手动选择入口，尚未实机验证。
+
+1. 打开左侧「编程 Agent」，选择项目目录并点击「连接 OpenCode」。
+   按钮需检测到运行程序且已选择项目才会启用；灰色时旁边会说明缺少哪一步。
+   如程序路径为空，可点击「重新检测」或「选择程序」；无需先打开 OpenCode Desktop 窗口。
+2. 连接只创建/准备会话，新会话优先切到 **Plan**；支持的模型、思考强度和模式由 OpenCode 返回。
+   连接成功后配置区收起为项目状态栏，点击「连接设置」可展开程序路径和目录；
+   工作台把主要空间留给消息，输入框下方集中显示草稿计数与发送 / 停止操作。
+3. 直接输入任务，或在 Prompt / JSON / 日志 / 脱敏 / Diff 结果下点击「用于编程 Agent」。
+   内容只进入草稿，替换已有草稿前确认；点击「发送给 OpenCode」后才开始请求模型。
+4. 需要改文件时可手动选择 **Build**。权限沿用 OpenCode 配置，可能直接执行已获允许的操作；
+   出现审批询问时只提供单次允许或拒绝。所选目录不等于操作系统沙箱。
+5. 可停止任务、读取当前项目的 OpenCode 历史并恢复；「打开 OpenCode Desktop」保留外部入口。
+
+Tool_box 只保存运行程序和项目路径偏好，不读取或复制 OpenCode 登录凭据，
+不将编程会话写入自身聊天表；完整记录由 OpenCode 管理。
+模板变量不随模板定义保存，但发送后的内容属于 OpenCode 原生会话，会按其机制保存。
+草稿仅在本次应用进程中保留。首次连接需要 OpenCode 支持 ACP v1、配置选项和 Plan 模式。
+
+首版一次运行一个编程任务，每次任务最多 5 万字符；界面单会话最多显示 20 万字符、200 条消息，
+最多保留最近 100 项工具状态、同时打开 20 个会话。达到上限会请求停止并提示新建会话。
+断连或请求超时不会自动重发任务；需检查 OpenCode 中的实际结果再操作。
+本轮不包含 DeepSeek Harness、完整终端/代码编辑器，也未扩展手机端入口。
+
+验证：`node verify/desktop-ui/run.cjs --opencode-only --screenshots` 使用合成桥接，
+不启动真实 Agent。`node verify/opencode-smoke.cjs` 复用已安装的桌面内置 CLI，验证握手、
+Plan、会话列表和恢复；加 `--prompt` 才发送不读取/修改文件的合成短消息验证真实回复。
+实机检查会在 OpenCode 中创建少量验证会话，不删除或覆盖既有会话。规格见 `docs/SPEC-opencode-workbench.md`。
 
 ### 桌面交互
 
@@ -111,11 +146,13 @@ npm run build
 node verify/desktop-ui/run.cjs
 node verify/desktop-ui/run.cjs --screenshots  # 可选：截图写入 .playwright-mcp/desktop-ui/
 node verify/desktop-ui/run.cjs --tools-only --screenshots  # 只验收 Java / AI 首批工具
+node verify/desktop-ui/run.cjs --opencode-only --screenshots  # 只验收 OpenCode 工作台
 ```
 
 覆盖搜索定位与草稿保护、顶层 Esc 与键盘焦点、流式滚动、窗口缩放、文本输出与复制，
 以及三套主题、公共文字令牌对比度、系统主题跟随、动效、保存失败、缓存损坏、重启恢复、
-阅读器独立配色、Java / AI 工具的精度、流转、失败重试、模板历史与重启恢复，以及
+阅读器独立配色、Java / AI 工具的精度、流转、失败重试、模板历史与重启恢复，
+OpenCode 工作台的连接、草稿交接、审批、停止、原生历史和主题，以及
 1280×820 / 1024×680 / 1920×1080 布局；不能替代真实数据、AI 服务和手机真机验收。
 
 > ⚠️ **不要跑 `npm run rebuild`。** 它在这台机器上必然失败，且对当前依赖毫无作用 ——

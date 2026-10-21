@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { useAppStore } from '../../stores/app-store'
 import { useToolTransferStore } from '../../stores/tool-transfer-store'
+import { useOpenCodeStore } from '../../stores/opencode-store'
 
 /** 所有外发/保存均由按钮触发；放入对话只填草稿，不调用发送接口。 */
 export function ToolOutputActions({
@@ -104,6 +105,25 @@ export function ToolOutputActions({
         </button>
         <button type="button" className="btn-ghost" disabled={busy} onClick={() => void fillChat()}>
           放入对话草稿
+        </button>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy}
+          onClick={() => {
+            if (!canLeave()) return
+            const draft = useOpenCodeStore.getState().draft
+            if (
+              draft.trim() &&
+              draft !== text &&
+              !window.confirm('编程 Agent 中已有未发送草稿，是否替换？')
+            )
+              return
+            useOpenCodeStore.getState().setDraft(text)
+            useAppStore.getState().setView('opencode')
+          }}
+        >
+          用于编程 Agent
         </button>
         <span className="field-hint">本机处理；由你点击发送 AI</span>
       </div>

@@ -12,6 +12,8 @@ import { SideRail, TopBar } from './components/shell'
 import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
+import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
+import { useOpenCodeStore } from './stores/opencode-store'
 import { SettingsPage } from './routes/settings-page'
 import { applyAppAppearance } from './lib/app-appearance'
 import { useAppearanceStore } from './stores/appearance-store'
@@ -21,6 +23,7 @@ import { useConfigStore } from './stores/config-store'
 import { useRailStore } from './stores/rail-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
+  opencode: { title: '编程 Agent', subtitle: 'OPENCODE · 从提示词到项目实践' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
   reading: { title: '沉浸阅读', subtitle: 'READING · 与群星同行' },
@@ -33,6 +36,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
 
 const RAIL_ITEMS: Array<{ view: AppView; label: string; icon: string }> = [
   { view: 'chat', label: '对话', icon: 'chat' },
+  { view: 'opencode', label: '编程 Agent', icon: 'code' },
   { view: 'shelf', label: '书架', icon: 'book' },
   { view: 'stats', label: '统计', icon: 'stats' },
   { view: 'passwords', label: '密码箱', icon: 'lock' },
@@ -79,6 +83,12 @@ export default function App(): JSX.Element {
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    const bridge = window.toolbox?.opencode
+    if (!bridge) return
+    return bridge.onEvent((event) => useOpenCodeStore.getState().receive(event))
   }, [])
 
   useEffect(() => {
@@ -156,6 +166,7 @@ export default function App(): JSX.Element {
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
                 {view === 'tools' ? <ToolsPage /> : null}
+                {view === 'opencode' ? <OpenCodeWorkbench /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}
               </>
             )}

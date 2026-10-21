@@ -1,5 +1,6 @@
 /** 合成桥接：只供隔离 UI 验收，不读文件、不调用 AI、不写系统剪贴板。 */
 module.exports = function createFixture() {
+  const opencode = require('./opencode-fixture.cjs')()
   const conversations = Array.from({ length: 30 }, (_, index) => ({
     id: `c${index}`,
     title: `验收会话 ${index}`,
@@ -60,6 +61,7 @@ module.exports = function createFixture() {
 
   return {
     controls: {
+      ...opencode.controls,
       delta: (text) => emit('delta', { conversationId: streamingId, delta: text }),
       removeNote: (id) => {
         notes = notes.filter((note) => note.id !== id)
@@ -76,6 +78,7 @@ module.exports = function createFixture() {
       }
     },
     toolbox: {
+      opencode: opencode.bridge,
       app: { info: async () => ({ name: '隔离验收', version: '0.2.0', platform: 'win32' }) },
       config: { get: async () => null, set: async () => null },
       settings: { get: async () => ({ activeId: null, profiles: [] }) },

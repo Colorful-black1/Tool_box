@@ -7,6 +7,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
+const verifyOpenCode = require('./opencode.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
 async function main() {
@@ -44,6 +45,13 @@ async function main() {
         const element = document.querySelector('.message-list')
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
+
+    if (process.argv.includes('--opencode-only')) {
+      await verifyOpenCode({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`OpenCode 验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
 
     if (process.argv.includes('--tools-only')) {
       await verifyDevTools({ page, app, check, capture })
@@ -293,6 +301,7 @@ async function main() {
       })
     }
     await verifyDevTools({ page, app, check, capture })
+    await verifyOpenCode({ page, app, check, capture })
     await verifyThemes({ page, app, check, capture })
     await check('重启 Electron 后恢复主题和动效设置', async () => {
       await app.close()

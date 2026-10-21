@@ -25,6 +25,10 @@ import type {
   ImportResult,
   NoteSaveInput,
   NoteView,
+  OpenCodeEvent,
+  OpenCodeInfo,
+  OpenCodeSession,
+  OpenCodeSessionSummary,
   PasswordDraft,
   PasswordEntryView,
   PasswordInput,
@@ -35,6 +39,21 @@ import type {
 } from './types'
 
 export interface ToolboxBridge {
+  opencode: {
+    inspect(): Promise<OpenCodeInfo>
+    chooseExecutable(): Promise<OpenCodeInfo | null>
+    chooseDirectory(): Promise<string | null>
+    connect(directory: string): Promise<OpenCodeInfo>
+    disconnect(): Promise<void>
+    listSessions(): Promise<OpenCodeSessionSummary[]>
+    openSession(id?: string): Promise<OpenCodeSession>
+    setOption(input: { sessionId: string; optionId: string; value: string }): Promise<OpenCodeSession>
+    send(input: { sessionId: string; content: string }): Promise<void>
+    stop(sessionId: string): Promise<void>
+    approve(input: { sessionId: string; approvalId: string; approved: boolean }): Promise<void>
+    openDesktop(): Promise<void>
+    onEvent(listener: (event: OpenCodeEvent) => void): () => void
+  }
   app: {
     info(): Promise<AppInfo>
   }

@@ -102,5 +102,51 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
   }
   if (Object.hasOwn(patch, 'promptTemplates'))
     validated.promptTemplates = validatePromptLibrary(patch.promptTemplates)
+  if (Object.hasOwn(patch, 'opencode')) {
+    const preferences = assertObject(patch.opencode, 'OpenCode 配置')
+    validated.opencode = {
+      executablePath:
+        preferences.executablePath === null
+          ? null
+          : requireString(preferences.executablePath, 'OpenCode 程序路径', { maxLength: 4096 }),
+      directory: requireString(preferences.directory, '项目目录', { maxLength: 4096, allowEmpty: true })
+    }
+  }
   return validated
+}
+
+/** 所有工作台 IPC 入参均先收敛，再交给不依赖 Electron 的业务服务。 */
+export function validateOpenCodeInput(value: unknown): { sessionId: string; content: string } {
+  const input = assertObject(value, 'OpenCode 请求')
+  return {
+    sessionId: requireString(input.sessionId, '编程会话', { maxLength: 200 }),
+    content: requireString(input.content, '编程任务', { maxLength: 50_000 })
+  }
+}
+
+export function validateOpenCodeOption(value: unknown): {
+  sessionId: string
+  optionId: string
+  value: string
+} {
+  const input = assertObject(value, 'OpenCode 配置项')
+  return {
+    sessionId: requireString(input.sessionId, '编程会话', { maxLength: 200 }),
+    optionId: requireString(input.optionId, '配置项', { maxLength: 100 }),
+    value: requireString(input.value, '配置值', { maxLength: 512 })
+  }
+}
+
+export function validateOpenCodeApproval(value: unknown): {
+  sessionId: string
+  approvalId: string
+  approved: boolean
+} {
+  const input = assertObject(value, 'OpenCode 审批')
+  if (typeof input.approved !== 'boolean') throw new Error('审批结果无效')
+  return {
+    sessionId: requireString(input.sessionId, '编程会话', { maxLength: 200 }),
+    approvalId: requireString(input.approvalId, '审批标识', { maxLength: 100 }),
+    approved: input.approved
+  }
 }
