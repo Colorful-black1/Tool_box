@@ -8,6 +8,7 @@ const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
 const verifyOpenCode = require('./opencode.cjs')
+const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
 async function main() {
@@ -53,7 +54,22 @@ async function main() {
       return
     }
 
+    if (process.argv.includes('--tool-navigation-only')) {
+      await verifyToolNavigation({ page, app, check, capture })
+      await check('重启后恢复工具顺序，搜索词不保存', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyToolNavigationAfterRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`工具导航验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+
     if (process.argv.includes('--tools-only')) {
+      await verifyToolNavigation({ page, app, check, capture })
       await verifyDevTools({ page, app, check, capture })
       await check('重启后恢复模板及历史，变量值不恢复', async () => {
         await app.close()
@@ -61,6 +77,7 @@ async function main() {
         const restarted = await app.firstWindow()
         restarted.on('pageerror', (error) => errors.push(error.message))
         await verifyTemplatesAfterRestart(restarted)
+        await verifyToolNavigationAfterRestart(restarted)
       })
       assert.deepEqual(errors, [])
       process.stdout.write(`开发工具验收通过 ${passed.length} 项，页面异常 0 项\n`)
@@ -300,6 +317,7 @@ async function main() {
         if (width === 1024) await capture('text-result-narrow')
       })
     }
+    await verifyToolNavigation({ page, app, check, capture })
     await verifyDevTools({ page, app, check, capture })
     await verifyOpenCode({ page, app, check, capture })
     await verifyThemes({ page, app, check, capture })
@@ -325,6 +343,7 @@ async function main() {
         'false'
       )
       await verifyTemplatesAfterRestart(restarted)
+      await verifyToolNavigationAfterRestart(restarted)
     })
     assert.deepEqual(errors, [], '验收期间不应出现页面异常')
     process.stdout.write(`UI 验收通过 ${passed.length} 项，页面异常 0 项\n`)

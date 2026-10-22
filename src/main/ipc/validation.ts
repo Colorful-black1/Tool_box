@@ -102,6 +102,15 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
   }
   if (Object.hasOwn(patch, 'promptTemplates'))
     validated.promptTemplates = validatePromptLibrary(patch.promptTemplates)
+  if (Object.hasOwn(patch, 'toolOrder')) {
+    if (!Array.isArray(patch.toolOrder) || patch.toolOrder.length > 100)
+      throw new Error('工具顺序最多 100 项')
+    const order = patch.toolOrder.map((id) => requireString(id, '工具标识', { maxLength: 64 }))
+    if (order.some((id) => !/^[a-z][a-z0-9-]{0,63}$/.test(id)))
+      throw new Error('工具标识无效')
+    if (new Set(order).size !== order.length) throw new Error('工具顺序不能包含重复项')
+    validated.toolOrder = order
+  }
   if (Object.hasOwn(patch, 'opencode')) {
     const preferences = assertObject(patch.opencode, 'OpenCode 配置')
     validated.opencode = {

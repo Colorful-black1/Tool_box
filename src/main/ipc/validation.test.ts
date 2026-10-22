@@ -5,6 +5,24 @@ import { validateConfigPatch } from './validation'
 import { defaultPromptTemplates } from '../../shared/prompt-tools'
 
 describe('桌面外观配置', () => {
+  it('工具顺序逐项校验且保持其他配置', () => {
+    expect(validateConfigPatch({ toolOrder: ['uuid', 'json'], fontSize: 23 })).toEqual({
+      toolOrder: ['uuid', 'json'],
+      fontSize: 23
+    })
+    for (const toolOrder of [
+      null,
+      'json',
+      ['json', 'json'],
+      ['../json'],
+      [1],
+      ['x'.repeat(65)],
+      Array(101).fill('json')
+    ]) {
+      expect(() => validateConfigPatch({ toolOrder })).toThrow()
+    }
+    expect(validateConfigPatch({ toolOrder: [] })).toEqual({ toolOrder: [] })
+  })
   it('同时校验模板和外观，并保留其他配置', () => {
     const promptTemplates = defaultPromptTemplates()
     expect(

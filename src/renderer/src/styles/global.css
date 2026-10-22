@@ -4102,6 +4102,67 @@ textarea,
   color: var(--text-dim);
 }
 
+.tools-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  min-width: 0;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 10px;
+  background: rgba(var(--neutral-rgb), 0.045);
+  color: var(--text-dim);
+}
+
+.tools-search:focus-within {
+  border-color: var(--gold);
+}
+
+.tools-search > svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.tools-search .field-input {
+  min-width: 0;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.tools-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.tools-search .icon-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+}
+
+.tools-order-error,
+.tools-search-empty {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.tools-order-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tools-order-error .btn-ghost {
+  align-self: flex-start;
+}
+
 .tools-tree {
   display: flex;
   flex-direction: column;
@@ -4124,6 +4185,23 @@ textarea,
   cursor: pointer;
 }
 
+.tools-tree-branch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tools-tree-branch:focus-visible,
+.tools-tree-leaf:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.tools-tree-branch:focus-visible {
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
 .tools-tree-caret {
   color: var(--gold);
   font-size: 10px;
@@ -4143,7 +4221,59 @@ textarea,
   border-left: 1px solid rgba(var(--accent-rgb), 0.16);
 }
 
+.tools-tree-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tools-tree-item.dragging {
+  opacity: 0.5;
+}
+
+.tools-tree-item[data-drop]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--gold);
+  pointer-events: none;
+}
+
+.tools-tree-item[data-drop='before']::after {
+  top: -2px;
+}
+
+.tools-tree-item[data-drop='after']::after {
+  bottom: -2px;
+}
+
+.tools-drag-handle.icon-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: grab;
+}
+
+.tools-drag-handle.icon-btn:active:not([aria-disabled='true']) {
+  cursor: grabbing;
+}
+
+.tools-drag-handle.icon-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .tools-tree-leaf {
+  flex: 1;
+  min-width: 0;
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 8px;

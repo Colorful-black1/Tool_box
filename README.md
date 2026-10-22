@@ -27,6 +27,14 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 ### 开发者工具的输入边界
 
+工具目录顶部支持按名称、功能描述和英文标识搜索，兼容大小写、全半角与多词匹配。
+输入只过滤目录，不自动切换右侧工具；Enter 打开首项，Esc 或清空按钮恢复完整目录。
+中文输入法确认候选词时不会触发打开工具，切换工具仍保留 Prompt 未保存修改的确认。
+
+清空搜索后，拖动每项右侧的六点手柄即可调整组内顺序，也可聚焦手柄使用 Alt+↑/↓。
+排序自动保存，重启后恢复；不会切换当前工具或清空其输入，保存失败会回退并提示。
+新增工具按注册顺序追加，已移除工具自动忽略。搜索中暂停排序，搜索词不保存。
+
 - 正则在独立 Worker 中执行，连续输入防抖 150ms；单次超过 1 秒会终止线程并提示，修改输入或离开页面会取消旧任务。无 `g` / `y` 时只返回首次匹配，最多展示 200 条。
 - Base64 文本解码兼容空白、URL 安全变体与合法省略补位；拒绝非法长度、补位、非零填充位和非法 UTF-8。它是文本工具，不用于解码任意二进制文件。
 - 日期时间按本地时区解释，拒绝越界日期、时分秒和超出 Date 范围的时间戳；夏令时跳过的本地时刻也会被拒绝。
@@ -153,13 +161,15 @@ npm run format        # Prettier
 npm run build
 node verify/desktop-ui/run.cjs
 node verify/desktop-ui/run.cjs --screenshots  # 可选：截图写入 .playwright-mcp/desktop-ui/
-node verify/desktop-ui/run.cjs --tools-only --screenshots  # 只验收 Java / AI 首批工具
+node verify/desktop-ui/run.cjs --tools-only --screenshots  # 工具导航与 Java / AI 首批工具
+node verify/desktop-ui/run.cjs --tool-navigation-only --screenshots  # 工具搜索、排序及重启恢复
 node verify/desktop-ui/run.cjs --opencode-only --screenshots  # 只验收 OpenCode 工作台
 ```
 
 覆盖搜索定位与草稿保护、顶层 Esc 与键盘焦点、流式滚动、窗口缩放、文本输出与复制，
 以及三套主题、公共文字令牌对比度、系统主题跟随、动效、保存失败、缓存损坏、重启恢复、
-阅读器独立配色、Java / AI 工具的精度、流转、失败重试、模板历史与重启恢复，
+阅读器独立配色、工具目录搜索 / 拖放 / 键盘排序、顺序保存失败回退与重启恢复，
+Java / AI 工具的精度、流转、失败重试、模板历史与重启恢复，
 OpenCode 工作台的连接、草稿交接、审批、停止、原生历史和主题，以及
 1280×820 / 1024×680 / 1920×1080 布局；不能替代真实数据、AI 服务和手机真机验收。
 

@@ -1,5 +1,27 @@
 import type { JSX } from 'react'
 
+export function SearchIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m16 16 4.5 4.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function DragHandleIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <circle cx="9" cy="5" r="0.8" />
+      <circle cx="15" cy="5" r="0.8" />
+      <circle cx="9" cy="12" r="0.8" />
+      <circle cx="15" cy="12" r="0.8" />
+      <circle cx="9" cy="19" r="0.8" />
+      <circle cx="15" cy="19" r="0.8" />
+    </svg>
+  )
+}
+
 export function CodeIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
