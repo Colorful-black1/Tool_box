@@ -1,19 +1,31 @@
 ﻿import type { JSX } from 'react'
 
+import { useEffect, useState } from 'react'
 import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
-import { ChevronIcon, CodeIcon } from './icons'
+import { CaretIcon, ChevronIcon, CodeIcon } from './icons'
 
+/** 叶子保留原来的页面标识和导航动作。 */
 interface RailItem {
   view: AppView
   label: string
   icon: string
 }
 
+/** 主分类只负责展开 / 收起，不对应业务页面。 */
+interface RailGroup {
+  id: string
+  label: string
+  children: RailItem[]
+}
+
+/** 独立入口与两层分类共用的导航配置。 */
+export type RailNode = RailItem | RailGroup
+
 interface SideRailProps {
   view: AppView
   onChange: (view: AppView) => void
-  items: RailItem[]
+  items: RailNode[]
 }
 
 function RailIcon({ name }: { name: string }): JSX.Element {
@@ -99,6 +111,33 @@ function RailIcon({ name }: { name: string }): JSX.Element {
 export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element {
   const collapsed = useRailStore((state) => state.collapsed || state.narrow)
   const toggle = useRailStore((state) => state.toggle)
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({})
+  const activeView = view === 'reading' ? 'shelf' : view
+
+  useEffect(() => {
+    // 命令面板等入口可直接切页，展开归属分类，避免当前页面藏在折叠节点里。
+    const group = items.find(
+      (item) => 'children' in item && item.children.some((child) => child.view === activeView)
+    )
+    if (!group || !('children' in group)) return
+    setClosedGroups((current) =>
+      current[group.id] ? { ...current, [group.id]: false } : current
+    )
+  }, [items, activeView])
+
+  const renderItem = (item: RailItem): JSX.Element => (
+    <button
+      type="button"
+      className={`nav-item${activeView === item.view ? ' active' : ''}`}
+      aria-current={activeView === item.view ? 'page' : undefined}
+      aria-label={item.label}
+      title={item.label}
+      onClick={() => onChange(item.view)}
+    >
+      <RailIcon name={item.icon} />
+      <span className="nav-label">{item.label}</span>
+    </button>
+  )
 
   return (
     <nav className={`side-rail${collapsed ? ' collapsed' : ''}`} aria-label="主导航">
@@ -114,24 +153,42 @@ export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element 
       >
         <ChevronIcon direction={collapsed ? 'right' : 'left'} />
       </button>
-      {items.map((item) => (
-        <button
-          key={item.view}
-          type="button"
-          className={`nav-item${
-            view === item.view || (view === 'reading' && item.view === 'shelf')
-              ? ' active'
-              : ''
-          }`}
-          aria-current={view === item.view ? 'page' : undefined}
-          aria-label={item.label}
-          title={item.label}
-          onClick={() => onChange(item.view)}
-        >
-          <RailIcon name={item.icon} />
-          <span className="nav-label">{item.label}</span>
-        </button>
-      ))}
+      <ul className="nav-tree">
+        {items.map((item) => {
+          if (!('children' in item)) return <li key={item.view}>{renderItem(item)}</li>
+          const expanded = !closedGroups[item.id]
+          const current = item.children.some((child) => child.view === activeView)
+          return (
+            <li className="nav-group" key={item.id}>
+              <button
+                type="button"
+                className={`btn-ghost nav-group-toggle${current ? ' contains-current' : ''}`}
+                aria-expanded={expanded}
+                aria-controls={`rail-group-${item.id}`}
+                hidden={collapsed}
+                onClick={() =>
+                  setClosedGroups((previous) => ({ ...previous, [item.id]: expanded }))
+                }
+              >
+                <span className="nav-group-caret">
+                  <CaretIcon />
+                </span>
+                <span>{item.label}</span>
+              </button>
+              <ul
+                className="nav-group-children"
+                id={`rail-group-${item.id}`}
+                aria-label={item.label}
+                hidden={!collapsed && !expanded}
+              >
+                {item.children.map((child) => (
+                  <li key={child.view}>{renderItem(child)}</li>
+                ))}
+              </ul>
+            </li>
+          )
+        })}
+      </ul>
       <div className="rail-spacer" />
       <div className="rail-badge" aria-hidden="true">
         T

@@ -8,6 +8,7 @@ const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
 const verifyOpenCode = require('./opencode.cjs')
+const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
@@ -47,6 +48,13 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--sidebar-only')) {
+      await verifySidebarNavigation({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`侧栏导航验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+
     if (process.argv.includes('--opencode-only')) {
       await verifyOpenCode({ page, app, check, capture })
       assert.deepEqual(errors, [])
@@ -84,6 +92,7 @@ async function main() {
       return
     }
 
+    await verifySidebarNavigation({ page, app, check, capture })
     await check('搜索笔记直接打开目标', async () => {
       await page.getByRole('button', { name: '工具', exact: true }).waitFor()
       await search('验收笔记甲')

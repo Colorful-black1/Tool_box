@@ -9,6 +9,7 @@ import { PasswordBoxPage } from './components/password/password-box-page'
 import { Reader } from './components/reader/reader'
 import { CommandPalette } from './components/search/command-palette'
 import { SideRail, TopBar } from './components/shell'
+import type { RailNode } from './components/shell'
 import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
@@ -34,15 +35,37 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
 }
 
-const RAIL_ITEMS: Array<{ view: AppView; label: string; icon: string }> = [
+const RAIL_ITEMS: RailNode[] = [
   { view: 'chat', label: '对话', icon: 'chat' },
-  { view: 'opencode', label: '编程 Agent', icon: 'code' },
-  { view: 'shelf', label: '书架', icon: 'book' },
-  { view: 'stats', label: '统计', icon: 'stats' },
-  { view: 'passwords', label: '密码箱', icon: 'lock' },
-  { view: 'notes', label: '记事本', icon: 'note' },
-  { view: 'tools', label: '工具', icon: 'tool' },
-  { view: 'settings', label: '设置', icon: 'settings' }
+  {
+    id: 'development',
+    label: '开发工作台',
+    children: [
+      { view: 'opencode', label: '编程 Agent', icon: 'code' },
+      { view: 'tools', label: '工具', icon: 'tool' }
+    ]
+  },
+  {
+    id: 'reading',
+    label: '阅读空间',
+    children: [
+      { view: 'shelf', label: '书架', icon: 'book' },
+      { view: 'stats', label: '统计', icon: 'stats' }
+    ]
+  },
+  {
+    id: 'personal',
+    label: '个人管理',
+    children: [
+      { view: 'passwords', label: '密码箱', icon: 'lock' },
+      { view: 'notes', label: '记事本', icon: 'note' }
+    ]
+  },
+  {
+    id: 'system',
+    label: '系统',
+    children: [{ view: 'settings', label: '设置', icon: 'settings' }]
+  }
 ]
 
 export default function App(): JSX.Element {

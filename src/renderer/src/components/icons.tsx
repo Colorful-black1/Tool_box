@@ -116,6 +116,15 @@ export function RefreshIcon(): JSX.Element {
   )
 }
 
+/** 单箭头：树形导航分类的展开指示。 */
+export function CaretIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="m9 5 7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /** 双箭头：侧边栏折叠 / 展开按钮 */
 export function ChevronIcon({ direction = 'right' }: { direction?: 'left' | 'right' }): JSX.Element {
   return (
