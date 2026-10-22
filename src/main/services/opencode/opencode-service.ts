@@ -11,6 +11,7 @@ import type {
 import type { ToolboxStore } from '../chat-store/chat-store'
 import { acpObject } from './acp-connection'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
+import { readOpenCodeVisibleModels } from './opencode-models'
 import {
   detectOpenCodeExecutable,
   inspectOpenCodeExecutable,
@@ -32,6 +33,8 @@ export class OpenCodeService {
   private generation = 0
   private connecting = false
   private readonly sessions = new Map<string, OpenCodeSession>()
+  private readonly sessionTitles = new Map<string, string>()
+  private titleRefreshTimer: NodeJS.Timeout | null = null
   private readonly listeners = new Set<(event: OpenCodeEvent) => void>()
   private readonly updates = new Map<string, NodeJS.Timeout>()
   private readonly stopTimers = new Map<string, NodeJS.Timeout>()
@@ -44,12 +47,14 @@ export class OpenCodeService {
     version: null,
     directory: '',
     connected: false,
-    canLoadSession: false
+    canLoadSession: false,
+    visibleModelIds: []
   }
 
   constructor(
     private readonly store: Pick<ToolboxStore, 'configGet' | 'configSet'>,
-    private readonly launch: OpenCodeLauncher = launchOpenCode
+    private readonly launch: OpenCodeLauncher = launchOpenCode,
+    private readonly readVisibleModels = readOpenCodeVisibleModels
   ) {}
 
   subscribe(listener: (event: OpenCodeEvent) => void): () => void {
@@ -64,6 +69,14 @@ export class OpenCodeService {
         acpText(preferences?.executablePath, 4096)
       )
       this.info.directory = acpText(preferences?.directory, 4096)
+    } else if (this.info.executablePath) {
+      const peer = this.peer
+      const visibleModelIds = await this.readVisibleModels(
+        this.info.executablePath,
+        this.info.directory
+      )
+      if (peer !== this.peer) throw new OpenCodeError('连接已结束，请重新连接后同步模型')
+      this.info.visibleModelIds = visibleModelIds
     }
     return { ...this.info }
   }
@@ -117,12 +130,16 @@ export class OpenCodeService {
         throw new OpenCodeError('连接已结束')
       if (handshake?.protocolVersion !== 1 || acpObject(handshake.agentInfo)?.name !== 'OpenCode')
         throw new OpenCodeError('当前程序不支持所需的 OpenCode ACP 协议')
+      const visibleModelIds = await this.readVisibleModels(executable.path, cwd)
+      if (generation !== this.generation || this.peer !== peer)
+        throw new OpenCodeError('连接已结束')
       this.info = {
         executablePath: executable.path,
         directory: cwd,
         version: executable.version,
         connected: true,
-        canLoadSession: acpObject(handshake.agentCapabilities)?.loadSession === true
+        canLoadSession: acpObject(handshake.agentCapabilities)?.loadSession === true,
+        visibleModelIds
       }
       this.savePreferences()
       console.info('[OpenCode] ACP 已连接', { version: executable.version })
@@ -149,21 +166,37 @@ export class OpenCodeService {
   }
 
   async listSessions(): Promise<OpenCodeSessionSummary[]> {
-    const result = acpObject(
-      await this.requirePeer().request('session/list', { cwd: this.info.directory })
+    const peer = this.requirePeer()
+    const directory = this.info.directory
+    const previousTitles = new Map<string, string>(
+      [...this.sessions].map(([id, session]) => [id, session.title])
     )
+    const result = acpObject(await peer.request('session/list', { cwd: directory }, 5000))
+    if (peer !== this.peer) throw new OpenCodeError('连接已结束，请重新读取历史会话')
     if (!Array.isArray(result?.sessions)) return []
+    this.sessionTitles.clear()
     return result.sessions.slice(0, 100).flatMap((raw) => {
       const item = acpObject(raw)
       const id = acpText(item?.sessionId, 200)
-      const directory = acpText(item?.cwd, 4096)
+      const cwd = acpText(item?.cwd, 4096)
       const same =
         process.platform === 'win32'
-          ? normalize(directory).toLowerCase() === normalize(this.info.directory).toLowerCase()
-          : normalize(directory) === normalize(this.info.directory)
-      return id && directory && same
-        ? [{ id, title: acpText(item?.title, 100) || 'OpenCode 会话' }]
-        : []
+          ? normalize(cwd).toLowerCase() === normalize(directory).toLowerCase()
+          : normalize(cwd) === normalize(directory)
+      if (!id || !cwd || !same) return []
+      let title = acpText(item?.title, 100).trim()
+      const session = this.sessions.get(id)
+      // 查询期间若收到更新的标题推送，不用较早的目录快照覆盖它。
+      if (session && previousTitles.has(id) && session.title !== previousTitles.get(id))
+        title = session.title
+      if (title) {
+        this.sessionTitles.set(id, title)
+        if (session && session.title !== title) {
+          session.title = title
+          this.publish(session, true)
+        }
+      }
+      return [{ id, title: title || 'OpenCode 会话' }]
     })
   }
 
@@ -172,10 +205,14 @@ export class OpenCodeService {
     if (this.hasRunning()) throw new OpenCodeError('请先停止当前任务再打开会话')
     if (id && !this.info.canLoadSession) throw new OpenCodeError('当前 OpenCode 不支持恢复会话')
     if (this.sessions.size >= 20) throw new OpenCodeError('当前连接已打开 20 个会话，请重新连接')
-    if (id && this.sessions.has(id)) return this.sessions.get(id)!
+    if (id && this.sessions.has(id)) {
+      await this.refreshSessionTitles(peer)
+      if (peer !== this.peer) throw new OpenCodeError('连接已结束')
+      return this.sessions.get(id)!
+    }
     const session: OpenCodeSession = {
       id: id ?? '',
-      title: '新编程会话',
+      title: (id && this.sessionTitles.get(id)) || '新编程会话',
       directory: this.info.directory,
       status: 'ready',
       messages: [],
@@ -205,10 +242,12 @@ export class OpenCodeService {
         throw new OpenCodeError('当前 OpenCode 未提供可确认的 Plan 模式，请更新桌面版后重试')
       if (mode?.options.some((option) => option.value === 'plan') && mode.currentValue !== 'plan')
         await this.setOption(session.id, mode.id, 'plan')
+      await this.refreshSessionTitles(peer)
+      if (peer !== this.peer) throw new OpenCodeError('连接已结束')
       this.publish(session, true)
       return session
     } catch (error) {
-      if (session.id) this.sessions.delete(session.id)
+      if (this.sessions.get(session.id) === session) this.sessions.delete(session.id)
       throw error
     }
   }
@@ -220,6 +259,8 @@ export class OpenCodeService {
     const option = session.options.find((item) => item.id === optionId)
     if (!option?.options.some((item) => item.value === value))
       throw new OpenCodeError('请选择 OpenCode 提供的配置项')
+    if (option.category === 'model' && !this.info.visibleModelIds.includes(value))
+      throw new OpenCodeError('请先在 OpenCode Desktop 启用该模型并同步后再选择')
     const result = acpObject(
       await this.requirePeer().request('session/set_config_option', {
         sessionId: id,
@@ -236,6 +277,9 @@ export class OpenCodeService {
   send(id: string, text: string): void {
     const session = this.requireSession(id)
     const peer = this.requirePeer()
+    const model = session.options.find((option) => option.category === 'model')
+    if (model && !this.info.visibleModelIds.includes(model.currentValue))
+      throw new OpenCodeError('当前会话模型未在 Desktop 启用，请先选择已启用模型')
     if (session.status !== 'ready' && session.status !== 'error')
       throw new OpenCodeError('该会话暂时不能发送，请等待或重新连接')
     if (this.hasRunning()) throw new OpenCodeError('首版一次运行一个编程任务，请等待当前任务结束')
@@ -279,6 +323,7 @@ export class OpenCodeService {
         if (timer) clearTimeout(timer)
         this.stopTimers.delete(id)
         this.publish(session, true)
+        this.scheduleTitleRefresh(peer)
       })
   }
 
@@ -303,6 +348,28 @@ export class OpenCodeService {
     if (!pending || pending.sessionId !== id)
       throw new OpenCodeError('该审批已结束或不属于当前会话')
     pending.settle(allow)
+  }
+
+  /** OpenCode 部分版本不推送名称；读取失败只保留现有名称，不影响会话或任务结果。 */
+  private async refreshSessionTitles(peer: AcpPeer): Promise<void> {
+    if (peer !== this.peer) return
+    try {
+      await this.listSessions()
+    } catch {
+      // 名称是辅助元数据，失败不回显第三方错误，也不把成功的编程任务标记为失败。
+      if (peer === this.peer) console.warn('[OpenCode] 会话名称同步未完成，可重新读取历史重试')
+    }
+  }
+
+  private scheduleTitleRefresh(peer: AcpPeer): void {
+    if (peer !== this.peer) return
+    void this.refreshSessionTitles(peer)
+    if (this.titleRefreshTimer) clearTimeout(this.titleRefreshTimer)
+    // 原生自动命名可能晚于任务结算；只补一次延迟读取，不持续轮询。
+    this.titleRefreshTimer = setTimeout(() => {
+      this.titleRefreshTimer = null
+      void this.refreshSessionTitles(peer)
+    }, 10_000)
   }
 
   private notification(method: string, params: unknown): void {
@@ -369,6 +436,9 @@ export class OpenCodeService {
     if (this.info.connected) console.info('[OpenCode] ACP 连接已结束')
     this.peer = null
     this.info.connected = false
+    if (this.titleRefreshTimer) clearTimeout(this.titleRefreshTimer)
+    this.titleRefreshTimer = null
+    this.sessionTitles.clear()
     for (const timer of this.stopTimers.values()) clearTimeout(timer)
     this.stopTimers.clear()
     for (const timer of this.updates.values()) clearTimeout(timer)

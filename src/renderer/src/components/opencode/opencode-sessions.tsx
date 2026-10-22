@@ -58,7 +58,11 @@ export function OpenCodeSessions({ running }: { running: boolean }): JSX.Element
       ) : null}
       <div className="opencode-session-list">
         {!Object.keys(sessions).length ? (
-          <p className="opencode-session-empty">连接项目后，在这里管理编程会话。</p>
+          <p className="opencode-session-empty">
+            {info?.connected
+              ? '手动新建会话，或读取并选择历史会话。'
+              : '连接项目后，在这里管理编程会话。'}
+          </p>
         ) : null}
         {Object.values(sessions).map((item) => (
           <button

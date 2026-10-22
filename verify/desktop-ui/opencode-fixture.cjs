@@ -7,11 +7,13 @@ module.exports = function opencodeFixture() {
     version: null,
     directory: '',
     connected: false,
-    canLoadSession: true
+    canLoadSession: true,
+    visibleModelIds: ['fixture/model-one', 'fixture/model-two']
   }
   const sessions = new Map()
   let sequence = 0
   let sent = 0
+  let loaded = 0
   let failSend = false
   let lastSent = null
   const emit = (event) => listeners.forEach((listener) => listener(copy(event)))
@@ -34,6 +36,11 @@ module.exports = function opencodeFixture() {
         info.executablePath = path
       },
       codeSendCount: () => sent,
+      codeCreateCount: () => sequence,
+      codeLoadCount: () => loaded,
+      codeSetVisibleModels: (ids) => {
+        info.visibleModelIds = ids
+      },
       codeLastSent: () => copy(lastSent),
       codeComplete: complete,
       codeFailNextSend: () => {
@@ -70,7 +77,12 @@ module.exports = function opencodeFixture() {
       },
       listSessions: async () => [{ id: 'saved-session', title: '合成历史会话' }],
       openSession: async (id) => {
-        if (id && sessions.has(id)) return copy(sessions.get(id))
+        if (id) loaded++
+        if (id && sessions.has(id)) {
+          const session = sessions.get(id)
+          session.status = 'ready'
+          return copy(session)
+        }
         const session = {
           id: id || 'code-' + ++sequence,
           title: id ? '合成历史会话' : '新编程会话',
@@ -88,7 +100,8 @@ module.exports = function opencodeFixture() {
               currentValue: 'fixture/model-one',
               options: [
                 { value: 'fixture/model-one', label: '合成模型一' },
-                { value: 'fixture/model-two', label: '合成模型二' }
+                { value: 'fixture/model-two', label: '合成模型二' },
+                { value: 'fixture/model-hidden', label: '合成隐藏模型' }
               ]
             },
             {

@@ -17,6 +17,18 @@ function session(): OpenCodeSession {
 }
 
 describe('ACP 外部数据收敛', () => {
+  it('使用原生标题推送，限制长度，忽略不带标题或空白的元数据', () => {
+    const view = session()
+    applyAcpUpdate(view, { sessionUpdate: 'session_info_update', title: '  原生会话名称  ' })
+    expect(view.title).toBe('原生会话名称')
+    for (const title of [undefined, null, '', '   ', { text: '不是文本' }]) {
+      applyAcpUpdate(view, { sessionUpdate: 'session_info_update', title })
+      expect(view.title).toBe('原生会话名称')
+    }
+    applyAcpUpdate(view, { sessionUpdate: 'session_info_update', title: '长'.repeat(101) })
+    expect(view.title).toHaveLength(100)
+  })
+
   it('解析平铺/分组选择项，丢弃未知类型与损坏数据', () => {
     expect(
       acpOptions([

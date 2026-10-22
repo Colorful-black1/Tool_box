@@ -35,6 +35,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 
 const bridge: ToolboxBridge = {
   opencode: {
+    // 主进程返回已筛选的可见模型 id；不把 Desktop 原始偏好数据送入渲染层。
     inspect: () => ipcRenderer.invoke(IPC.opencodeInspect),
     chooseExecutable: () => ipcRenderer.invoke(IPC.opencodeExecutable),
     chooseDirectory: () => ipcRenderer.invoke(IPC.opencodeDirectory),

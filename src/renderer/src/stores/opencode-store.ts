@@ -59,7 +59,14 @@ export const useOpenCodeStore = create<OpenCodeState>((set, get) => {
     }
   }
   const upsert = (session: OpenCodeSession): void =>
-    set((state) => ({ sessions: { ...state.sessions, [session.id]: session } }))
+    set((state) => ({
+      sessions: { ...state.sessions, [session.id]: session },
+      history: state.history.map((item) =>
+        item.id === session.id && item.title !== session.title
+          ? { ...item, title: session.title }
+          : item
+      )
+    }))
   return {
     info: null,
     directory: '',
@@ -90,9 +97,6 @@ export const useOpenCodeStore = create<OpenCodeState>((set, get) => {
       perform(async () => {
         const info = await bridge().connect(get().directory)
         set({ info, sessions: {}, activeId: null, history: [] })
-        const session = await bridge().openSession()
-        upsert(session)
-        set({ activeId: session.id })
       }),
     disconnect: () =>
       perform(async () => {

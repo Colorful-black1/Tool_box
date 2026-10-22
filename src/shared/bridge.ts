@@ -40,6 +40,7 @@ import type {
 
 export interface ToolboxBridge {
   opencode: {
+    /** 已连接时同步 Desktop 模型可见性；不创建或恢复会话。 */
     inspect(): Promise<OpenCodeInfo>
     chooseExecutable(): Promise<OpenCodeInfo | null>
     chooseDirectory(): Promise<string | null>

@@ -7,7 +7,8 @@ const info: OpenCodeInfo = {
   directory: '/fixture/project',
   version: '2.1.1',
   connected: true,
-  canLoadSession: true
+  canLoadSession: true,
+  visibleModelIds: ['fixture/model-one']
 }
 const session: OpenCodeSession = {
   id: 's1',
@@ -50,6 +51,30 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('OpenCode 工作台状态', () => {
+  it('原生名称更新同时刷新已打开会话和历史选项，不切换会话或清空草稿', async () => {
+    await useOpenCodeStore.getState().connect()
+    await useOpenCodeStore.getState().openSession()
+    useOpenCodeStore.setState({
+      draft: '保留未发送草稿',
+      history: [
+        { id: session.id, title: '旧名称' },
+        { id: 'other', title: '其他会话' }
+      ]
+    })
+    useOpenCodeStore.getState().receive({
+      kind: 'session',
+      session: { ...session, title: 'OpenCode 原生名称' }
+    })
+    const state = useOpenCodeStore.getState()
+    expect(state.sessions[session.id].title).toBe('OpenCode 原生名称')
+    expect(state.history).toEqual([
+      { id: session.id, title: 'OpenCode 原生名称' },
+      { id: 'other', title: '其他会话' }
+    ])
+    expect(state.activeId).toBe(session.id)
+    expect(state.draft).toBe('保留未发送草稿')
+  })
+
   it('手动重新检测刷新缓存，保留已选择项目与草稿，不自动连接', async () => {
     api.inspect.mockResolvedValueOnce({ ...info, executablePath: null, directory: '' })
     await useOpenCodeStore.getState().inspect()
@@ -77,16 +102,28 @@ describe('OpenCode 工作台状态', () => {
     expect(useOpenCodeStore.getState().error).toBe('')
   })
 
-  it('检查与连接仅准备会话，不自动发送草稿', async () => {
+  it('检查与连接不创建或恢复会话，也不自动发送草稿', async () => {
     useOpenCodeStore.getState().setDraft('合成任务')
     await useOpenCodeStore.getState().inspect()
     await useOpenCodeStore.getState().connect()
     expect(api.send).not.toHaveBeenCalled()
     expect(useOpenCodeStore.getState().draft).toBe('合成任务')
+    expect(api.openSession).not.toHaveBeenCalled()
+    expect(useOpenCodeStore.getState().activeId).toBeNull()
+    expect(useOpenCodeStore.getState().sessions).toEqual({})
+  })
+  it('连接后必须手动新建或恢复历史，会话打开不自动发送', async () => {
+    await useOpenCodeStore.getState().connect()
+    await useOpenCodeStore.getState().openSession()
+    expect(api.openSession).toHaveBeenLastCalledWith(undefined)
     expect(useOpenCodeStore.getState().activeId).toBe('s1')
+    await useOpenCodeStore.getState().openSession('history')
+    expect(api.openSession).toHaveBeenLastCalledWith('history')
+    expect(api.send).not.toHaveBeenCalled()
   })
   it('发送失败保留草稿，重试成功后清空', async () => {
     await useOpenCodeStore.getState().connect()
+    await useOpenCodeStore.getState().openSession()
     useOpenCodeStore.getState().setDraft('合成任务')
     api.send.mockRejectedValueOnce(new Error('fixture-private-detail'))
     await useOpenCodeStore.getState().send()
@@ -97,6 +134,7 @@ describe('OpenCode 工作台状态', () => {
   })
   it('不同会话事件分别保存，不切换当前会话', async () => {
     await useOpenCodeStore.getState().connect()
+    await useOpenCodeStore.getState().openSession()
     useOpenCodeStore
       .getState()
       .receive({ kind: 'session', session: { ...session, id: 's2', status: 'running' } })

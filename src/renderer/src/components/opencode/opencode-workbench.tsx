@@ -4,7 +4,7 @@ import { useOpenCodeStore } from '../../stores/opencode-store'
 import { Dropdown } from '../dropdown'
 import { OpenCodeConnection } from './opencode-connection'
 import { OpenCodeMessages } from './opencode-messages'
-import { SendIcon, StopIcon } from '../icons'
+import { RefreshIcon, SendIcon, StopIcon } from '../icons'
 import { OpenCodeSessions, OPENCODE_STATUS } from './opencode-sessions'
 import { OpenCodeActivity } from './opencode-activity'
 
@@ -28,11 +28,20 @@ export function OpenCodeWorkbench(): JSX.Element {
   const stop = useOpenCodeStore((state) => state.stop)
   const clearError = useOpenCodeStore((state) => state.clearError)
   const session = activeId ? sessions[activeId] : undefined
+  const visibleModels = new Set(info?.visibleModelIds ?? [])
+  const model = session?.options.find((option) => option.category === 'model')
+  const modelNeedsSelection = Boolean(model && !visibleModels.has(model.currentValue))
   const running = Object.values(sessions).some(
     (item) => item.status === 'running' || item.status === 'stopping'
   )
   const canSend = Boolean(
-    info?.connected && session && !running && !busy && draft.trim() && draft.length <= 50_000
+    info?.connected &&
+    session &&
+    !modelNeedsSelection &&
+    !running &&
+    !busy &&
+    draft.trim() &&
+    draft.length <= 50_000
   )
   useEffect(() => {
     void inspect()
@@ -59,37 +68,58 @@ export function OpenCodeWorkbench(): JSX.Element {
               data-status={session?.status}
               role="status"
             >
-              {session ? OPENCODE_STATUS[session.status] : '等待连接'}
+              {session
+                ? OPENCODE_STATUS[session.status]
+                : info?.connected
+                  ? '请选择会话'
+                  : '等待连接'}
             </span>
           </header>
           {session ? (
             <div className="opencode-options">
-              {session?.options.map((option) => (
-                <div className="opencode-option" key={option.id}>
-                  <span className="field-label">
-                    {Object.hasOwn(OPTION_NAMES, option.category)
-                      ? OPTION_NAMES[option.category]
-                      : option.name}
-                  </span>
-                  <Dropdown
-                    ariaLabel={`OpenCode ${Object.hasOwn(OPTION_NAMES, option.category) ? OPTION_NAMES[option.category] : option.name}`}
-                    value={option.currentValue}
-                    options={option.options}
-                    onChange={(value) => void setOption(option.id, value)}
-                    disabled={busy || running || !info?.connected}
-                    searchable={option.options.length > 8}
-                    align="left"
-                  />
-                </div>
-              ))}
-              {session ? (
-                <span className="field-hint">
-                  Plan 用于分析；Build 按 OpenCode 权限执行，可能修改项目文件。
-                </span>
-              ) : null}
+              {session.options.map((option) => {
+                const options =
+                  option.category === 'model'
+                    ? option.options.filter((item) => visibleModels.has(item.value))
+                    : option.options
+                return (
+                  <div className="opencode-option" key={option.id}>
+                    <span className="field-label">
+                      {Object.hasOwn(OPTION_NAMES, option.category)
+                        ? OPTION_NAMES[option.category]
+                        : option.name}
+                    </span>
+                    <Dropdown
+                      ariaLabel={`OpenCode ${Object.hasOwn(OPTION_NAMES, option.category) ? OPTION_NAMES[option.category] : option.name}`}
+                      value={option.currentValue}
+                      options={options}
+                      placeholder={option.category === 'model' ? '选择已启用模型' : '请选择'}
+                      onChange={(value) => void setOption(option.id, value)}
+                      disabled={busy || running || !info?.connected}
+                      searchable={options.length > 8}
+                      align="left"
+                    />
+                  </div>
+                )
+              })}
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || running || !info?.connected}
+                onClick={() => void inspect(true)}
+                title="在 OpenCode Desktop 更改模型勾选后，点击同步"
+              >
+                <RefreshIcon />
+                同步模型
+              </button>
+              <span className="field-hint" role={modelNeedsSelection ? 'status' : undefined}>
+                {modelNeedsSelection
+                  ? '当前会话模型未在 Desktop 中启用，请选择已启用模型后发送；更改勾选后可同步模型。'
+                  : 'Plan 用于分析；Build 按 OpenCode 权限执行，可能修改项目文件。'}
+              </span>
             </div>
           ) : null}
-          <OpenCodeMessages session={session} />
+          <OpenCodeMessages session={session} connected={Boolean(info?.connected)} />
           <OpenCodeActivity session={session} />
           {session?.error ? (
             <div className="status-banner" role="alert">

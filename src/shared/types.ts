@@ -9,6 +9,8 @@ export interface OpenCodeInfo {
   version: string | null
   connected: boolean
   canLoadSession: boolean
+  /** Desktop 模型勾选与默认可见规则解析出的 id，不包含目录中的原始设置或请求头。 */
+  visibleModelIds: string[]
 }
 
 /** ACP 握手/会话返回的可选配置，不假设模型与模式名称固定。 */

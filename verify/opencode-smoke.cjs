@@ -1,4 +1,4 @@
-/** 复用桌面内置运行时；加 --prompt 才发送合成短消息，不修改项目文件。 */
+/** 复用桌面内置运行时；--connect-only 不创建会话，--prompt 才发送合成短消息。 */
 const assert = require('node:assert/strict')
 const { Module } = require('node:module')
 const path = require('node:path')
@@ -12,6 +12,7 @@ async function main() {
     bundle: true,
     platform: 'node',
     format: 'cjs',
+    external: ['better-sqlite3'],
     write: false
   })
   const compiled = new Module(path.join(root, 'verify/opencode-service.cjs'))
@@ -29,6 +30,26 @@ async function main() {
     assert.ok(installation.executablePath, '未检测到标准安装位置的 OpenCode Desktop')
     const info = await service.connect(root)
     process.stdout.write(`PASS 桌面内置运行时握手 ${info.version}\n`)
+    assert.ok(info.visibleModelIds.length > 0, '当前项目没有可见模型')
+    process.stdout.write(`PASS 同步 Desktop 可见模型 ${info.visibleModelIds.length} 项\n`)
+    if (process.argv.includes('--connect-only')) {
+      const before = await service.listSessions()
+      let sessionEvents = 0
+      service.subscribe((event) => {
+        if (event.kind === 'session') sessionEvents++
+      })
+      service.disconnect()
+      await service.connect(root)
+      const refreshed = await service.inspect()
+      assert.deepEqual(new Set(refreshed.visibleModelIds), new Set(info.visibleModelIds))
+      assert.deepEqual(
+        (await service.listSessions()).map((item) => item.id),
+        before.map((item) => item.id)
+      )
+      assert.equal(sessionEvents, 0)
+      process.stdout.write('PASS 重连与模型同步不创建或恢复会话，原生列表保持不变\n')
+      return
+    }
     const session = await service.openSession()
     assert.equal(session.options.find((item) => item.category === 'mode')?.currentValue, 'plan')
     process.stdout.write('PASS 创建会话并默认 Plan\n')

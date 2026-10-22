@@ -51,7 +51,7 @@ export function acpPreview(value: unknown): string {
   }
 }
 
-/** 只消费当前会话的文本、配置及工具状态，外部内容始终作为文本处理。 */
+/** 只消费当前会话的文本、标题、配置及工具状态，外部内容始终作为文本处理。 */
 export function applyAcpUpdate(session: OpenCodeSession, raw: unknown): void {
   const update = acpObject(raw)
   if (!update) return
@@ -82,6 +82,9 @@ export function applyAcpUpdate(session: OpenCodeSession, raw: unknown): void {
       if (session.tools.length >= 100) session.tools.shift()
       session.tools.push({ id, title, status })
     }
+  } else if (kind === 'session_info_update') {
+    const title = acpText(update.title, 100).trim()
+    if (title) session.title = title
   } else if (kind === 'config_option_update') session.options = acpOptions(update.configOptions)
   else if (kind === 'current_mode_update') {
     const mode = session.options.find((option) => option.category === 'mode')

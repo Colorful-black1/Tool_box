@@ -3,6 +3,11 @@ import type { OpenCodeEvent } from '../../../shared/types'
 import { OpenCodeService } from './opencode-service'
 import type { AcpPeer } from './opencode-service'
 import { launchOpenCode } from './opencode-runtime'
+import { readOpenCodeVisibleModels } from './opencode-models'
+
+vi.mock('./opencode-models', () => ({
+  readOpenCodeVisibleModels: vi.fn(async () => ['fixture/model-one'])
+}))
 
 vi.mock('./opencode-runtime', () => ({
   inspectOpenCodeExecutable: vi.fn(async (path: string) => ({ path, version: '2.1.1' })),
@@ -21,11 +26,23 @@ const choices = [
       { value: 'build', name: 'Build' },
       { value: 'plan', name: 'Plan' }
     ]
+  },
+  {
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    type: 'select',
+    currentValue: 'fixture/model-one',
+    options: [
+      { value: 'fixture/model-one', name: '模型一' },
+      { value: 'fixture/model-two', name: '模型二' }
+    ]
   }
 ]
 
 function setup() {
   let counter = 0
+  let history: unknown[] = []
   const store = { configGet: vi.fn(() => ({})), configSet: vi.fn(() => ({})) }
   const events: OpenCodeEvent[] = []
   const requests: Array<{ method: string; params: unknown }> = []
@@ -46,6 +63,7 @@ function setup() {
       if (method === 'session/new')
         return { sessionId: `s${++counter}`, configOptions: structuredClone(choices) }
       if (method === 'session/load') return { configOptions: structuredClone(choices) }
+      if (method === 'session/list') return { sessions: history }
       if (method === 'session/prompt')
         return new Promise((resolve, reject) => {
           finish = resolve
@@ -76,6 +94,9 @@ function setup() {
     events,
     requests,
     peer,
+    setHistory: (sessions: unknown[]) => {
+      history = sessions
+    },
     notify: (params: unknown) => notification('session/update', params),
     permission: (method: string, params: unknown) => permission(method, params),
     disconnect: () => disconnected(),
@@ -86,12 +107,125 @@ function setup() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(readOpenCodeVisibleModels).mockResolvedValue(['fixture/model-one'])
   vi.spyOn(console, 'info').mockImplementation(() => undefined)
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('OpenCode 会话业务', () => {
+  it('恢复不同原生会话时保留各自名称，重新读取历史同步已经打开的会话', async () => {
+    const { service, setHistory } = setup()
+    await service.connect(process.cwd())
+    const rows = [
+      { sessionId: 'saved-a', cwd: process.cwd(), title: '分析 Java 异常' },
+      { sessionId: 'saved-b', cwd: process.cwd(), title: '整理项目结构' }
+    ]
+    setHistory(rows)
+    await service.listSessions()
+    const a = await service.openSession('saved-a')
+    const b = await service.openSession('saved-b')
+    expect(a.title).toBe('分析 Java 异常')
+    expect(b.title).toBe('整理项目结构')
+    setHistory([{ ...rows[0], title: '原生界面修改的名称' }, rows[1]])
+    await service.listSessions()
+    expect(a.title).toBe('原生界面修改的名称')
+    expect(b.title).toBe('整理项目结构')
+    service.disconnect()
+  })
+
+  it('任务完成后读取标题并延迟补读一次，不持续轮询且断连会取消补读', async () => {
+    vi.useFakeTimers()
+    const { service, setHistory, requests, finish } = setup()
+    await service.connect(process.cwd())
+    const session = await service.openSession()
+    service.send(session.id, '合成任务')
+    const row = { sessionId: session.id, cwd: process.cwd(), title: '任务完成时的原生名称' }
+    setHistory([row])
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(session.title).toBe(row.title)
+    setHistory([{ ...row, title: '稍后生成的原生名称' }])
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(session.title).toBe('稍后生成的原生名称')
+    const reads = () => requests.filter((item) => item.method === 'session/list').length
+    const afterRefresh = reads()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(reads()).toBe(afterRefresh)
+    service.send(session.id, '另一条合成任务')
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    const beforeDisconnect = reads()
+    service.disconnect()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(reads()).toBe(beforeDisconnect)
+  })
+
+  it('标题读取失败保留历史名称，不阻止恢复会话', async () => {
+    const { service, setHistory } = setup()
+    await service.connect(process.cwd())
+    setHistory([{ sessionId: 'saved', cwd: process.cwd(), title: '已知原生名称' }])
+    await service.listSessions()
+    vi.spyOn(service, 'listSessions').mockRejectedValueOnce(new Error('fixture-private-detail'))
+    const session = await service.openSession('saved')
+    expect(session.title).toBe('已知原生名称')
+    expect(session.status).toBe('ready')
+    expect(session.error).toBe('')
+    service.disconnect()
+  })
+
+  it('过期历史响应不能覆盖较新的推送标题，也不能在断连后回写', async () => {
+    const { service, peer, notify } = setup()
+    await service.connect(process.cwd())
+    const session = await service.openSession()
+    let resolveList: ((value: unknown) => void) | undefined
+    const deferList = () =>
+      new Promise<unknown>((resolve) => {
+        resolveList = resolve
+      })
+    vi.mocked(peer.request).mockImplementationOnce(deferList)
+    const reading = service.listSessions()
+    notify({
+      sessionId: session.id,
+      update: { sessionUpdate: 'session_info_update', title: '最新名称' }
+    })
+    const snapshot = { sessions: [{ sessionId: session.id, cwd: process.cwd(), title: '旧快照名称' }] }
+    resolveList?.(snapshot)
+    expect((await reading)[0].title).toBe('最新名称')
+    expect(session.title).toBe('最新名称')
+    vi.mocked(peer.request).mockImplementationOnce(deferList)
+    const stale = service.listSessions()
+    const rejected = expect(stale).rejects.toThrow('连接已结束')
+    service.disconnect()
+    resolveList?.(snapshot)
+    await rejected
+    expect(session.title).toBe('最新名称')
+  })
+
+  it('只允许 Desktop 可见模型，同步隐藏当前模型后停止后续发送', async () => {
+    const { service } = setup()
+    const info = await service.connect(process.cwd())
+    expect(info.visibleModelIds).toEqual(['fixture/model-one'])
+    const session = await service.openSession()
+    await expect(service.setOption(session.id, 'model', 'fixture/model-two')).rejects.toThrow(
+      'Desktop'
+    )
+    vi.mocked(readOpenCodeVisibleModels).mockResolvedValueOnce(['fixture/model-two'])
+    expect((await service.inspect()).visibleModelIds).toEqual(['fixture/model-two'])
+    expect(() => service.send(session.id, '合成任务')).toThrow('未在 Desktop 启用')
+    await service.setOption(session.id, 'model', 'fixture/model-two')
+    service.disconnect()
+  })
+  it('读取模型偏好失败时明确失败，不返回完整目录或创建会话', async () => {
+    const { service, requests } = setup()
+    vi.mocked(readOpenCodeVisibleModels).mockRejectedValueOnce(new Error('fixture'))
+    await expect(service.connect(process.cwd())).rejects.toThrow()
+    expect((await service.inspect()).connected).toBe(false)
+    expect(requests.map((request) => request.method)).toEqual(['initialize'])
+  })
   it('不兼容的握手不会留下可发送任务的连接', async () => {
     const { service, peer } = setup()
     vi.mocked(peer.request).mockResolvedValueOnce({

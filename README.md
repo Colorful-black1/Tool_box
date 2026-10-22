@@ -64,7 +64,9 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 1. 打开左侧「编程 Agent」，选择项目目录并点击「连接 OpenCode」。
    按钮需检测到运行程序且已选择项目才会启用；灰色时旁边会说明缺少哪一步。
    如程序路径为空，可点击「重新检测」或「选择程序」；无需先打开 OpenCode Desktop 窗口。
-2. 连接只创建/准备会话，新会话优先切到 **Plan**；支持的模型、思考强度和模式由 OpenCode 返回。
+2. 连接不创建或恢复会话；点击「新建编程会话」，或读取并选择历史会话。手动打开会话后默认切到 **Plan**。
+   模型下拉按 OpenCode Desktop 的勾选与默认可见规则过滤；在 Desktop 更改勾选后，点击「同步模型」。
+   若当前会话模型被隐藏，需要重新选择已启用模型才能发送，草稿会保留。
    连接成功后配置区收起为项目状态栏，点击「连接设置」可展开程序路径和目录；
    工作台把主要空间留给消息，输入框下方集中显示草稿计数与发送 / 停止操作。
 3. 直接输入任务，或在 Prompt / JSON / 日志 / 脱敏 / Diff 结果下点击「用于编程 Agent」。
@@ -72,9 +74,14 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 4. 需要改文件时可手动选择 **Build**。权限沿用 OpenCode 配置，可能直接执行已获允许的操作；
    出现审批询问时只提供单次允许或拒绝。所选目录不等于操作系统沙箱。
 5. 可停止任务、读取当前项目的 OpenCode 历史并恢复；「打开 OpenCode Desktop」保留外部入口。
+   会话列表和顶部标题使用原生会话名称，打开会话及任务结束后同步，任务结算 10 秒后再补读一次。
+   在 Desktop 修改名称后，可点击「读取 OpenCode 历史」刷新已打开会话；名称读取失败会保留已有名称。
 
 Tool_box 只保存运行程序和项目路径偏好，不读取或复制 OpenCode 登录凭据，
 不将编程会话写入自身聊天表；完整记录由 OpenCode 管理。
+模型偏好从 Desktop 的 `ai.opencode.desktop/drafts.sqlite` 固定模型键只读获取，
+目录元数据通过内置 CLI 的 `api model.list` 读取，原始设置与请求头不进入渲染层。
+此偏好格式已在 Windows Desktop 2.1.1 验证；其他版本或自定义 profile 可能不兼容，读取失败会提示重试。
 模板变量不随模板定义保存，但发送后的内容属于 OpenCode 原生会话，会按其机制保存。
 草稿仅在本次应用进程中保留。首次连接需要 OpenCode 支持 ACP v1、配置选项和 Plan 模式。
 
@@ -86,7 +93,8 @@ Tool_box 只保存运行程序和项目路径偏好，不读取或复制 OpenCod
 验证：`node verify/desktop-ui/run.cjs --opencode-only --screenshots` 使用合成桥接，
 不启动真实 Agent。`node verify/opencode-smoke.cjs` 复用已安装的桌面内置 CLI，验证握手、
 Plan、会话列表和恢复；加 `--prompt` 才发送不读取/修改文件的合成短消息验证真实回复。
-实机检查会在 OpenCode 中创建少量验证会话，不删除或覆盖既有会话。规格见 `docs/SPEC-opencode-workbench.md`。
+加 `--connect-only` 只验证连接、模型同步、重连及原生列表保持不变，不创建会话或发送消息。
+其余实机检查会在 OpenCode 中创建少量验证会话，不删除或覆盖既有会话。规格见 `docs/SPEC-opencode-workbench.md`。
 
 ### 桌面交互
 
