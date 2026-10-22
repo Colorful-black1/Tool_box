@@ -40,6 +40,13 @@ import type { ToolboxStore } from '../chat-store/chat-store'
 
 const AGENT_PROMPT_FILE = 'agent_system.txt'
 
+/** 无会话调用也使用真实流；不启用工具、不写聊天记录。 */
+export interface AiCompletionOptions {
+  signal?: AbortSignal
+  onDelta?: (delta: string) => void
+  maxOutputChars?: number
+}
+
 export interface ChatEventSink {
   onDelta(event: ChatDeltaEvent): void
   onCompleted(event: ChatCompletedEvent): void
@@ -117,8 +124,9 @@ export class AiGateway {
     this.gate.settle(input.callId, input.approved === true)
   }
 
-  /** 非流式一次性对话：供密码箱 AI 识别等内部工具复用同一份配置与错误映射 */
-  async complete(system: string, user: string): Promise<string> {
+  /** 无会话流式调用，增量即时回推，返回完整正文供业务校验。 */
+  async complete(system: string, user: string, options: AiCompletionOptions = {}): Promise<string> {
+    options.signal?.throwIfAborted()
     const content = validateChatInput(user)
     const config = await this.settings.getAiConfig()
     const model = new ChatOpenAI({
@@ -126,21 +134,45 @@ export class AiGateway {
       model: config.model,
       temperature: 0,
       timeout: CHAT_TIMEOUT_MS,
-      maxRetries: 1,
+      maxRetries: 0,
       configuration: buildClientConfig(config, processSessionIdForSingleCall())
     })
+    const controller = new AbortController()
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, CHAT_TIMEOUT_MS)
+    const abort = (): void => controller.abort()
+    options.signal?.addEventListener('abort', abort)
+    if (options.signal?.aborted) controller.abort()
 
     try {
-      const reply = await model.invoke([
-        new SystemMessage(system),
-        new HumanMessage(content)
-      ])
-      const text = typeof reply.content === 'string' ? reply.content : ''
+      const stream = await model.stream(
+        [new SystemMessage(system), new HumanMessage(content)],
+        { signal: controller.signal }
+      )
+      let text = ''
+      for await (const chunk of stream) {
+        controller.signal.throwIfAborted()
+        const delta = chunk.text
+        if (!delta) continue
+        text += delta
+        if (text.length > (options.maxOutputChars ?? 200_000))
+          throw new AiGatewayError('AI 输出过长，请拆分后重试')
+        options.onDelta?.(delta)
+      }
+      controller.signal.throwIfAborted()
       if (!text.trim()) throw new AiGatewayError('AI 未返回内容')
       return text
     } catch (error) {
+      if (timedOut) throw new AiGatewayError('AI 请求超时，请检查网络后重试')
+      if (options.signal?.aborted) throw new DOMException('已停止', 'AbortError')
       if (error instanceof AiGatewayError) throw error
       throw new AiGatewayError(describeAiError(error, config.apiKey), error)
+    } finally {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', abort)
     }
   }
 

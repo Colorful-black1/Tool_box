@@ -1,5 +1,18 @@
 export type ChatRole = 'user' | 'assistant'
 
+/** 识别中的只读预览，不传输密码或原始模型 JSON。 */
+export interface PasswordAiPreview {
+  title: string
+  account: string
+  url: string
+  hasPassword: boolean
+}
+
+/** 无会话 AI 工具的增量；最终结果仍通过原请求返回并完成校验。 */
+export type AiOutputEvent =
+  | { kind: 'prompt-polish'; requestId: string; delta: string }
+  | { kind: 'password-import'; requestId: string; receivedChars: number; entries: PasswordAiPreview[] }
+
 /** 本机网卡的只读地址视图，不包含 MAC、网关或公网探测信息。 */
 export interface LocalIpAddressView {
   interfaceName: string

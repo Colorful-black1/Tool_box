@@ -22,7 +22,8 @@ import type { SettingsService } from '../services/settings/settings-service'
 import type { ShortcutManager } from '../shortcuts'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { registerOpenCodeIpc } from './opencode-ipc'
-import { DeveloperToolError, listLocalAddresses, PromptPolisher } from '../services/developer-tools'
+import { listLocalAddresses } from '../services/developer-tools'
+import { registerAiOutputIpc } from './ai-output-ipc'
 import {
   assertObject,
   optionalString,
@@ -32,8 +33,7 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
-  validateConfigPatch,
-  validatePromptPolishInput
+  validateConfigPatch
 } from './validation'
 
 export interface IpcDependencies {
@@ -49,7 +49,15 @@ export interface IpcDependencies {
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerOpenCodeIpc(dependencies.opencode)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
-  const polisher = new PromptPolisher((system, user) => aiGateway.complete(system, user))
+  registerAiOutputIpc({
+    gateway: aiGateway,
+    passwordAi,
+    duplicateKeys: () => store.duplicateKeys(),
+    pickText: async () => {
+      const filePath = await pickFile(['txt', 'md'])
+      return filePath ? readFileSync(filePath, 'utf8') : null
+    }
+  })
   const assetsDir = app.getAppPath()
   const userDataDir = app.getPath('userData')
 
@@ -67,21 +75,6 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       return listLocalAddresses()
     } catch (error) {
       throw new Error('无法读取本机 IP，请稍后刷新重试', { cause: error })
-    }
-  })
-  ipcMain.handle(IPC.toolsPromptPolish, async (event, value: unknown) => {
-    if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
-      throw new Error('当前页面无权使用提示词美化')
-    const text = validatePromptPolishInput(value)
-    try {
-      return await polisher.polish(text)
-    } catch (error) {
-      throw new Error(
-        error instanceof DeveloperToolError
-          ? error.message
-          : '提示词润色失败，请重试',
-        { cause: error }
-      )
     }
   })
 
@@ -343,19 +336,6 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       return draft
     })
     return { imported: 0, skipped, entries: drafts }
-  })
-
-  ipcMain.handle(IPC.passwordImportAi, async () => {
-    const filePath = await pickFile(['txt', 'md'])
-    if (!filePath) return null
-    const text = readFileSync(filePath, 'utf8')
-    const { entries } = await passwordAi.recognize(text)
-    const duplicates = store.duplicateKeys()
-    for (const draft of entries) {
-      const key = `${draft.title} ${draft.account}`
-      if (draft.account && duplicates.has(key)) draft.duplicate = true
-    }
-    return entries
   })
 
   ipcMain.handle(IPC.passwordImportSave, (_event, drafts: unknown) => {

@@ -407,11 +407,15 @@ describe('AiGateway 失败路径', () => {
 })
 
 describe('AiGateway.complete', () => {
-  /** 造一个只返回一次非流式 JSON 的 fetch，并记录请求内容 */
+  /** 合成 SSE 返回并记录请求体，验证无会话调用也走真实流。 */
   function completionFetch(payload: unknown, status = 200): { fetchImpl: FetchLike; bodies: string[] } {
     const bodies: string[] = []
     const fetchImpl: FetchLike = (_url, init) => {
       bodies.push(String(init?.body ?? ''))
+      if (status >= 200 && status < 300) {
+        const data = payload as { choices?: { message?: { content?: string } }[] }
+        return sseFetch(delta(data.choices?.[0]?.message?.content ?? '') + 'data: [DONE]\n\n')(_url, init)
+      }
       return Promise.resolve({
         ok: status >= 200 && status < 300,
         status,
@@ -445,17 +449,19 @@ describe('AiGateway.complete', () => {
     expect(gateway.isStreaming('c1')).toBe(false)
   })
 
-  it('带上 system 与 prompt，且 stream 为 false', async () => {
+  it('带上 system 与 prompt，且 stream 为 true，并逐片回调', async () => {
     const { fetchImpl, bodies } = completionFetch({ choices: [{ message: { content: 'ok' } }] })
     const gateway = new AiGateway(
       fakeSettings(),
       new FakeStore() as unknown as MobileStore,
       fetchImpl
     )
-    await gateway.complete({ prompt: '识别这段', system: '你是抽取器' })
+    const chunks: string[] = []
+    await gateway.complete({ prompt: '识别这段', system: '你是抽取器', onDelta: (delta) => chunks.push(delta) })
+    expect(chunks).toEqual(['ok'])
 
     const body = JSON.parse(bodies[0] ?? '{}')
-    expect(body.stream).toBe(false)
+    expect(body.stream).toBe(true)
     expect(body.messages).toEqual([
       { role: 'system', content: '你是抽取器' },
       { role: 'user', content: '识别这段' }
@@ -498,11 +504,7 @@ describe('AiGateway.complete', () => {
     const headers: Array<Record<string, string>> = []
     const fetchImpl: FetchLike = (_url, init) => {
       headers.push((init?.headers ?? {}) as Record<string, string>)
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
-      } as unknown as Response)
+      return sseFetch(delta('ok') + 'data: [DONE]\n\n')(_url, init)
     }
     const gateway = new AiGateway(
       fakeSettings(),
@@ -518,11 +520,7 @@ describe('AiGateway.complete', () => {
     const headers: Array<Record<string, string>> = []
     const fetchImpl: FetchLike = (_url, init) => {
       headers.push((init?.headers ?? {}) as Record<string, string>)
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
-      } as unknown as Response)
+      return sseFetch(delta('ok') + 'data: [DONE]\n\n')(_url, init)
     }
     const goSettings = {
       getActiveConfig: () =>
@@ -548,11 +546,7 @@ describe('AiGateway.complete', () => {
     const headers: Array<Record<string, string>> = []
     const fetchImpl: FetchLike = (_url, init) => {
       headers.push((init?.headers ?? {}) as Record<string, string>)
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))
-      } as unknown as Response)
+      return sseFetch(delta('ok') + 'data: [DONE]\n\n')(_url, init)
     }
     const goSettings = {
       getActiveConfig: () =>

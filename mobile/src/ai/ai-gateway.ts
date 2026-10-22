@@ -1,6 +1,6 @@
 /**
  * AI 网关（手机端）—— 流式对话语义与桌面端 `AiGateway` 对齐，
- * 另加一个不落库的非流式 `complete()` 供密码箱 AI 识别使用。
+ * 另加一个不落库的无会话流式 `complete()` 供密码箱 AI 识别使用。
  *
  * 关键语义（与桌面端一致，改动会让两端行为分叉）：
  * 1. `active` 以 conversationId 为键，**同一会话同时只允许一个流**，
@@ -36,8 +36,7 @@ import { CHAT_TIMEOUT_MS, CONVERSATION_TITLE_MAX_CHARS, DEFAULT_CONVERSATION_TIT
 import type { MobileStore } from '../data/store'
 
 import type { AiSettingsService } from './ai-settings'
-import { completeChat } from './complete-chat'
-import { isAbortError } from './stream-chat'
+import { isAbortError, streamChat } from './stream-chat'
 import type { FetchLike } from './stream-chat'
 
 export interface ChatEventSink {
@@ -174,7 +173,7 @@ export class AiGateway {
   }
 
   /**
-   * 非流式一次性调用，供密码箱「AI 识别」使用。
+   * 无会话流式调用，供密码箱「AI 识别」使用，增量仅回推给调用方。
    *
    * 与 `send` 的边界（刻意不同，别混用）：
    * - **不落库**：识别结果是临时的草稿，用户确认前不该进 messages 表；
@@ -192,10 +191,11 @@ export class AiGateway {
     signal?: AbortSignal
     sessionId?: string
     timeoutMs?: number
+    onDelta?: (delta: string) => void
   }): Promise<string> {
     const config = await this.settings.getActiveConfig()
 
-    // 外部 signal 与内部 controller 串一层：completeChat 内部还会再包一层超时，
+    // 外部 signal 与内部 controller 串一层：streamChat 内部还会再包一层超时，
     // 这里只负责把调用方的取消意图透进去。
     const controller = new AbortController()
     const onExternalAbort = (): void => controller.abort()
@@ -203,19 +203,29 @@ export class AiGateway {
     if (input.signal?.aborted) controller.abort()
 
     try {
-      return await completeChat({
+      let received = 0
+      const result = await streamChat({
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         model: config.model,
         provider: config.provider,
         sessionId: input.sessionId ?? newOneShotSessionId(),
-        system: input.system,
-        prompt: input.prompt,
+        messages: [
+          ...(input.system ? [{ role: 'system' as const, content: input.system }] : []),
+          { role: 'user' as const, content: validateChatInput(input.prompt) }
+        ],
+        onDelta: (delta) => {
+          received += delta.length
+          if (received > 200_000) throw new AiGatewayError('AI 输出过长，请拆分后重试')
+          input.onDelta?.(delta)
+        },
         signal: controller.signal,
         timeoutMs: input.timeoutMs ?? COMPLETE_TIMEOUT_MS,
-        temperature: input.temperature,
+        temperature: input.temperature ?? 0.2,
         fetchImpl: this.fetchImpl
       })
+      if (!result.content.trim()) throw new AiGatewayError('AI 未返回内容')
+      return result.content
     } finally {
       input.signal?.removeEventListener('abort', onExternalAbort)
     }

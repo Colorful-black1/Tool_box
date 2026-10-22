@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import { CHAT_EVENT, IPC, WINDOW_EVENT } from '../shared/ipc-contract'
 import type {
+  AiOutputEvent,
   AgentPermission,
   AgentToolApprovalInput,
   AgentToolApprovalRequestEvent,
@@ -35,7 +36,9 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 
 const bridge: ToolboxBridge = {
   tools: {
-    polishPrompt: (text: string) => ipcRenderer.invoke(IPC.toolsPromptPolish, text)
+    polishPrompt: (text, requestId) => ipcRenderer.invoke(IPC.toolsPromptPolish, text, requestId),
+    stopAi: (requestId) => ipcRenderer.invoke(IPC.toolsAiStop, requestId),
+    onAiOutput: (listener) => subscribe<AiOutputEvent>(WINDOW_EVENT.aiOutput, listener)
   },
   opencode: {
     // 主进程返回已筛选的可见模型 id；不把 Desktop 原始偏好数据送入渲染层。
@@ -147,7 +150,7 @@ const bridge: ToolboxBridge = {
     setFavorite: (id: string, isFavorite: boolean) =>
       ipcRenderer.invoke(IPC.passwordSetFavorite, id, isFavorite),
     importFixed: () => ipcRenderer.invoke(IPC.passwordImportFixed),
-    importAi: () => ipcRenderer.invoke(IPC.passwordImportAi),
+    importAi: (requestId) => ipcRenderer.invoke(IPC.passwordImportAi, requestId),
     importSave: (drafts: PasswordDraft[]) =>
       ipcRenderer.invoke(IPC.passwordImportSave, drafts)
   },

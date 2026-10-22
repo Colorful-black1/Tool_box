@@ -57,7 +57,7 @@ M6 的工具入参校验手写而不引 zod，Markdown 解析与占位封面都�
 
 | 项           | 命令                                             | 期望                          |
 | ------------ | ------------------------------------------------ | ----------------------------- |
-| 单元测试     | `npm run test`                                   | 783 项通过（70 个文件）       |
+| 单元测试     | `npm run test`                                   | 792 项通过（73 个文件）       |
 | 数据层端到端 | `npm run mobile:verify:data`                     | 84 项通过                     |
 | 类型         | `npm run typecheck` + `npm run mobile:typecheck` | 无错误                        |
 | 规范         | `npm run lint`                                   | 无告警（0 errors / 0 warnings） |
@@ -77,6 +77,7 @@ M6 的工具入参校验手写而不引 zod，Markdown 解析与占位封面都�
 | OpenCode 工作台 | 内置编程 Agent、Prompt 交接、保留外部入口 | 已补充手动新建 / 历史选择与 Desktop 可见模型同步；Windows Desktop 2.1.1 已实机验证 |
 | 工具发现与排列 | 开发者工具搜索、拖拽调整常用顺序 | 已完成搜索、组内拖放 / 键盘排序和重启恢复，规格见 `docs/SPEC-tool-navigation.md` |
 | IP 与提示词美化 | 本机地址、手动 AI 润色和模板交接 | 已完成；非回环 IPv4 / IPv6、刷新复制、占位符保护、结果转新模板 / Agent 草稿，规格见 `docs/SPEC-ip-prompt-tools.md` |
+| AI 流式输出 | 提示词美化、桌面 / 手机密码识别 | 已接入真实分片、停止、脱敏预览与完整结果校验；原 AI 助手和 OpenCode 保留现有流式链路，见 `docs/SPEC-ai-streaming.md` |
 | 其他编程 Agent | DeepSeek Harness 等适配 | 待 OpenCode 使用反馈后评估 |
 
 A 阶段验收范围：回归用例覆盖非全局 / 粘连 / Unicode 零宽正则、200 条上限，

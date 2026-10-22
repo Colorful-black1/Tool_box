@@ -7,6 +7,7 @@ export const IPC = {
 
   appInfo: 'app:info',
   toolsPromptPolish: 'tools:prompt:polish',
+  toolsAiStop: 'tools:ai:stop',
   systemNetworkAddresses: 'system:network:addresses',
   opencodeInspect: 'opencode:inspect',
   opencodeExecutable: 'opencode:executable:choose',
@@ -93,6 +94,7 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  aiOutput: 'tools:event:ai-output',
   opencode: 'opencode:event:state',
   blur: 'window:event:blur',
   focus: 'window:event:focus'

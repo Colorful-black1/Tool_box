@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type { AiCompletionOptions } from '../ai-gateway/ai-gateway'
 import { join } from 'node:path'
 
 import type { PasswordDraft } from '../../../shared/types'
@@ -34,7 +35,7 @@ export class PasswordAiService {
 
   constructor(
     private readonly assetsDir: string,
-    private readonly chat: (system: string, user: string) => Promise<string>
+    private readonly chat: (system: string, user: string, options?: AiCompletionOptions) => Promise<string>
   ) {}
 
   private systemPrompt(): string {
@@ -44,12 +45,12 @@ export class PasswordAiService {
     return this.promptCache
   }
 
-  async recognize(text: string): Promise<{ entries: PasswordDraft[]; skipped: number }> {
+  async recognize(text: string, options: AiCompletionOptions = {}): Promise<{ entries: PasswordDraft[]; skipped: number }> {
     if (text.trim().length > MAX_INPUT_CHARS) {
       throw new Error(`内容过长（${text.length} 字符），请拆分后分批处理`)
     }
 
-    const raw = await this.chat(this.systemPrompt(), text)
+    const raw = await this.chat(this.systemPrompt(), text, options)
     const entries = parseAiResponse(raw)
     return { entries, skipped: 0 }
   }

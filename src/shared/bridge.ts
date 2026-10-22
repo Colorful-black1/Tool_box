@@ -1,4 +1,5 @@
 import type {
+  AiOutputEvent,
   AgentPermission,
   AgentToolApprovalInput,
   AgentToolApprovalRequestEvent,
@@ -41,8 +42,10 @@ import type {
 
 export interface ToolboxBridge {
   tools: {
-    /** 手动调用当前 AI 配置，只返回润色文本，不执行任务或保存会话。 */
-    polishPrompt(text: string): Promise<string>
+    /** 手动润色；通过 requestId 关联增量，返回最终校验结果，不执行任务或保存会话。 */
+    polishPrompt(text: string, requestId?: string): Promise<string>
+    stopAi(requestId: string): Promise<void>
+    onAiOutput(listener: (event: AiOutputEvent) => void): () => void
   }
   opencode: {
     /** 已连接时同步 Desktop 模型可见性；不创建或恢复会话。 */
@@ -146,7 +149,7 @@ export interface ToolboxBridge {
     delete(id: string): Promise<void>
     setFavorite(id: string, isFavorite: boolean): Promise<void>
     importFixed(): Promise<ImportResult | null>
-    importAi(): Promise<PasswordDraft[] | null>
+    importAi(requestId?: string): Promise<PasswordDraft[] | null>
     importSave(drafts: PasswordDraft[]): Promise<number>
   }
   notes: {

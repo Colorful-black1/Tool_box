@@ -20,6 +20,8 @@ export interface WorkbenchProps {
   onChange: (value: string) => void
   /** 输出内容（出错时可以为空） */
   output: string
+  /** 流式预览尚未校验时禁用复制按钮。 */
+  outputPending?: boolean
   /** 出错时的提示（已脱敏 / 可读） */
   error?: string
   /** 输入区占位文案 */
@@ -60,6 +62,7 @@ export function Workbench({
   value,
   onChange,
   output,
+  outputPending = false,
   error,
   placeholder,
   actions,
@@ -121,7 +124,7 @@ export function Workbench({
             >
               换行
             </button>
-            <CopyButton text={output} />
+            <CopyButton text={outputPending ? '' : output} />
           </span>
         </header>
         {error ? (

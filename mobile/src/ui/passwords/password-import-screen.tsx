@@ -10,7 +10,7 @@
  * - AI 识别走 `AiGateway.complete()`（不落库、不进会话并发表），
  *   结果解析在 `password-recognizer.ts`，两处都是可单测的纯逻辑。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { File } from 'expo-file-system'
@@ -25,8 +25,8 @@ import {
   buildRecognitionPrompt,
   parseRecognitionResult
 } from '../../ai/password-recognizer'
-import type { PasswordDraft } from '../../shared-bridge'
-import { parsePasswordText } from '../../shared-bridge'
+import type { PasswordAiPreview, PasswordDraft } from '../../shared-bridge'
+import { JsonArrayObjectStream, passwordPreview, parsePasswordText } from '../../shared-bridge'
 import { duplicateKey } from './password-groups'
 import { readPickedTextFile } from '../../data/text-file'
 import { colors, fonts, radius, spacing } from '../../theme'
@@ -52,7 +52,18 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState<PasswordAiPreview[]>([])
+  const [received, setReceived] = useState(0)
+  const task = useRef<{ controller: AbortController | null }>({ controller: null })
   const keyboard = useKeyboardInset()
+
+  useEffect(() => {
+    const state = task.current
+    return () => {
+      state.controller?.abort()
+      state.controller = null
+    }
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -84,12 +95,31 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
   }
 
   /** 两条通道（粘贴 / 选文件）共用的正文产出：把识别结果落成草稿预览 */
-  const applyRecognized = async (source: string): Promise<void> => {
+  const applyRecognized = async (source: string, controller: AbortController): Promise<void> => {
     const trimmed = assertRecognizable(source)
+    const parser = new JsonArrayObjectStream()
+    const entries: PasswordAiPreview[] = []
+    let chars = 0
     const raw = await gateway.complete({
       system: RECOGNIZE_SYSTEM_PROMPT,
-      prompt: buildRecognitionPrompt(trimmed)
+      prompt: buildRecognitionPrompt(trimmed),
+      signal: controller.signal,
+      onDelta: (delta) => {
+        if (task.current.controller !== controller || controller.signal.aborted) return
+        chars += delta.length
+        for (const object of parser.push(delta)) {
+          try {
+            if (entries.length < 200)
+              entries.push(...parseRecognitionResult(`[${object}]`).map(passwordPreview))
+          } catch {
+            // 无效的片段不预览，最终完整 JSON 仍由解析器检查。
+          }
+        }
+        setReceived(chars)
+        setPreview([...entries])
+      }
     })
+    if (task.current.controller !== controller || controller.signal.aborted) return
     const parsed = parseRecognitionResult(raw)
     if (parsed.length === 0) {
       setError('AI 没识别出可导入的条目，换一段描述更明确的文本试试。')
@@ -99,15 +129,35 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
     setMessage(`AI 识别出 ${parsed.length} 条`)
   }
 
-  const recognize = async (): Promise<void> => {
+  const recognize = async (source: () => Promise<string | null> = async () => text): Promise<void> => {
+    if (task.current.controller || busy) return
     reset()
+    setPreview([])
+    setReceived(0)
     setBusy(true)
+    const controller = new AbortController()
+    task.current.controller = controller
     try {
-      await applyRecognized(text)
+      const content = await source()
+      if (controller.signal.aborted) {
+        setError('已停止识别，未完成的结果未采用')
+        return
+      }
+      if (content !== null) await applyRecognized(content, controller)
     } catch (recognizeError) {
-      setError(recognizeError instanceof Error ? recognizeError.message : 'AI 识别失败')
+      if (task.current.controller === controller)
+        setError(
+          controller.signal.aborted
+            ? '已停止识别，未完成的结果未采用'
+            : recognizeError instanceof Error ? recognizeError.message : 'AI 识别失败'
+        )
     } finally {
-      setBusy(false)
+      if (task.current.controller === controller) {
+        task.current.controller = null
+        setBusy(false)
+        setPreview([])
+        setReceived(0)
+      }
     }
   }
 
@@ -122,6 +172,13 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
    * 所以超限直接报错要求拆分。
    */
   const importFromFile = async (): Promise<void> => {
+    if (tab === 'ai') {
+      await recognize(async () => {
+        const picked = await File.pickFileAsync()
+        return picked.canceled ? null : readPickedTextFile(picked.result)
+      })
+      return
+    }
     reset()
     setBusy(true)
     try {
@@ -146,7 +203,6 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
         return
       }
 
-      await applyRecognized(content)
     } catch (fileError) {
       setError(fileError instanceof Error ? fileError.message : '读取文件失败')
     } finally {
@@ -179,8 +235,14 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
           批量导入
         </Text>
         <View style={styles.headerActions}>
-          <Chip label="按格式" active={tab === 'format'} onPress={() => setTab('format')} />
-          <Chip label="AI 识别" active={tab === 'ai'} onPress={() => setTab('ai')} />
+          <Chip
+            label="按格式" active={tab === 'format'} disabled={busy}
+            onPress={() => { setTab('format'); reset() }}
+          />
+          <Chip
+            label="AI 识别" active={tab === 'ai'} disabled={busy}
+            onPress={() => { setTab('ai'); reset() }}
+          />
         </View>
       </View>
 
@@ -191,12 +253,13 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
         <Text style={styles.hint}>
           {tab === 'format'
             ? '每条之间空一行，行内写「标签: 值」。支持 网站名/网址/用户名/密码/备注 等中文或英文标签。也可以直接选一个 .txt / .md 文件。'
-            : '直接粘贴聊天记录、表格转储或笔记，也可以选一个文本文件，交给模型抽取。会调用一次非流式补全，请先在设置页启用一套 AI 配置。'}
+            : '粘贴记录或选择文本文件，AI 将流式展示脱敏预览，完成校验后可导入。请先在设置页启用 AI 配置。'}
         </Text>
 
         <TextInput
           style={styles.input}
           value={text}
+          editable={!busy}
           onChangeText={(next) => {
             setText(next)
             if (drafts) reset()
@@ -227,6 +290,24 @@ export function PasswordImportScreen({ onBack }: { onBack: () => void }): ReactN
             />
           )}
         </View>
+
+        {busy && tab === 'ai' ? (
+          <GlassCard style={styles.preview}>
+            <Text style={styles.hint}>
+              已接收 {received} 字符，预览 {preview.length} 条（最多 200 条）；完成校验后可导入。
+            </Text>
+            {preview.map((entry, index) => (
+              <View key={index} style={styles.previewRow}>
+                <Text style={styles.previewTitleText}>{entry.title || '（无名称）'}</Text>
+                <Text style={styles.previewMeta}>
+                  {[entry.account, entry.hasPassword ? '密码已填' : '无密码']
+                    .filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            ))}
+            <GhostButton label="停止识别" onPress={() => task.current.controller?.abort()} />
+          </GlassCard>
+        ) : null}
 
         {error ? <Banner message={error} /> : null}
         {message && !error ? <Banner message={message} tone="info" /> : null}

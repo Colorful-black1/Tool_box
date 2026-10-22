@@ -72,8 +72,8 @@ function initializeServices(): void {
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
   const importService = new ImportService()
   const aiGateway = new AiGateway(settings, store, importService, promptDir)
-  const passwordAi = new PasswordAiService(promptDir, (system, user) =>
-    aiGateway.complete(system, user)
+  const passwordAi = new PasswordAiService(promptDir, (system, user, options) =>
+    aiGateway.complete(system, user, options)
   )
 
   shortcuts = new ShortcutManager(store, () => showMainWindow(mainWindow))

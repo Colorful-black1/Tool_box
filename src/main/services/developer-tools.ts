@@ -3,6 +3,7 @@ import type { NetworkInterfaceInfo } from 'node:os'
 import type { LocalIpAddressView } from '../../shared/types'
 import { MAX_PROMPT_BODY, promptVariables } from '../../shared/prompt-tools'
 import { AiGatewayError } from './ai-gateway/errors'
+import type { AiCompletionOptions } from './ai-gateway/ai-gateway'
 
 /** 本机工具的可读业务错误，不携带原文或系统异常。 */
 export class DeveloperToolError extends Error {}
@@ -40,16 +41,22 @@ const POLISH_SYSTEM = `你是提示词编辑器，只润色用户给出的提示
 /** 只调用无工具的一次性 AI 接口；同一时间仅允许一个润色请求。 */
 export class PromptPolisher {
   private busy = false
-  constructor(private readonly complete: (system: string, user: string) => Promise<string>) {}
+  constructor(
+    private readonly complete: (
+      system: string, user: string, options?: AiCompletionOptions
+    ) => Promise<string>
+  ) {}
 
-  async polish(text: string): Promise<string> {
+  async polish(text: string, options: AiCompletionOptions = {}): Promise<string> {
     if (!text.trim() || text.length > MAX_PROMPT_BODY)
       throw new DeveloperToolError('请填写 1 至 12000 字符的提示词')
     if (this.busy) throw new DeveloperToolError('正在润色提示词，请稍候')
     this.busy = true
     try {
       promptVariables(text)
-      const raw = await this.complete(POLISH_SYSTEM, text)
+      const raw = await this.complete(POLISH_SYSTEM, text, {
+        ...options, maxOutputChars: MAX_PROMPT_BODY + 32
+      })
       const output = raw
         .trim()
         .replace(/^```(?:markdown|md|text)?\r?\n([\s\S]*)\r?\n```$/i, '$1')
@@ -62,6 +69,7 @@ export class PromptPolisher {
         throw new DeveloperToolError('AI 改变了模板变量，结果未采用，请重试')
       return output
     } catch (error) {
+      if (options.signal?.aborted) throw new DeveloperToolError('已停止润色，未完成的结果未采用')
       if (error instanceof DeveloperToolError) throw error
       // 网关异常可能携带请求诊断链，跨 IPC 前仅保留已脱敏的用户文案。
       if (error instanceof AiGatewayError) throw new DeveloperToolError(error.userMessage)

@@ -11,6 +11,9 @@ export function PromptPolishPanel(): JSX.Element {
   const input = usePromptPolishStore((state) => state.input)
   const title = usePromptPolishStore((state) => state.title)
   const output = usePromptPolishStore((state) => state.output)
+  const preview = usePromptPolishStore((state) => state.preview)
+  const stopping = usePromptPolishStore((state) => state.stopping)
+  const stop = usePromptPolishStore((state) => state.stop)
   const busy = usePromptPolishStore((state) => state.busy)
   const error = usePromptPolishStore((state) => state.error)
   const setInput = usePromptPolishStore((state) => state.setInput)
@@ -56,6 +59,16 @@ export function PromptPolishPanel(): JSX.Element {
         >
           {busy ? 'AI 润色中…' : '开始 AI 润色'}
         </button>
+        {busy ? (
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={stopping}
+            onClick={() => void stop()}
+          >
+            {stopping ? '正在停止…' : '停止润色'}
+          </button>
+        ) : null}
         <span className="field-hint">{input.length.toLocaleString()}/12,000 字符</span>
       </div>
       <p className="field-hint">
@@ -63,12 +76,18 @@ export function PromptPolishPanel(): JSX.Element {
         模板变量原样保留，输入和结果仅在本次应用中保留。
       </p>
       {title ? <p className="field-hint">模板来源：{title}</p> : null}
+      {busy ? (
+        <p className="field-hint" role="status">
+          {stopping ? '正在停止生成…' : '正在流式生成，完成变量校验后可使用结果'}
+        </p>
+      ) : null}
       <Workbench
         inputLabel="待美化的提示词"
         outputLabel="AI 润色结果"
         value={input}
         onChange={(text) => setInput(text)}
-        output={output}
+        output={busy ? preview : output}
+        outputPending={busy}
         error={error}
         placeholder="输入提示词，或从 Prompt 模板库载入正文；支持 {{变量名}}"
       />

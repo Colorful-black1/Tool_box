@@ -61,6 +61,13 @@ module.exports = function createFixture() {
   let polishCount = 0
   let failPolish = false
   let failIp = false
+  let holdAi = false
+  let pendingAi = null
+  const waitForAi = (kind, requestId) =>
+    new Promise((resolve, reject) => {
+      holdAi = false
+      pendingAi = { kind, requestId, resolve, reject }
+    })
 
   return {
     controls: {
@@ -76,6 +83,33 @@ module.exports = function createFixture() {
       noteSaveCount: () => noteSaveCount,
       chatSendCount: () => chatSendCount,
       polishCount: () => polishCount,
+      holdNextAi: () => {
+        holdAi = true
+      },
+      pendingAiId: () => pendingAi?.requestId,
+      aiDelta: (delta) => {
+        if (pendingAi)
+          emit('ai-output', { kind: 'prompt-polish', requestId: pendingAi.requestId, delta })
+      },
+      aiPasswordPreview: (entries) => {
+        if (pendingAi)
+          emit('ai-output', {
+            kind: 'password-import',
+            requestId: pendingAi.requestId,
+            receivedChars: 80,
+            entries
+          })
+      },
+      finishAi: (value) => {
+        const pending = pendingAi
+        pendingAi = null
+        pending?.resolve(value)
+      },
+      failAi: () => {
+        const pending = pendingAi
+        pendingAi = null
+        pending?.reject(new Error('合成生成失败'))
+      },
       failNextPolish: () => {
         failPolish = true
       },
@@ -89,13 +123,24 @@ module.exports = function createFixture() {
     },
     toolbox: {
       tools: {
-        polishPrompt: async (text) => {
+        polishPrompt: async (text, requestId) => {
           polishCount++
           if (failPolish) {
             failPolish = false
             throw new Error('合成润色失败，请重试')
           }
-          return `请清晰地执行以下合成任务：\n\n${text}`
+          if (holdAi) return waitForAi('prompt-polish', requestId)
+          const output = `请清晰地执行以下合成任务：\n\n${text}`
+          emit('ai-output', { kind: 'prompt-polish', requestId, delta: output })
+          return output
+        },
+        onAiOutput: subscribe('ai-output'),
+        stopAi: async (requestId) => {
+          if (pendingAi?.requestId === requestId) {
+            const pending = pendingAi
+            pendingAi = null
+            pending.reject(new Error('已停止生成，未完成的结果未采用'))
+          }
         }
       },
       opencode: opencode.bridge,
@@ -126,7 +171,11 @@ module.exports = function createFixture() {
         flush: async () => undefined
       },
       groups: { list: async () => copy(groups) },
-      passwords: { list: async () => copy(passwords) },
+      passwords: {
+        list: async () => copy(passwords),
+        importAi: async (requestId) => (holdAi ? waitForAi('password-import', requestId) : []),
+        importSave: async (drafts) => drafts.length
+      },
       notes: {
         list: async () => {
           if (failNotes) {

@@ -111,3 +111,7 @@ export {
   resolveChatModels
 } from '../../src/shared/model-list'
 export { MAX_MODEL_NAME_CHARS, MAX_SELECTED_MODELS } from '../../src/shared/model-list'
+
+// 无会话 AI 流的结构化预览；只复用无平台依赖的纯逻辑。
+export { JsonArrayObjectStream, passwordPreview } from '../../src/shared/ai-output'
+export type { PasswordAiPreview } from '../../src/shared/types'

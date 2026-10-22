@@ -1,9 +1,10 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { PasswordDraft, PasswordImportMode } from '../../../../shared/types'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
+import { usePasswordAiStore } from '../../stores/password-ai-store'
 
 interface Props {
   onClose(): void
@@ -40,10 +41,27 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const aiBusy = usePasswordAiStore((state) => state.busy)
+  const aiStopping = usePasswordAiStore((state) => state.stopping)
+  const aiEntries = usePasswordAiStore((state) => state.entries)
+  const aiReceived = usePasswordAiStore((state) => state.receivedChars)
+  const aiError = usePasswordAiStore((state) => state.error)
+  const aiDrafts = usePasswordAiStore((state) => state.drafts)
+  const working = busy || aiBusy
+
+  useEffect(() => () => usePasswordAiStore.getState().clear(), [])
+  useEffect(() => {
+    if (!aiDrafts) return
+    setDrafts(aiDrafts)
+    setPicked(new Set(aiDrafts
+      .map((item, index) => item.duplicate ? -1 : index)
+      .filter((index) => index >= 0)))
+  }, [aiDrafts])
 
   useOverlayEscape(onClose)
 
   function reset(): void {
+    usePasswordAiStore.getState().clear()
     setDrafts([])
     setPicked(new Set())
     setSkipped(0)
@@ -80,27 +98,12 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
   }
 
   async function loadAi(): Promise<void> {
-    setBusy(true)
-    setError('')
-    try {
-      const list = await window.toolbox?.passwords.importAi()
-      if (!list) return
-      setDrafts(list)
-      setSkipped(0)
-      setPicked(
-        new Set(
-          list.map((item, index) => (item.duplicate ? -1 : index)).filter((index) => index >= 0)
-        )
-      )
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'AI 识别失败')
-    } finally {
-      setBusy(false)
-    }
+    reset()
+    await usePasswordAiStore.getState().start()
   }
 
   async function confirm(): Promise<void> {
-    if (picked.size === 0 || saving) return
+    if (picked.size === 0 || saving || working) return
     setSaving(true)
     try {
       const selected = drafts.filter((_, index) => picked.has(index))
@@ -112,7 +115,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
     }
   }
 
-  const busyLabel = busy
+  const busyLabel = working
     ? mode === 'fixed'
       ? '解析中…'
       : 'AI 识别中，请稍候…'
@@ -146,6 +149,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <button
             type="button"
             className={`segment${mode === 'fixed' ? ' active' : ''}`}
+            disabled={working || saving}
             onClick={() => switchMode('fixed')}
           >
             固定格式
@@ -153,6 +157,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <button
             type="button"
             className={`segment${mode === 'ai' ? ' active' : ''}`}
+            disabled={working || saving}
             onClick={() => switchMode('ai')}
           >
             AI 识别
@@ -184,17 +189,48 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <button
             type="button"
             className="btn-gold"
-            disabled={busy}
+            disabled={working || saving}
             onClick={() => void (mode === 'fixed' ? loadFixed() : loadAi())}
           >
             {busyLabel}
           </button>
           <span className="field-hint">支持 .txt / .md</span>
+          {aiBusy ? (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={aiStopping}
+              onClick={() => void usePasswordAiStore.getState().stop()}
+            >
+              {aiStopping ? '正在停止…' : '停止识别'}
+            </button>
+          ) : null}
         </div>
 
-        {error ? (
+        {aiBusy ? (
+          <div className="format-hint" aria-label="AI 识别流式预览">
+            <p className="field-hint" role="status">
+              已接收 {aiReceived} 字符，预览 {aiEntries.length} 条（最多 200 条）；完成校验后可导入。
+            </p>
+            <ul className="import-preview-list">
+              {aiEntries.map((entry, index) => (
+                <li key={index} className="import-item">
+                  <span className="import-item-text">
+                    <span className="import-item-title">{entry.title || '（无名称）'}</span>
+                    <span className="import-item-sub">
+                      {[entry.account, entry.hasPassword ? '密码已填' : '无密码']
+                        .filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {error || aiError ? (
           <div className="status-banner" role="alert">
-            {error}
+            {error || aiError}
           </div>
         ) : null}
 
@@ -202,7 +238,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <div className="skipped-hint">已跳过 {skipped} 行无法识别的内容</div>
         ) : null}
 
-        {drafts.length === 0 && !busy && !error ? (
+        {drafts.length === 0 && !working && !error && !aiError ? (
           <p className="sheet-empty">尚未解析任何条目</p>
         ) : null}
 
@@ -215,6 +251,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
               <button
                 type="button"
                 className="btn-ghost"
+                disabled={working || saving}
                 onClick={() =>
                   setPicked(
                     picked.size === drafts.length
@@ -233,6 +270,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
                     <input
                       type="checkbox"
                       checked={picked.has(index)}
+                      disabled={working || saving}
                       onChange={(event) => {
                         const next = new Set(picked)
                         if (event.target.checked) next.add(index)
@@ -246,7 +284,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
                         {draft.duplicate ? <em className="dup-flag">已存在</em> : null}
                       </span>
                       <span className="import-item-sub">
-                        {[draft.account, draft.password, draft.url, draft.remark]
+                        {[draft.account, draft.password ? '密码已填' : '', draft.url, draft.remark]
                           .filter(Boolean)
                           .join('　') || '（无其他信息）'}
                       </span>
@@ -265,7 +303,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <button
             type="button"
             className="btn-gold"
-            disabled={picked.size === 0 || saving}
+            disabled={picked.size === 0 || saving || working}
             onClick={() => void confirm()}
           >
             {saving ? '导入中…' : `导入所选（${picked.size}）`}

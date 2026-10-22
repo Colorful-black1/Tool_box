@@ -22,6 +22,8 @@ import type { AppView } from './stores/app-store'
 import { useAppStore } from './stores/app-store'
 import { useConfigStore } from './stores/config-store'
 import { useRailStore } from './stores/rail-store'
+import { usePromptPolishStore } from './stores/prompt-polish-store'
+import { usePasswordAiStore } from './stores/password-ai-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   opencode: { title: '编程 Agent', subtitle: 'OPENCODE · 从提示词到项目实践' },
@@ -79,6 +81,15 @@ export default function App(): JSX.Element {
   const openReader = useAppStore((state) => state.openReader)
   const loadConfig = useConfigStore((state) => state.load)
   const railCollapsed = useRailStore((state) => state.collapsed || state.narrow)
+
+  useEffect(() => {
+    const bridge = window.toolbox?.tools
+    if (!bridge?.onAiOutput) return
+    return bridge.onAiOutput((event) => {
+      usePromptPolishStore.getState().receive(event)
+      usePasswordAiStore.getState().receive(event)
+    })
+  }, [])
 
   useEffect(() => {
     void loadConfig()

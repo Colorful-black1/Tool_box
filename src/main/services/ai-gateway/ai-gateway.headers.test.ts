@@ -46,22 +46,9 @@ describe('AiGateway provider headers', () => {
     received = []
     server = createServer((request, response) => {
       received.push(request.headers)
-      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' })
       response.end(
-        JSON.stringify({
-          id: 'chatcmpl-1',
-          object: 'chat.completion',
-          created: 0,
-          model: 'test-model',
-          choices: [
-            {
-              index: 0,
-              message: { role: 'assistant', content: 'pong' },
-              finish_reason: 'stop'
-            }
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
-        })
+        ['po', 'ng'].map((content) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}\n\n`).join('') + 'data: [DONE]\n\n'
       )
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -109,5 +96,22 @@ describe('AiGateway provider headers', () => {
 
     expect(received).toHaveLength(1)
     expect(received[0]['x-opencode-session']).toBeUndefined()
+  })
+
+  it('真实传输在完成前逐片回调，并支持取消与输出上限', async () => {
+    const settings = new SettingsService(directory, new FakeSafeStorage())
+    await settings.save({ name: '合成流', provider: 'custom', baseUrl, model: 'test', apiKey: 'sk-test' })
+    const gateway = new AiGateway(settings, storeStub, importServiceStub, '')
+    const deltas: string[] = []
+    let completed = false
+    await gateway.complete('system', 'ping', { onDelta: (delta) => {
+      expect(completed).toBe(false)
+      deltas.push(delta)
+    } }).then(() => { completed = true })
+    expect(deltas).toEqual(['po', 'ng'])
+    const controller = new AbortController()
+    await expect(gateway.complete('system', 'ping', { signal: controller.signal, onDelta: () => controller.abort() }))
+      .rejects.toMatchObject({ name: 'AbortError' })
+    await expect(gateway.complete('system', 'ping', { maxOutputChars: 1 })).rejects.toThrow('过长')
   })
 })

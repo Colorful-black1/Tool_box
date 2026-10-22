@@ -10,6 +10,7 @@ const verifyThemes = require('./themes.cjs')
 const verifyOpenCode = require('./opencode.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
+const verifyAiStream = require('./ai-stream.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
@@ -48,6 +49,13 @@ async function main() {
         const element = document.querySelector('.message-list')
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
+
+    if (process.argv.includes('--ai-stream-only')) {
+      await verifyAiStream({ page, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`AI 流式验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
 
     if (process.argv.includes('--ip-prompt-only')) {
       await verifyIpPrompt({ page, app, check, capture })
@@ -338,6 +346,7 @@ async function main() {
     await verifyIpPrompt({ page, app, check, capture })
     await verifyToolNavigation({ page, app, check, capture })
     await verifyDevTools({ page, app, check, capture })
+    await verifyAiStream({ page, check, capture })
     await verifyOpenCode({ page, app, check, capture })
     await verifyThemes({ page, app, check, capture })
     await check('重启 Electron 后恢复主题和动效设置', async () => {

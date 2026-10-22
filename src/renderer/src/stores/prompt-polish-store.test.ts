@@ -9,6 +9,10 @@ beforeEach(() => {
     input: '',
     title: '',
     output: '',
+    preview: '',
+    requestId: null,
+    requestRevision: 0,
+    stopping: false,
     revision: 0,
     busy: false,
     error: ''
@@ -39,9 +43,17 @@ describe('提示词美化状态', () => {
     )
     usePromptPolishStore.getState().setInput('旧输入')
     const pending = usePromptPolishStore.getState().run()
+    const id = usePromptPolishStore.getState().requestId!
+    usePromptPolishStore.getState().receive({ kind: 'prompt-polish', requestId: id, delta: '正在' })
+    expect(usePromptPolishStore.getState().preview).toBe('正在')
+    expect(usePromptPolishStore.getState().output).toBe('')
     await usePromptPolishStore.getState().run()
     expect(polish).toHaveBeenCalledTimes(1)
     usePromptPolishStore.getState().setInput('新输入')
+    usePromptPolishStore
+      .getState()
+      .receive({ kind: 'prompt-polish', requestId: id, delta: '旧分片' })
+    expect(usePromptPolishStore.getState().preview).toBe('')
     resolve('旧结果')
     await pending
     expect(usePromptPolishStore.getState().input).toBe('新输入')
