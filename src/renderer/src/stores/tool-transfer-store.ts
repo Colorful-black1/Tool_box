@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { useAppStore } from './app-store'
 
-export type TransferToolId = 'json' | 'diff' | 'redact' | 'java-log' | 'prompt'
+export type TransferToolId =
+  'json' | 'diff' | 'redact' | 'java-log' | 'prompt' | 'prompt-polish' | 'prompt-template'
 
 /** 一次性的渲染层数据交接；不落盘、不触发 AI 请求。 */
 interface ToolTransfer {
@@ -26,7 +27,7 @@ export const useToolTransferStore = create<ToolTransferState>((set, get) => ({
   send: (target, text, other, mode) => {
     const sequence = get().sequence + 1
     set({ sequence, pending: { sequence, target, text, other, mode } })
-    useAppStore.getState().setToolsActive(target)
+    useAppStore.getState().setToolsActive(target === 'prompt-template' ? 'prompt' : target)
     useAppStore.getState().setView('tools')
   },
   consume: (sequence) => {

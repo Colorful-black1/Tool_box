@@ -58,6 +58,9 @@ module.exports = function createFixture() {
   let failNoteSave = false
   let noteSaveCount = 0
   let chatSendCount = 0
+  let polishCount = 0
+  let failPolish = false
+  let failIp = false
 
   return {
     controls: {
@@ -72,12 +75,29 @@ module.exports = function createFixture() {
       copiedText: () => copied,
       noteSaveCount: () => noteSaveCount,
       chatSendCount: () => chatSendCount,
+      polishCount: () => polishCount,
+      failNextPolish: () => {
+        failPolish = true
+      },
+      failNextIp: () => {
+        failIp = true
+      },
       lastNote: () => copy(notes.at(-1)),
       failNextNoteSave: () => {
         failNoteSave = true
       }
     },
     toolbox: {
+      tools: {
+        polishPrompt: async (text) => {
+          polishCount++
+          if (failPolish) {
+            failPolish = false
+            throw new Error('合成润色失败，请重试')
+          }
+          return `请清晰地执行以下合成任务：\n\n${text}`
+        }
+      },
       opencode: opencode.bridge,
       app: { info: async () => ({ name: '隔离验收', version: '0.2.0', platform: 'win32' }) },
       config: { get: async () => null, set: async () => null },
@@ -132,6 +152,26 @@ module.exports = function createFixture() {
         }
       },
       system: {
+        networkAddresses: async () => {
+          if (failIp) {
+            failIp = false
+            throw new Error('合成网络读取失败')
+          }
+          return [
+            {
+              interfaceName: '合成网卡',
+              family: 'IPv4',
+              address: '192.0.2.10',
+              netmask: '255.255.255.0'
+            },
+            {
+              interfaceName: '合成网卡',
+              family: 'IPv6',
+              address: '2001:db8::10',
+              netmask: 'ffff:ffff:ffff:ffff::'
+            }
+          ]
+        },
         getShortcut: async () => ({ enabled: false, accelerator: 'Control+Shift+Space' }),
         copyText: async (text) => {
           copied = text

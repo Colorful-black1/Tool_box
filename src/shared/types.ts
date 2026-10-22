@@ -1,5 +1,13 @@
 export type ChatRole = 'user' | 'assistant'
 
+/** 本机网卡的只读地址视图，不包含 MAC、网关或公网探测信息。 */
+export interface LocalIpAddressView {
+  interfaceName: string
+  address: string
+  family: 'IPv4' | 'IPv6'
+  netmask: string
+}
+
 // ============ 外部编程 Agent：OpenCode ============
 
 /** 仅包含程序与目录信息，不包含 OpenCode 登录凭据。 */

@@ -1,5 +1,12 @@
 import { APP_THEMES } from '../../shared/appearance'
-import { validatePromptLibrary } from '../../shared/prompt-tools'
+import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
+
+/** AI 润色接收原文，长度在 trim 前校验，避免空白绕过输入限制。 */
+export function validatePromptPolishInput(value: unknown): string {
+  if (typeof value === 'string' && value.length > MAX_PROMPT_BODY)
+    throw new Error('提示词最多 12000 字符')
+  return requireString(value, '提示词', { maxLength: MAX_PROMPT_BODY })
+}
 
 export function requireString(
   value: unknown,

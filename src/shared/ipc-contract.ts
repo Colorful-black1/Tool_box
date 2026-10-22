@@ -6,6 +6,8 @@ export const IPC = {
   settingsModelsFetch: 'settings:models:fetch',
 
   appInfo: 'app:info',
+  toolsPromptPolish: 'tools:prompt:polish',
+  systemNetworkAddresses: 'system:network:addresses',
   opencodeInspect: 'opencode:inspect',
   opencodeExecutable: 'opencode:executable:choose',
   opencodeDirectory: 'opencode:directory:choose',

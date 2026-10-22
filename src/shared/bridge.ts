@@ -23,6 +23,7 @@ import type {
   ChatStoppedEvent,
   ConversationSummary,
   ImportResult,
+  LocalIpAddressView,
   NoteSaveInput,
   NoteView,
   OpenCodeEvent,
@@ -39,6 +40,10 @@ import type {
 } from './types'
 
 export interface ToolboxBridge {
+  tools: {
+    /** 手动调用当前 AI 配置，只返回润色文本，不执行任务或保存会话。 */
+    polishPrompt(text: string): Promise<string>
+  }
   opencode: {
     /** 已连接时同步 Desktop 模型可见性；不创建或恢复会话。 */
     inspect(): Promise<OpenCodeInfo>
@@ -156,6 +161,8 @@ export interface ToolboxBridge {
     clear(): Promise<void>
   }
   system: {
+    /** 本机非回环网卡地址，不发起公网请求。 */
+    networkAddresses(): Promise<LocalIpAddressView[]>
     copyText(text: string): Promise<void>
     /** 读取全局快捷键配置 */
     getShortcut(): Promise<ShortcutConfig>

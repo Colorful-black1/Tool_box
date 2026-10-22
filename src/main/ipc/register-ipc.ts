@@ -22,6 +22,7 @@ import type { SettingsService } from '../services/settings/settings-service'
 import type { ShortcutManager } from '../shortcuts'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { registerOpenCodeIpc } from './opencode-ipc'
+import { DeveloperToolError, listLocalAddresses, PromptPolisher } from '../services/developer-tools'
 import {
   assertObject,
   optionalString,
@@ -31,7 +32,8 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
-  validateConfigPatch
+  validateConfigPatch,
+  validatePromptPolishInput
 } from './validation'
 
 export interface IpcDependencies {
@@ -47,6 +49,7 @@ export interface IpcDependencies {
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerOpenCodeIpc(dependencies.opencode)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
+  const polisher = new PromptPolisher((system, user) => aiGateway.complete(system, user))
   const assetsDir = app.getAppPath()
   const userDataDir = app.getPath('userData')
 
@@ -56,6 +59,31 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     version: app.getVersion(),
     platform: process.platform
   }))
+
+  ipcMain.handle(IPC.systemNetworkAddresses, (event) => {
+    if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
+      throw new Error('当前页面无权读取网络信息')
+    try {
+      return listLocalAddresses()
+    } catch (error) {
+      throw new Error('无法读取本机 IP，请稍后刷新重试', { cause: error })
+    }
+  })
+  ipcMain.handle(IPC.toolsPromptPolish, async (event, value: unknown) => {
+    if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
+      throw new Error('当前页面无权使用提示词美化')
+    const text = validatePromptPolishInput(value)
+    try {
+      return await polisher.polish(text)
+    } catch (error) {
+      throw new Error(
+        error instanceof DeveloperToolError
+          ? error.message
+          : '提示词润色失败，请重试',
+        { cause: error }
+      )
+    }
+  })
 
   // ---------- 阅读与桌面外观配置 kv ----------
   ipcMain.handle(IPC.configGet, () => store.configGet())

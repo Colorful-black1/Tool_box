@@ -34,6 +34,9 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  tools: {
+    polishPrompt: (text: string) => ipcRenderer.invoke(IPC.toolsPromptPolish, text)
+  },
   opencode: {
     // 主进程返回已筛选的可见模型 id；不把 Desktop 原始偏好数据送入渲染层。
     inspect: () => ipcRenderer.invoke(IPC.opencodeInspect),
@@ -160,6 +163,7 @@ const bridge: ToolboxBridge = {
     clear: () => ipcRenderer.invoke(IPC.backgroundClear)
   },
   system: {
+    networkAddresses: () => ipcRenderer.invoke(IPC.systemNetworkAddresses),
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),
     getShortcut: () => ipcRenderer.invoke(IPC.systemShortcutGet),
     setShortcut: (config: ShortcutConfig) =>

@@ -11,6 +11,8 @@ import { DiffPanel } from './panels/diff-panel'
 import { JavaLogPanel } from './panels/java-log-panel'
 import { RedactionPanel } from './panels/redaction-panel'
 import { PromptPanel } from './panels/prompt-panel'
+import { IpPanel } from './panels/ip-panel'
+import { PromptPolishPanel } from './panels/prompt-polish-panel'
 import { HashPanel } from './panels/hash-panel'
 import { JsonPanel } from './panels/json-panel'
 import { RegexPanel } from './panels/regex-panel'
@@ -39,7 +41,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
   {
     id: 'dev',
     name: '开发者工具',
-    description: '本机处理开发数据，结果可复制、脱敏或填入 AI 对话草稿',
+    description: '开发数据与网络信息，提示词可手动调用 AI 润色',
     tools: [
       {
         id: 'regex',
@@ -112,6 +114,18 @@ export const TOOL_GROUPS: ToolGroup[] = [
         name: 'UUID 生成器',
         description: '批量生成 UUID v4，数量可调',
         render: () => <UuidPanel />
+      },
+      {
+        id: 'my-ip',
+        name: '我的 IP',
+        description: '查看本机网卡的 IPv4 / IPv6、子网掩码，支持刷新与复制',
+        render: () => <IpPanel />
+      },
+      {
+        id: 'prompt-polish',
+        name: '提示词美化',
+        description: '手动调用当前 AI 配置润色提示词，保留模板变量，可转为新模板草稿',
+        render: () => <PromptPolishPanel />
       }
     ]
   }

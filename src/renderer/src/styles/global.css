@@ -4433,6 +4433,31 @@ textarea,
   gap: 14px;
 }
 
+.tool-ip-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-mid);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tool-ip-table th,
+.tool-ip-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--gold-line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.tool-ip-table th {
+  color: var(--text-hi);
+  font-weight: 500;
+}
+
+.tool-ip-table code {
+  font-family: var(--mono);
+}
+
 .tool-controls {
   display: flex;
   align-items: center;

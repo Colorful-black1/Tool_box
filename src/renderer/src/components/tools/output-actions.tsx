@@ -9,12 +9,14 @@ export function ToolOutputActions({
   text,
   title,
   offerRedaction = true,
-  offerPrompt = true
+  offerPrompt = true,
+  processingHint = '本机处理；由你点击发送 AI'
 }: {
   text: string
   title: string
   offerRedaction?: boolean
   offerPrompt?: boolean
+  processingHint?: string
 }): JSX.Element | null {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<{ text: string; message: string } | null>(null)
@@ -125,7 +127,7 @@ export function ToolOutputActions({
         >
           用于编程 Agent
         </button>
-        <span className="field-hint">本机处理；由你点击发送 AI</span>
+        <span className="field-hint">{processingHint}</span>
       </div>
       {status ? (
         <p className="field-hint" role="status">

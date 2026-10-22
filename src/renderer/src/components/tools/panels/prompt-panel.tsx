@@ -52,6 +52,14 @@ export function PromptPanel(): JSX.Element {
     if (!templates.length) setDraft({ id: generateUuid(), title: '', body: NEW_TEMPLATE_BODY })
   }, [loaded, selected, selectedId, templates])
   useEffect(() => {
+    if (pending?.target === 'prompt-template') {
+      setSelectedId('')
+      setVersion('current')
+      setDraft({ id: generateUuid(), title: pending.other ?? '润色后的提示词', body: pending.text })
+      setStatus('已转为新模板草稿，请检查后手动保存；原模板保持不变')
+      useToolTransferStore.getState().consume(pending.sequence)
+      return
+    }
     if (pending?.target !== 'prompt') return
     setValues((current) => ({ ...current, context: pending.text }))
     useToolTransferStore.getState().consume(pending.sequence)
@@ -132,6 +140,19 @@ export function PromptPanel(): JSX.Element {
           onClick={() => void saveTemplate()}
         >
           {saving ? '保存中…' : selected ? '保存新版本' : '保存模板'}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={saving || !body.trim()}
+          onClick={() => {
+            if (permitSwitch())
+              useToolTransferStore
+                .getState()
+                .send('prompt-polish', body, historical?.title ?? draft.title)
+          }}
+        >
+          美化模板正文
         </button>
       </div>
       {error ? (
@@ -249,6 +270,17 @@ export function PromptPanel(): JSX.Element {
         <header className="tool-io-head">
           <span className="tool-io-label">生成的 Prompt</span>
           <CopyButton text={generated.output} />
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={!generated.output || saving}
+            onClick={() => {
+              if (permitSwitch())
+                useToolTransferStore.getState().send('prompt-polish', generated.output, draft.title)
+            }}
+          >
+            美化生成的 Prompt
+          </button>
         </header>
         {generated.error ? (
           <p className="field-hint" role="status">

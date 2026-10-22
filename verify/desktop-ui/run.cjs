@@ -9,6 +9,7 @@ const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
 const verifyOpenCode = require('./opencode.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
+const verifyIpPrompt = require('./ip-prompt.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
@@ -48,6 +49,13 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--ip-prompt-only')) {
+      await verifyIpPrompt({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`IP 与提示词美化验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+
     if (process.argv.includes('--sidebar-only')) {
       await verifySidebarNavigation({ page, app, check, capture })
       assert.deepEqual(errors, [])
@@ -77,6 +85,7 @@ async function main() {
     }
 
     if (process.argv.includes('--tools-only')) {
+      await verifyIpPrompt({ page, app, check, capture })
       await verifyToolNavigation({ page, app, check, capture })
       await verifyDevTools({ page, app, check, capture })
       await check('重启后恢复模板及历史，变量值不恢复', async () => {
@@ -326,6 +335,7 @@ async function main() {
         if (width === 1024) await capture('text-result-narrow')
       })
     }
+    await verifyIpPrompt({ page, app, check, capture })
     await verifyToolNavigation({ page, app, check, capture })
     await verifyDevTools({ page, app, check, capture })
     await verifyOpenCode({ page, app, check, capture })

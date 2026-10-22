@@ -57,12 +57,13 @@ M6 的工具入参校验手写而不引 zod，Markdown 解析与占位封面都�
 
 | 项           | 命令                                             | 期望                          |
 | ------------ | ------------------------------------------------ | ----------------------------- |
-| 单元测试     | `npm run test`                                   | 747 项通过（65 个文件）       |
+| 单元测试     | `npm run test`                                   | 783 项通过（70 个文件）       |
 | 数据层端到端 | `npm run mobile:verify:data`                     | 84 项通过                     |
 | 类型         | `npm run typecheck` + `npm run mobile:typecheck` | 无错误                        |
 | 规范         | `npm run lint`                                   | 无告警（0 errors / 0 warnings） |
 | 打包         | `npm run mobile:bundle`                          | 成功（964 模块 / 2.4 MB）     |
 | 桌面交互     | `npm run build` 后 `node verify/desktop-ui/run.cjs` | 历史全量 56 项、OpenCode 专项 15 项通过；本轮侧栏 11 项通过，全量按更新后的验证规则主动中止 |
+| 工具交互     | `node verify/desktop-ui/run.cjs --tools-only --screenshots` | 导航、原有工具与 IP / 提示词美化合计 34 项通过；页面异常 0 项 |
 
 ### 优化计划执行状态
 
@@ -75,6 +76,7 @@ M6 的工具入参校验手写而不引 zod，Markdown 解析与占位封面都�
 | E：数据保障与规模化 | 备份恢复、按需解密、性能测量；再评估跨端同步 | 待实施；IPC、数据库、加密变更需先说明具体方案与影响 |
 | OpenCode 工作台 | 内置编程 Agent、Prompt 交接、保留外部入口 | 已补充手动新建 / 历史选择与 Desktop 可见模型同步；Windows Desktop 2.1.1 已实机验证 |
 | 工具发现与排列 | 开发者工具搜索、拖拽调整常用顺序 | 已完成搜索、组内拖放 / 键盘排序和重启恢复，规格见 `docs/SPEC-tool-navigation.md` |
+| IP 与提示词美化 | 本机地址、手动 AI 润色和模板交接 | 已完成；非回环 IPv4 / IPv6、刷新复制、占位符保护、结果转新模板 / Agent 草稿，规格见 `docs/SPEC-ip-prompt-tools.md` |
 | 其他编程 Agent | DeepSeek Harness 等适配 | 待 OpenCode 使用反馈后评估 |
 
 A 阶段验收范围：回归用例覆盖非全局 / 粘连 / Unicode 零宽正则、200 条上限，
