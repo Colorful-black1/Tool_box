@@ -12,6 +12,19 @@
 
 ---
 
+# 维护范围与当前优先级（2026-10-23 用户确认）
+
+**Tool_box 当前以 PC 桌面端为维护主线，手机端暂停维护。** 后续功能、修复、主题和编程 Agent 均优先服务桌面端（现阶段已验证平台为 Windows）。
+
+* `mobile/` 代码、历史文档和脚本保留；默认不开发、不修复、不升级手机依赖，不安排真机验收、打包或发布。
+* 桌面端改 `src/shared/**`、数据库 schema、主题或 Agent 工具时，不再强制同步手机端、更新手机 fixture 或执行 `mobile:*` 验证；手机兼容性不作为桌面交付门槛。
+* 不为冻结手机端阻塞桌面工作，也不自动删除手机代码、测试、依赖或用户数据。既有手机测试 / 配置可能因桌面演进失配，需如实记录，不能伪造通过。
+* 仅在用户明确要求手机端任务或恢复维护时，重新评估共享接口、schema、加密、依赖和验证范围。手机端历史要求不因桌面改动自动恢复生效。
+
+本节优先于历史规格中的手机同步与验收要求；数据库、IPC、安全、Git 授权及下方编译测试门槛保持有效。
+
+---
+
 # 工作原则
 
 * 先理解需求和现有代码，再动手；不重新设计已有实现。
@@ -61,6 +74,8 @@
 **未同时满足上述条件**（功能实现简单或代码量过小）时，不允许进行编译测试，由用户手动验证。此限制包括类型检查、lint、单元测试、构建、打包、启动开发服务及手机端对应验证命令；允许阅读代码、检查 diff 等静态审查。
 
 满足条件且需要验证时，顺序：`npm run typecheck` → `npm run lint` → `npm run test`（命令说明见 `README.md`），再按改动范围选择其他验证命令。
+
+手机端暂停维护期间，桌面验证在上述顺序中使用 `npm run lint -- --ignore-pattern "mobile/**"` 与 `npm run test -- --exclude "mobile/**"`。根配置仍包含手机目录，本轮仅明确验证范围，不修改脚本或删除测试；类型检查使用原有桌面 `npm run typecheck`。不默认执行手机端命令。
 
 注释、文档（含本文件）、日志文案、常量描述、类型字段注释、纯样式（`global.css` / Tailwind class）改动不单独触发编译测试。
 
@@ -156,7 +171,7 @@ API Key、Token / Secret、密码箱主密钥与密文信封、AccessKey、完�
 
 **数据删除**：优先归档 / 逻辑删除，谨慎物理删除；需物理删除必须获得明确授权。
 
-**跨端同步**：手机端 schema 改动必须两端同步，并重新生成 `desktop-schema.fixture.json`（见「手机端规范」）。
+**跨端同步**：手机端暂停维护期间，桌面 schema 可独立演进，不强制改手机 schema 或生成 `desktop-schema.fixture.json`，不承诺两端继续同构。恢复手机维护时再核对版本差异、兼容与迁移；桌面表结构变更仍须用户授权。
 
 ---
 
@@ -254,22 +269,24 @@ Controller = `ipc/register-ipc.ts` handler；Service = `services/*`；Repository
 
 ---
 
-# 手机端规范（`mobile/`）
+# 手机端历史规范（`mobile/`，已暂停维护）
+
+**以下规范仅供归档和未来恢复维护参考，不是当前桌面任务的执行清单。** 不因桌面共享文件、schema 或配色变更启动手机工作；明确恢复后，先核对历史规则是否仍适用，并继续遵守编译测试门槛。
 
 * React Native + Expo，**独立 npm 包**：依赖装在 `mobile/node_modules`，不接入根 workspaces（重排根 `node_modules` 会危及 `better-sqlite3` 的 ABI 构建）。
 * **跨目录复用只经 `mobile/src/shared-bridge.ts` 一个文件**，这也是手机端唯一允许出现 `../../src` 的地方；新增复用目标前先确认它没有 `import 'node:*'` / `'electron'` / `better-sqlite3`。
-* 数据层在 `mobile/src/data/`：`MobileStore` 方法名与语义刻意对齐桌面端 `ToolboxStore`；schema 改动**必须两端同步**并重新生成 `desktop-schema.fixture.json`。
+* 数据层在 `mobile/src/data/`：`MobileStore` 历史上对齐桌面端 `ToolboxStore`；恢复维护时重新比对 schema、设计迁移并更新合成 fixture，不能假设冻结期间仍保持一致。
 * 依赖原生模块（expo-sqlite / crypto / secure-store）的代码无法在 vitest 中运行，因此要把可测逻辑拆成纯函数（如 `secret-envelope.ts`、`store.ts` 的行映射）。
-* 改数据层后必须跑 `npm run mobile:verify:data`：用 esbuild + Electron 把真实数据层跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL。
+* 恢复维护后改手机数据层，按验证门槛决定是否运行 `npm run mobile:verify:data`：用 esbuild + Electron 把真实数据层跑在真实 SQLite 与真实 AES-GCM 上（只 shim 三个原生绑定），覆盖 DDL、迁移与全部业务 SQL；当前桌面改动不触发该命令。
 * Agent 工具放 `mobile/src/agent/tools/`：**工具名与 risk 分级必须与桌面端一致**（`域_动作`，如 `books_list`），新增前先看桌面端有没有同名实现；工具层**禁止引 zod / langchain**（Metro 只解析 `mobile/node_modules`），入参校验用 `tool-registry.ts` 的手写帮手。
 * 写工具必须经过审批门，且只读档位**不下发**写工具；密码箱**不给「保存 / 覆盖」**（覆盖保存会把 `isDecryptable === false` 条目的密文替换成占位文本，见 `docs/ROADMAP.md`），但收藏与删除不经过加解密，可以给。
-* 两端共用的**纯逻辑**放 `src/shared/`（无 node / electron / RN 依赖的纯函数，如 `markdown.ts`、`notes-search.ts`、`reading-stats.ts`、`history.ts`、`book-cover.ts`）：手机端一律经 `shared-bridge.ts` 再导出，桌面端渲染层可直接 import（`@shared/*` 或相对路径）。**改 `src/shared/**` 等于同时改两端**，必须跑 `npm run mobile:typecheck` 与 `npm run mobile:bundle`。
+* 历史复用的**纯逻辑**放 `src/shared/`（无 node / electron / RN 依赖，如 `markdown.ts`、`notes-search.ts`、`reading-stats.ts`、`history.ts`、`book-cover.ts`）：手机端经 `shared-bridge.ts` 再导出，桌面端渲染层可直接 import。桌面改 `src/shared/**` 不再要求手机兼容、适配或验证；桌面进程边界与纯逻辑分层仍须保持。
 * `transaction.ts` 单独成文件只为切断原生模块的运行期引用，勿合并回 `database.ts`。
-* 设计令牌放 `mobile/src/theme.ts`，与 `global.css` 的 `:root` 变量一一对应；改色需两边同步。
+* 手机设计令牌放 `mobile/src/theme.ts`；冻结期间不跟随桌面 `global.css` 配色更新，恢复时再评估主题对齐。
 * 不把 LangChain 搬进手机端，流式对话用 `expo/fetch`（原生端已装成全局 fetch）自写 SSE 客户端。
 * 手机端数据与桌面端互相独立，主密钥绑定设备，密码箱密文不互通 —— 不要在 UI 上暗示可同步。
 * 写文件避免 `Out-File -Encoding utf8`（会加 BOM，`package.json` 带 BOM 会让 Expo 配置解析直接失败）。
-* 验证跑 `npm run mobile:typecheck` 与 `npm run mobile:bundle`（后者无需真机即可证明跨目录引用能解析）。
+* 恢复手机维护且达到编译测试门槛时，再按范围选择 `npm run mobile:typecheck`、`npm run mobile:bundle` 等验证，不纳入当前桌面默认流程。
 
 ---
 

@@ -2,6 +2,11 @@
 
 AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + TypeScript**，数据全部留在本机。
 
+> **维护重点（2026-10-23）：PC 桌面端为当前主线，手机端暂停维护。**
+> 后续功能、修复、主题和编程 Agent 重点投入桌面端，当前已验证平台为 Windows。
+> `mobile/` 现有代码与说明保留为历史资料，不继续功能同步、依赖升级、真机验收或发布保障；手机状态不阻塞 PC 交付。
+> 桌面修改共享逻辑、schema 或主题时，不再强制同步 / 验证手机端。恢复维护需另行明确范围并核对兼容性。
+
 ## 工具
 
 | 模块 | 说明 |
@@ -53,8 +58,13 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 | 数据脱敏 | 识别常见凭据字段、请求头、邮箱、中国手机号、身份证格式及 Luhn 银行卡候选；同值使用稳定替身，JSON 结构和未替换数字保留。规则可能漏报或误报，发送前需检查预览 |
 | Java 日志整理 | 清理 ANSI 颜色、折叠连续重复行、显示异常链；可显式展开转义、按首行 traceId 筛选并保留对应堆栈续行。不使用模型猜测异常原因 |
 | Prompt 模板库 | 内置异常分析、代码审查、保行为重构、SQL 优化、单测生成模板；支持 `{{变量名}}`，同名变量只填一次；历史版本只读，可比较或采用后保存为新版本 |
-| 我的 IP | 查看非回环网卡的 IPv4 / IPv6、网卡名称与子网掩码，支持刷新、复制单项与全部地址；包含 VPN / 虚拟网卡，不查询公网 IP 或判断默认出网网卡 |
+| 我的 IP | 查看非回环网卡 IPv4 / IPv6 与子网掩码；手动获取 Windows TCP / UDP 端口、PID、进程名快照，支持筛选、分页与复制，不终止进程；不查询公网 IP |
+| Cron 计算器 | 区分 Spring / Quartz / Unix，支持范围、步长及 L / W / # 等日期条件；列出起点后十次执行时间，最多搜索八年，首版提供 UTC / 北京时间 |
+| Spring 配置工具 | YAML / Properties 转换与字段比较，保留长整数和占位符；支持常用缩进映射、块列表、Properties 续行/转义，拒绝重复键、冲突与不支持的 YAML 语法；转换去除注释并统一为字符串，不模拟 Spring 环境合并 |
+| JWT／证书查看器 | JWT 本地解码、时间声明提示，不验证签名；查看 PEM 链 / DER 文件的 X.509 元数据和有效期，不验证信任链；拒绝私钥，不保存或发送 AI |
 | 提示词美化 | 手动使用设置中启用的 AI 配置润色，原文与结果对照；严格保留模板占位符及次数，结果可复制、转为新模板草稿或放入对话 / 编程 Agent 草稿 |
+
+本批工具的详细语法边界与只读接口说明见 [开发者工具扩展](docs/developer-utilities.md)。配置输入最多 10 万字符、2000 字段、24 层；JWT 最多 32768 字符；证书文本最多 128 KiB、文件最多 96 KiB、一次最多 10 张；端口快照最多返回 1000 项，超出明确提示。
 
 JSON、差异、脱敏和日志工具输入最多 20 万字符，JSON 嵌套最多 64 层、节点最多 4 万；差异较大时文本回退为分段比较，
 界面最多显示 500 行；JSON 差异最多 300 项，每项数值/路径仅展示有界预览，截断会明确标注。
@@ -84,7 +94,7 @@ AI 助手、OpenCode、提示词美化以及桌面 / 手机密码识别均使用
 密码识别在每个条目对象闭合后显示脱敏预览（最多 200 条），仅展示账号信息和「密码已填」状态，
 完整 JSON 校验成功后再确认导入。停止、失败或关闭识别页时不会保存未完成结果。
 提示词修改输入后会忽略旧分片，切换工具后返回可继续查看生成；新增工具请求超时会清理资源，不自动重发。
-使用的模型服务需支持流式响应；本轮没有发起真实模型请求，手机界面仍需真机确认。
+使用的模型服务需支持流式响应；该功能实现时未发起真实模型请求，手机界面属于冻结的历史实现，真机验收已暂停。
 规格与验证记录见 `docs/SPEC-ai-streaming.md`，专项命令为
 `node verify/desktop-ui/run.cjs --ai-stream-only --screenshots`（先构建）。
 
@@ -142,7 +152,7 @@ Plan、会话列表和恢复；加 `--prompt` 才发送不读取/修改文件的
 - 设置页「外观与主题」提供 **星轨深空 / 静夜石墨 / 晨光纸白**，也可跟随系统：深色使用石墨，浅色使用纸白。旧配置默认保持深空主题。
 - 选择立即预览并自动保存，重启后恢复；保存失败会恢复上次外观并提示。外观存储在现有 kv 的 `appearance` 字段，首屏只缓存非敏感外观偏好。
 - 「星空背景动效」控制深空主题的闪烁与流星；关闭后星点静止，系统启用减少动态效果时也会自动静止。石墨和纸白不显示星空。
-- 阅读器的纸张、文字、字号独立设置。手机端沿用默认色板，本轮仅同步辅助文字的对比度，尚未提供主题预设切换。
+- 阅读器的纸张、文字、字号独立设置。手机端主题实现已冻结，不再随桌面配色同步调整。
 
 ### AI 供应商配置
 
@@ -175,10 +185,12 @@ npm run build         # 构建主进程 / preload / renderer
 npm run preview       # 预览构建产物
 npm run dist          # 打包 Windows 安装包（release/私人百宝箱 Setup x.x.x.exe）
 npm run typecheck     # TypeScript 校验
-npm run lint          # ESLint
-npm run test          # Vitest 单元测试
+npm run lint -- --ignore-pattern "mobile/**"  # 桌面 ESLint，排除冻结手机目录
+npm run test -- --exclude "mobile/**"         # 桌面 Vitest，排除冻结手机用例
 npm run format        # Prettier
 ```
+
+验证执行须遵守 `AGENTS.md` 的代码量 / 文件数双重门槛。根 lint / test 配置仍含手机目录，以上参数限定桌面范围；本次未修改脚本或测试配置，`mobile:*` 不再属于默认验证流程。
 
 桌面交互验收使用现有 Playwright 与 Electron，临时配置目录和合成桥接数据与日常应用隔离，
 不读取真实数据库、不请求 AI、不写系统剪贴板：
@@ -287,10 +299,12 @@ src/
 │       ├── stores/       app / config / reader
 │       └── styles/       设计系统（对齐 index.html 星轨风格）
 └── shared/               双进程共享类型、IPC 协议、常量
-mobile/                   React Native + Expo 手机端（独立包，见下）
+mobile/                   已暂停维护的 React Native + Expo 手机端（独立包，历史资料）
 ```
 
-## 手机端（React Native + Expo）
+## 手机端历史资料（React Native + Expo，已暂停维护）
+
+> **本节为归档说明，不是当前开发 / 验收任务。** 自 2026-10-23 起暂停维护；以下结构、版本、命令和验证结果记录冻结前状态，不保证与后续 PC 版本兼容。保留代码与数据，不自动安装、启动、打包或更新手机端；用户明确恢复后再评估。
 
 `mobile/` 是独立 npm 包（未接入 workspaces，依赖装在 `mobile/node_modules`），与桌面端**共用仓库根 `src/` 下的纯逻辑**，桌面端代码零改动。
 
@@ -298,18 +312,18 @@ mobile/                   React Native + Expo 手机端（独立包，见下）
 | --- | --- |
 | 复用方式 | `mobile/metro.config.js` 把 `../src` 纳入 `watchFolders`；所有跨目录引用集中在 `mobile/src/shared-bridge.ts` 一个文件 |
 | 已复用 | `src/shared/types.ts`（类型 / 供应商预设 / 阅读常量）、`src/shared/markdown.ts`（Markdown 解析）、`src/shared/notes-search.ts`（笔记搜索）、`src/shared/reading-stats.ts`（区间统计）、`src/shared/history.ts`（对话历史裁剪）、`src/shared/book-cover.ts`（占位封面）、`ai-gateway/errors.ts`（错误映射与端点规范化）、`library/` 的章节解析、密码文本解析、拼音首字母 |
-| 数据层 | `mobile/src/data/`：`expo-sqlite` + 与桌面端同构的 `MobileStore`；schema 与桌面端逐段对齐（v4，11 张表） |
+| 数据层 | `mobile/src/data/`：`expo-sqlite` + `MobileStore`；冻结时按桌面 schema v4（11 张表）对齐，后续不保证同步 |
 | 加密 | `expo-crypto` AES-256-GCM + `expo-secure-store` 存主密钥；**密文信封格式与桌面端一致**（`{v,iv,tag,data}`） |
 | AI 助手 | 自写 Agent 循环（不搬 LangChain）：**14 个工具**（12 读 + `notes_save` + `passwords_delete`）；三档权限（只读 / 写操作确认 / 完全访问），写操作在对话页弹审批卡；**工具调用不在界面上展示**（与桌面端一致）；**密码箱不给「保存 / 覆盖」**（会毁掉解密失败条目的原密文），只给收藏与删除 |
 | 需重写 | AI 客户端（自写 SSE，不用 LangChain）、Agent 循环与工具层、阅读器分页（RN 无 `scrollHeight`）、全部界面 |
 | 数据 | **与桌面端各自独立**，主密钥绑定设备，密码箱密文不互通 |
 
-**跨端对齐护栏**（防止两端 schema / 密文格式单边漂移）：
+**历史跨端对齐护栏**（暂停随 PC 改动更新）：
 
 - `desktop-schema.fixture.json` 由真实桌面 `toolbox.db` 导出，`schema.test.ts` 拿它与手机端 DDL 逐表逐列比对。
 - `desktop-envelope.fixture.json` 由桌面端 `SafeStorageSecretBox` 真实实现产出，`secret-envelope.test.ts` 验证手机端能解析同一信封。
 
-改动桌面端 schema 或信封格式后，需重新生成这两个 fixture。
+当前桌面改动不再要求生成手机 fixture。恢复手机维护时，再基于临时合成数据重新比对共享接口、schema 和加密格式，并设计迁移；历史 fixture 不代表当前版本兼容。
 
 ```bash
 npm run mobile:typecheck      # 手机端类型校验
@@ -318,9 +332,9 @@ npm run mobile:verify:data   # 数据层端到端验证（真实 SQLite + 真实
 npm run mobile:start         # 启动 Expo Dev Server
 ```
 
-`shared-bridge.test.ts` 在 vitest 里校验复用面：桌面端若删改某个导出，手机端会立刻失败，而不是等真机运行时才发现。
+`shared-bridge.test.ts` 历史上在 vitest 中校验手机复用面；桌面演进可能使冻结用例失配，当前桌面验证排除手机目录，不为恢复手机兼容而阻塞交付。
 
-### 数据层验证（为什么需要单独一条命令）
+### 历史数据层验证（恢复手机维护时再评估）
 
 手机端数据层依赖三个原生模块（`expo-sqlite` / `expo-crypto` / `expo-secure-store`），**vitest 装不了**，光靠单测无法覆盖 DDL、迁移与全部业务 SQL。
 
@@ -337,9 +351,9 @@ npm run mobile:verify:data
 
 **这套验证覆盖不到的部分**：真机上的原生绑定行为（expo-sqlite 的实际实现、系统钥匙串 Keychain/Keystore、解密失败时的降级路径）。这些只能在真机上验。
 
-### 在手机上跑起来
+### 历史启动步骤（当前不安排）
 
-当前进度是 **M1–M7 代码全部完成，但都还没在真机上验收**（详见 `docs/ROADMAP.md` 第 2 节清单）：5 个 Tab 均有可用界面，AI 助手已能调用工具管理手机本地的书架 / 记事本 / 密码箱 / 统计；阅读器支持书内全文搜索，记事本支持搜索 / Markdown 预览 / 导入导出。
+冻结前记录为 **M1–M7 代码完成，尚未真机验收**（详见 `docs/ROADMAP.md` 第 2 节归档）：5 个 Tab、手机本地 Agent、阅读器和记事本等实现保留；当前不继续验收，也不据历史记录承诺可运行。
 
 1. 手机装 **Expo Go**（应用商店搜 Expo Go）。
 2. 手机与电脑连同一个 Wi-Fi。
@@ -348,7 +362,7 @@ npm run mobile:verify:data
 
 若 Expo Go 提示「SDK 版本不支持」，说明手机端 Expo Go 版本落后于本项目的 SDK 57，改用自建开发版：`cd mobile && npx expo run:android`（需要 Android Studio + Android SDK + JDK 17）。
 
-### 打包成 APK
+### 历史 APK 打包步骤（当前不安排）
 
 一条命令出安装包（本地 Gradle，release，仅 arm64-v8a）：
 
@@ -378,7 +392,7 @@ npm run android:apk --prefix mobile   # → mobile/android/app/build/outputs/apk
 
 ## 已知限制
 
-- 桌面端仅 Windows；手机端 M1–M6 代码完成，但**从未在真机上验收过**（`expo-sqlite` / `expo-crypto` / `expo-secure-store` 三个原生模块只在与真机同构的 Node 环境里验证过）。
+- 当前维护已验证的 Windows PC 桌面端；手机端自 2026-10-23 起暂停维护，历史实现未完成真机验收，不保证后续兼容、构建或运行。
 - 手机端的 AI 助手只能操作**手机本地**数据（书架 / 记事本 / 密码箱 / 统计），看不到也改不了电脑上的数据。
 - 手机端与桌面端数据互相独立，密码箱密文不互通（主密钥分属 DPAPI 与系统钥匙串）。
 - 安装包未做代码签名，首次安装 Windows SmartScreen 可能提示「未知发布者」。
