@@ -25,6 +25,8 @@ import type {
   ConversationSummary,
   ImportResult,
   LocalIpAddressView,
+  PortSnapshot,
+  CertificateView,
   NoteSaveInput,
   NoteView,
   OpenCodeEvent,
@@ -42,6 +44,7 @@ import type {
 
 export interface ToolboxBridge {
   tools: {
+    inspectCertificate(text: string): Promise<CertificateView[]>
     /** 手动润色；通过 requestId 关联增量，返回最终校验结果，不执行任务或保存会话。 */
     polishPrompt(text: string, requestId?: string): Promise<string>
     stopAi(requestId: string): Promise<void>
@@ -166,6 +169,7 @@ export interface ToolboxBridge {
   system: {
     /** 本机非回环网卡地址，不发起公网请求。 */
     networkAddresses(): Promise<LocalIpAddressView[]>
+    portProcesses(): Promise<PortSnapshot>
     copyText(text: string): Promise<void>
     /** 读取全局快捷键配置 */
     getShortcut(): Promise<ShortcutConfig>

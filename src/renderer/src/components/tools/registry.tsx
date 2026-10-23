@@ -19,6 +19,9 @@ import { RegexPanel } from './panels/regex-panel'
 import { TextPanel } from './panels/text-panel'
 import { TimestampPanel } from './panels/timestamp-panel'
 import { UuidPanel } from './panels/uuid-panel'
+import { CronPanel } from './panels/cron-panel'
+import { SpringConfigPanel } from './panels/spring-config-panel'
+import { JwtCertificatePanel } from './panels/jwt-certificate-panel'
 
 /** 一个工具 */
 export interface ToolDefinition {
@@ -118,7 +121,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         id: 'my-ip',
         name: '我的 IP',
-        description: '查看本机网卡的 IPv4 / IPv6、子网掩码，支持刷新与复制',
+        description: '查看本机 IPv4 / IPv6、子网掩码，以及 Windows 端口占用、PID 和进程名',
         render: () => <IpPanel />
       },
       {
@@ -126,6 +129,24 @@ export const TOOL_GROUPS: ToolGroup[] = [
         name: '提示词美化',
         description: '手动调用当前 AI 配置润色提示词，保留模板变量，可转为新模板草稿',
         render: () => <PromptPolishPanel />
+      },
+      {
+        id: 'cron',
+        name: 'Cron 计算器',
+        description: 'Spring / Quartz / Unix 表达式检查、字段说明与接下来十次执行时间',
+        render: () => <CronPanel />
+      },
+      {
+        id: 'spring-config',
+        name: 'Spring 配置工具',
+        description: 'YAML / Properties 双向转换与不同环境的字段差异比较',
+        render: () => <SpringConfigPanel />
+      },
+      {
+        id: 'jwt-certificate',
+        name: 'JWT／证书查看器',
+        description: '本机解码 JWT 与时间声明、查看 PEM / DER 证书及有效期',
+        render: () => <JwtCertificatePanel />
       }
     ]
   }

@@ -1,6 +1,13 @@
 import { APP_THEMES } from '../../shared/appearance'
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
 
+/** 在 trim 前限制原始 IPC 长度，避免无效空白或大文件拖慢主进程。 */
+export function validateCertificateInput(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 131072)
+    throw new Error('证书内容应为不超过 128 KiB 的文本')
+  return requireString(value, '证书内容', { maxLength: 131072 })
+}
+
 /** AI 润色接收原文，长度在 trim 前校验，避免空白绕过输入限制。 */
 export function validatePromptPolishInput(value: unknown): string {
   if (typeof value === 'string' && value.length > MAX_PROMPT_BODY)

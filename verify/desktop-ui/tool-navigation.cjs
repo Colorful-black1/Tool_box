@@ -42,10 +42,10 @@ async function verifyToolNavigation({ page, app, check, capture }) {
     assert.equal(await leaves.count(), 0)
     await search.press('Escape')
     assert.equal(await search.inputValue(), '')
-    assert.equal(await leaves.count(), 14)
+    assert.equal(await leaves.count(), 17)
     await search.fill('json')
     await page.getByRole('button', { name: '清空工具搜索', exact: true }).click()
-    assert.equal(await leaves.count(), 14)
+    assert.equal(await leaves.count(), 17)
   })
   await check('真实鼠标拖动调整顺序并持久化，不切换当前工具', async () => {
     await handle('UUID 生成器').dragTo(

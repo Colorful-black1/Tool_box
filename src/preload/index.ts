@@ -36,6 +36,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 
 const bridge: ToolboxBridge = {
   tools: {
+    inspectCertificate: (text) => ipcRenderer.invoke(IPC.toolsCertificateInspect, text),
     polishPrompt: (text, requestId) => ipcRenderer.invoke(IPC.toolsPromptPolish, text, requestId),
     stopAi: (requestId) => ipcRenderer.invoke(IPC.toolsAiStop, requestId),
     onAiOutput: (listener) => subscribe<AiOutputEvent>(WINDOW_EVENT.aiOutput, listener)
@@ -167,6 +168,7 @@ const bridge: ToolboxBridge = {
   },
   system: {
     networkAddresses: () => ipcRenderer.invoke(IPC.systemNetworkAddresses),
+    portProcesses: () => ipcRenderer.invoke(IPC.systemNetworkPorts),
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),
     getShortcut: () => ipcRenderer.invoke(IPC.systemShortcutGet),
     setShortcut: (config: ShortcutConfig) =>

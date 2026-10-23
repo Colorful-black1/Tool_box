@@ -24,6 +24,7 @@ import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { registerOpenCodeIpc } from './opencode-ipc'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
+import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
 import {
   assertObject,
   optionalString,
@@ -47,6 +48,7 @@ export interface IpcDependencies {
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerDeveloperDiagnosticsIpc()
   registerOpenCodeIpc(dependencies.opencode)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
   registerAiOutputIpc({

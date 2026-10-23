@@ -1,5 +1,6 @@
 /** 合成桥接：只供隔离 UI 验收，不读文件、不调用 AI、不写系统剪贴板。 */
 module.exports = function createFixture() {
+  let failPorts = false
   const opencode = require('./opencode-fixture.cjs')()
   const conversations = Array.from({ length: 30 }, (_, index) => ({
     id: `c${index}`,
@@ -116,6 +117,7 @@ module.exports = function createFixture() {
       failNextIp: () => {
         failIp = true
       },
+      failNextPorts: () => { failPorts = true },
       lastNote: () => copy(notes.at(-1)),
       failNextNoteSave: () => {
         failNoteSave = true
@@ -123,6 +125,16 @@ module.exports = function createFixture() {
     },
     toolbox: {
       tools: {
+        inspectCertificate: async (text) => {
+          if (text.includes('PRIVATE KEY')) throw new Error('检测到私钥')
+          try {
+            const cert = new (require('node:crypto').X509Certificate)(
+              text.includes('BEGIN CERTIFICATE') ? text : require('node:buffer').Buffer.from(text, 'base64'))
+            return [{ subject: cert.subject, issuer: cert.issuer, subjectAltName: cert.subjectAltName || '',
+              serialNumber: cert.serialNumber, validFrom: new Date(cert.validFrom).toISOString(), validTo: new Date(cert.validTo).toISOString(),
+              fingerprint256: cert.fingerprint256, publicKey: cert.publicKey.asymmetricKeyType, ca: cert.ca }]
+          } catch { throw new Error('无法解析证书') }
+        },
         polishPrompt: async (text, requestId) => {
           polishCount++
           if (failPolish) {
@@ -201,6 +213,14 @@ module.exports = function createFixture() {
         }
       },
       system: {
+        portProcesses: async () => {
+          if (failPorts) { failPorts = false; throw new Error('合成端口查询失败') }
+          return { capturedAt: new Date().toISOString(), total: 3, processNamesAvailable: true, entries: [
+            { protocol: 'TCP', address: '::', port: 8080, remote: '[::]:0', state: 'LISTENING', pid: 1200, processName: 'java' },
+            { protocol: 'UDP', address: '0.0.0.0', port: 5353, remote: '', state: 'BOUND', pid: 1300, processName: 'dns-fixture' },
+            { protocol: 'TCP', address: '127.0.0.1', port: 53000, remote: '192.0.2.1:443', state: 'ESTABLISHED', pid: 1400, processName: 'client-fixture' }
+          ] }
+        },
         networkAddresses: async () => {
           if (failIp) {
             failIp = false

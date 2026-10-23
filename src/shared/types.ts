@@ -21,6 +21,38 @@ export interface LocalIpAddressView {
   netmask: string
 }
 
+/** 只读端口快照，不包含可执行文件路径、命令行或环境变量。 */
+export interface PortProcessView {
+  protocol: 'TCP' | 'UDP'
+  address: string
+  port: number
+  remote: string
+  state: string
+  pid: number
+  processName: string
+}
+
+/** 大量连接时仅返回前 1000 项，并显式报告截断及进程名称降级。 */
+export interface PortSnapshot {
+  entries: PortProcessView[]
+  total: number
+  capturedAt: string
+  processNamesAvailable: boolean
+}
+
+/** X.509 公共元数据；不包含输入原文、私钥或信任链认证结论。 */
+export interface CertificateView {
+  subject: string
+  issuer: string
+  subjectAltName: string
+  serialNumber: string
+  validFrom: string
+  validTo: string
+  fingerprint256: string
+  publicKey: string
+  ca: boolean
+}
+
 // ============ 外部编程 Agent：OpenCode ============
 
 /** 仅包含程序与目录信息，不包含 OpenCode 登录凭据。 */

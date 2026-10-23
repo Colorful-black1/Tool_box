@@ -1,0 +1,195 @@
+import { useEffect, useRef, useState } from 'react'
+import type { JSX } from 'react'
+import type { PortSnapshot } from '@shared/types'
+import { Dropdown } from '../../dropdown'
+import { CopyButton } from '../workbench'
+
+export function PortPanel(): JSX.Element {
+  const [snapshot, setSnapshot] = useState<PortSnapshot | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [protocol, setProtocol] = useState('all')
+  const [listening, setListening] = useState(true)
+  const [page, setPage] = useState(0)
+  const request = useRef({ sequence: 0 })
+  useEffect(() => {
+    const state = request.current
+    return () => {
+      state.sequence++
+    }
+  }, [])
+  const refresh = async (): Promise<void> => {
+    const sequence = ++request.current.sequence
+    setSnapshot(null)
+    setError('')
+    setPage(0)
+    if (!window.toolbox?.system?.portProcesses) {
+      setError('端口接口未就绪，请使用最新桌面应用')
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await window.toolbox.system.portProcesses()
+      if (sequence === request.current.sequence) setSnapshot(result)
+    } catch (error) {
+      if (sequence === request.current.sequence)
+        setError(
+          error instanceof Error && error.message.includes('仅支持 Windows')
+            ? '端口与进程查询目前仅支持 Windows'
+            : '无法读取端口占用，系统命令失败或超时，请稍后重试'
+        )
+    } finally {
+      if (sequence === request.current.sequence) setBusy(false)
+    }
+  }
+  const keyword = query.trim().toLowerCase()
+  const entries = (snapshot?.entries ?? []).filter(
+    (row) =>
+      (protocol === 'all' || protocol === row.protocol) &&
+      (!listening || row.state === 'LISTENING' || row.protocol === 'UDP') &&
+      (!keyword ||
+        [row.address, row.port, row.pid, row.processName].some((v) =>
+          String(v).toLowerCase().includes(keyword)
+        ))
+  )
+  const text = entries
+    .map(
+      (row) =>
+        `${row.protocol}\t${row.address}\t${row.port}\t${row.state}\t${row.pid}\t${row.processName}\t${row.remote}`
+    )
+    .join('\n')
+  return (
+    <section className="tool-stack tool-port-section" aria-label="端口与进程诊断">
+      <header className="tool-io-head">
+        <span className="tool-io-label">端口占用与进程</span>
+        <button type="button" className="btn-ghost" disabled={busy} onClick={() => void refresh()}>
+          {busy ? '查询中…' : '查询端口占用'}
+        </button>
+      </header>
+      <p className="field-hint">
+        Windows 只读快照，可查看 TCP / UDP、PID
+        与进程名。进程可能在查询后退出；本工具不结束进程。首次使用请手动查询。
+      </p>
+      <div className="tool-controls">
+        <input
+          className="field-input tool-port-search"
+          aria-label="筛选端口或进程"
+          value={query}
+          maxLength={100}
+          placeholder="端口 / PID / 进程名 / 本地地址"
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setPage(0)
+          }}
+        />
+        <Dropdown
+          ariaLabel="端口协议"
+          value={protocol}
+          options={[
+            { value: 'all', label: '全部协议' },
+            { value: 'TCP', label: 'TCP' },
+            { value: 'UDP', label: 'UDP' }
+          ]}
+          onChange={(value) => {
+            setProtocol(value)
+            setPage(0)
+          }}
+        />
+        <label className="tool-check">
+          <input
+            type="checkbox"
+            checked={listening}
+            onChange={(event) => {
+              setListening(event.target.checked)
+              setPage(0)
+            }}
+          />
+          仅 TCP 监听与 UDP 绑定
+        </label>
+        <CopyButton text={text} label="复制筛选结果" />
+      </div>
+      {error ? (
+        <div className="status-banner" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {snapshot ? (
+        <>
+          <p className="field-hint" role="status">
+            快照 {new Date(snapshot.capturedAt).toLocaleTimeString()} · 共 {snapshot.total} 项 ·
+            筛选后 {entries.length} 项
+            {snapshot.total > snapshot.entries.length
+              ? `（仅载入前 ${snapshot.entries.length} 项，可刷新）`
+              : ''}
+            {!snapshot.processNamesAvailable ? '；进程名称读取失败，已保留端口与 PID' : ''}
+          </p>
+          <div className="tool-diff">
+            <table className="tool-ip-table" aria-label="端口占用列表">
+              <thead>
+                <tr>
+                  <th>协议</th>
+                  <th>本地地址 : 端口</th>
+                  <th>状态</th>
+                  <th>PID</th>
+                  <th>进程</th>
+                  <th>远端</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.slice(page * 50, (page + 1) * 50).map((row) => (
+                  <tr
+                    key={`${row.protocol}/${row.address}/${row.port}/${row.remote}/${row.pid}/${row.state}`}
+                  >
+                    <td>{row.protocol}</td>
+                    <td>
+                      <code>
+                        {row.address.includes(':') ? `[${row.address}]` : row.address}:{row.port}
+                      </code>
+                    </td>
+                    <td>
+                      {row.state === 'LISTENING'
+                        ? '监听'
+                        : row.state === 'BOUND'
+                          ? '绑定'
+                          : row.state}
+                    </td>
+                    <td>{row.pid}</td>
+                    <td>{row.processName}</td>
+                    <td>
+                      <code>{row.remote || '—'}</code>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!entries.length ? <p className="field-hint">没有匹配的端口。</p> : null}
+          {entries.length > 50 ? (
+            <div className="tool-controls">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
+                上一页
+              </button>
+              <span className="field-hint">
+                第 {page + 1} / {Math.ceil(entries.length / 50)} 页
+              </span>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={(page + 1) * 50 >= entries.length}
+                onClick={() => setPage(page + 1)}
+              >
+                下一页
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  )
+}

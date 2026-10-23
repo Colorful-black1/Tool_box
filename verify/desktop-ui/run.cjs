@@ -11,6 +11,7 @@ const verifyOpenCode = require('./opencode.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
+const verifyDeveloperUtilities = require('./developer-utilities.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
@@ -49,6 +50,13 @@ async function main() {
         const element = document.querySelector('.message-list')
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
+
+    if (process.argv.includes('--developer-utilities-only')) {
+      await verifyDeveloperUtilities({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`开发工具扩展验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
 
     if (process.argv.includes('--ai-stream-only')) {
       await verifyAiStream({ page, check, capture })
@@ -93,6 +101,7 @@ async function main() {
     }
 
     if (process.argv.includes('--tools-only')) {
+      await verifyDeveloperUtilities({ page, app, check, capture })
       await verifyIpPrompt({ page, app, check, capture })
       await verifyToolNavigation({ page, app, check, capture })
       await verifyDevTools({ page, app, check, capture })
@@ -343,6 +352,7 @@ async function main() {
         if (width === 1024) await capture('text-result-narrow')
       })
     }
+    await verifyDeveloperUtilities({ page, app, check, capture })
     await verifyIpPrompt({ page, app, check, capture })
     await verifyToolNavigation({ page, app, check, capture })
     await verifyDevTools({ page, app, check, capture })

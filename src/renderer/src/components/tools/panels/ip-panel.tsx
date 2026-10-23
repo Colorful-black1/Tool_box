@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { LocalIpAddressView } from '@shared/types'
 import { CopyButton } from '../workbench'
+import { PortPanel } from './port-panel'
 
 export function IpPanel(): JSX.Element {
   const [addresses, setAddresses] = useState<LocalIpAddressView[]>([])
@@ -92,6 +93,7 @@ export function IpPanel(): JSX.Element {
           </table>
         </div>
       ) : null}
+      <PortPanel />
     </div>
   )
 }
