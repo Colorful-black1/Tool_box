@@ -156,7 +156,7 @@ module.exports = function createFixture() {
         }
       },
       opencode: opencode.bridge,
-      app: { info: async () => ({ name: '隔离验收', version: '0.2.0', platform: 'win32' }) },
+      app: { info: async () => ({ name: '隔离验收', version: '0.3.0', platform: 'win32' }) },
       config: { get: async () => null, set: async () => null },
       settings: { get: async () => ({ activeId: null, profiles: [] }) },
       agent: { getPermission: async () => 'confirm' },

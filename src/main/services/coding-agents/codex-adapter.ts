@@ -154,7 +154,7 @@ export class CodexAdapter implements CodingAgentAdapter {
       )
       this.peer = peer
       await peer.request('initialize', {
-        clientInfo: { name: 'tool_box', title: 'Tool_box', version: '0.2.0' },
+        clientInfo: { name: 'tool_box', title: 'Tool_box', version: '0.3.0' },
         capabilities: { experimentalApi: false, explicitGatewayOauth: true }
       })
       peer.notify('initialized', {})

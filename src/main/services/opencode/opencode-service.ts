@@ -123,7 +123,7 @@ export class OpenCodeService {
         await peer.request('initialize', {
           protocolVersion: 1,
           clientCapabilities: {},
-          clientInfo: { name: 'tool-box', version: '0.2.0' }
+          clientInfo: { name: 'tool-box', version: '0.3.0' }
         })
       )
       if (generation !== this.generation || this.peer !== peer)
