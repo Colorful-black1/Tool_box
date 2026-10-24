@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
 import type { UsageDaily } from '@shared/agent-usage'
 import { formatCompact, formatTokens } from '@shared/usage-format'
+import { rollingRange } from '../../lib/usage-prefs'
 
 const RANGES = [7, 30, 90] as const
 
@@ -20,10 +21,12 @@ interface UsageTrendChartProps {
   onPick: (date: string) => void
 }
 
-/** 按 Agent 堆叠的趋势图；趋势不受日期筛选影响，便于切换 7/30/90 天。 */
+/** 按 Agent 堆叠的趋势图；按自然日截取，和「近 N 天」筛选用同一套日历边界。 */
 export function UsageTrendChart({ trend, onPick }: UsageTrendChartProps): JSX.Element {
   const [range, setRange] = useState<(typeof RANGES)[number]>(30)
-  const shown = trend.slice(-range)
+  // 不能按「有记录的日期」取条数：历史有间断时会跨出 30 个自然日，合计就会和 KPI 对不上。
+  const cutoff = rollingRange(range).from
+  const shown = trend.filter((day) => day.date >= cutoff)
   const clients = [...new Set(shown.flatMap((day) => day.clients.map((item) => item.client)))]
   const max = shown.reduce((value, day) => Math.max(value, day.total ?? 0), 1)
   const sum = shown.reduce((value, day) => value + (day.total ?? 0), 0)
@@ -34,10 +37,13 @@ export function UsageTrendChart({ trend, onPick }: UsageTrendChartProps): JSX.El
       <header className="agent-usage-trend-head">
         <div>
           <h3>用量趋势</h3>
-          <p className="field-hint">
+          <p
+            className="field-hint"
+            title="趋势按自然日统计，只受 Agent / 项目 / 模型筛选影响，不受上方日期范围影响"
+          >
             {shown.length
-              ? `${shown.length} 个有记录的日期 · 合计 ${formatCompact(sum)} Token`
-              : '当前筛选还没有可按日期绘制的记录'}
+              ? `近 ${range} 天 · ${shown.length} 个有记录的日期 · 合计 ${formatCompact(sum)} Token`
+              : `近 ${range} 天还没有可绘制的记录`}
           </p>
         </div>
         <div className="agent-usage-range" role="group" aria-label="趋势范围">

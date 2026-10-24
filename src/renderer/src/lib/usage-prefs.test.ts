@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadUsagePrefs, periodRange, saveUsagePrefs } from './usage-prefs'
+import { loadUsagePrefs, periodRange, rollingRange, saveUsagePrefs } from './usage-prefs'
 
 describe('统计页周期与偏好', () => {
   const now = new Date(2026, 9, 24, 12, 0)
@@ -13,6 +13,11 @@ describe('统计页周期与偏好', () => {
     const january = new Date(2027, 0, 3)
     expect(periodRange('week', january)).toEqual({ from: '2026-12-28', to: '2027-01-03' })
     expect(periodRange('month', january)).toEqual({ from: '2027-01-01', to: '2027-01-03' })
+  })
+  it('趋势图与「近 N 天」共用自然日边界', () => {
+    expect(rollingRange(7, now)).toEqual({ from: '2026-10-18', to: '2026-10-24' })
+    expect(rollingRange(30, now)).toEqual({ from: '2026-09-25', to: '2026-10-24' })
+    expect(rollingRange(90, now)).toEqual({ from: '2026-07-27', to: '2026-10-24' })
   })
   it('累计与自定义不设日期；没有本地存储时安全降级', () => {
     expect(periodRange('all', now)).toEqual({})

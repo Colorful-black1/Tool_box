@@ -31,20 +31,26 @@ export function localDateString(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/** 含今天在内的最近 days 个自然日；周期筛选与趋势图共用同一套边界。 */
+export function rollingRange(days: number, now = new Date()): { from: string; to: string } {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1))
+  return { from: localDateString(start), to: localDateString(now) }
+}
+
 /** 周期换算成本地日历边界；累计与自定义不设边界。 */
 export function periodRange(period: UsagePeriod, now = new Date()): { from?: string; to?: string } {
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  const date = now.getDate()
   switch (period) {
     case 'today':
       return { from: localDateString(now), to: localDateString(now) }
     case 'week':
-      return { from: localDateString(new Date(year, month, date - 6)), to: localDateString(now) }
+      return rollingRange(7, now)
     case 'month':
-      return { from: localDateString(new Date(year, month, 1)), to: localDateString(now) }
+      return {
+        from: localDateString(new Date(now.getFullYear(), now.getMonth(), 1)),
+        to: localDateString(now)
+      }
     case 'days30':
-      return { from: localDateString(new Date(year, month, date - 29)), to: localDateString(now) }
+      return rollingRange(30, now)
     case 'all':
     case 'custom':
       return {}
