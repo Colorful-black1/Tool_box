@@ -32,6 +32,7 @@ interface PaletteSource extends SearchSource {
 
 const VIEW_COMMANDS: Array<{ view: AppView; title: string }> = [
   { view: 'opencode', title: '切换到编程 Agent' },
+  { view: 'agent-usage', title: '切换到 Token 统计' },
   { view: 'chat', title: '切换到对话' },
   { view: 'shelf', title: '切换到书架' },
   { view: 'stats', title: '切换到统计' },

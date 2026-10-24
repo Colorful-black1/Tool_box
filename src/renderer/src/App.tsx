@@ -14,6 +14,7 @@ import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
 import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
+import { AgentUsagePage } from './components/agent-usage/agent-usage-page'
 import { useCodingAgentStore } from './stores/coding-agent-store'
 import { codingAgentClient } from './lib/coding-agent-client'
 import { SettingsPage } from './routes/settings-page'
@@ -27,6 +28,7 @@ import { usePromptPolishStore } from './stores/prompt-polish-store'
 import { usePasswordAiStore } from './stores/password-ai-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
+  'agent-usage': { title: 'Token 统计', subtitle: 'USAGE · 本机 Agent 用量' },
   opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
@@ -45,6 +47,7 @@ const RAIL_ITEMS: RailNode[] = [
     label: '开发工作台',
     children: [
       { view: 'opencode', label: '编程 Agent', icon: 'code' },
+      { view: 'agent-usage', label: 'Token 统计', icon: 'stats' },
       { view: 'tools', label: '工具', icon: 'tool' }
     ]
   },
@@ -201,6 +204,7 @@ export default function App(): JSX.Element {
                 {view === 'notes' ? <NotesPage /> : null}
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}
+                {view === 'agent-usage' ? <AgentUsagePage /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}
               </>
             )}

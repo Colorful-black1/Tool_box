@@ -1,4 +1,7 @@
 export const IPC = {
+  agentUsageQuery: 'agent-usage:query',
+  agentUsageChooseSource: 'agent-usage:source:choose',
+  agentUsageResetSource: 'agent-usage:source:reset',
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
   settingsRemove: 'settings:remove',

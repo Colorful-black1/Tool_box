@@ -1,5 +1,11 @@
 # 多 Agent 工作台执行计划
 
+## 当前新增：本地 Token 统计（2026-10-24）
+
+按用户授权实施 [统计方案](../docs/PLAN-agent-token-usage.md)：独立契约与只读采集 → 统一口径 / 去重 → 统计页面 / 来源管理 → 合成与本机只读验证。
+新增统计 IPC 经校验和 preload 暴露，不扩展聊天运行时枚举，不改业务数据库、加密、依赖或手机。
+交付与边界见 [验证记录](../docs/agent-token-usage-verification.md)。以下工作台历史计划保留。
+
 日期：2026-10-23
 
 状态：用户已授权执行 [易用性方案](../docs/PLAN-coding-agent-usability.md)。当前主线为按需开始对话、直接历史列表、消息转用与来源总结；真实 Codex 生成、文件权限与 Desktop 互见仍独立待验。

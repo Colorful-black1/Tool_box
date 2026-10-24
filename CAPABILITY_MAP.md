@@ -9,6 +9,7 @@ AI 优先的个人工具箱。当前版本只承诺 Windows 桌面端与 AI 对�
 | ai-gateway | LangChain.js 统一网关：OpenAI 兼容对话、流式输出、取消、错误转换 | settings, persistence, shared |
 | settings | AI 配置读写；API Key 使用 Electron safeStorage 加密 | shared |
 | persistence | 本地 SQLite：会话、消息、迁移 | shared |
+| agent-usage | 14 类本机 Agent 的只读用量采集、去重与筛选；落盘统计缓存，仅显示 OpenCode 原生上报花费 | shared |
 | shared | 双进程共享的纯 TS 类型、IPC 协议、常量 | — |
 
 依赖方向：

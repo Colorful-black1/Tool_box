@@ -49,8 +49,14 @@ import type {
   CodingAgentSessionSummary,
   CodingAgentSessionInput
 } from './coding-agents'
+import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 
 export interface ToolboxBridge {
+  agentUsage: {
+    query(input: UsageQuery): Promise<UsageReport>
+    chooseSource(client: UsageClient): Promise<boolean>
+    resetSource(client: UsageClient): Promise<void>
+  }
   codingAgents: {
     listRuntimes(): Promise<CodingAgentRuntimeView[]>
     inspect(runtimeId: CodingAgentId): Promise<CodingAgentRuntimeView>

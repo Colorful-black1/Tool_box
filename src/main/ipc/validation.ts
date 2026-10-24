@@ -3,6 +3,71 @@ import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tool
 import { CODING_AGENT_IDS } from '../../shared/coding-agents'
 import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
 import { validateAgentRoles } from '../../shared/agent-handoff'
+import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
+import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
+
+/** 统计参数独立校验，不复用只包含两个已接入运行时的枚举。 */
+export function validateUsageClient(value: unknown): UsageClient {
+  if (typeof value !== 'string' || !Object.hasOwn(USAGE_CLIENTS, value))
+    throw new Error('统计来源无效')
+  return value as UsageClient
+}
+
+export function validateUsageQuery(value: unknown): UsageQuery {
+  const r = assertObject(value, '统计筛选')
+  const result: UsageQuery = {}
+  if (r.client !== undefined) result.client = validateUsageClient(r.client)
+  if (r.project !== undefined)
+    result.project = requireString(r.project, '项目', { maxLength: 4096 })
+  if (r.model !== undefined) result.model = requireString(r.model, '模型', { maxLength: 4096 })
+  for (const key of ['from', 'to'] as const) {
+    if (r[key] === undefined) continue
+    const day = requireString(r[key], '日期', { maxLength: 10 })
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+      !Number.isFinite(Date.parse(day)) ||
+      new Date(day).toISOString().slice(0, 10) !== day
+    )
+      throw new Error('日期无效')
+    result[key] = day
+  }
+  if (result.from && result.to && result.from > result.to)
+    throw new Error('开始日期不能晚于结束日期')
+  if (r.offset !== undefined) {
+    if (
+      typeof r.offset !== 'number' ||
+      !Number.isSafeInteger(r.offset) ||
+      r.offset < 0 ||
+      r.offset > 1_000_000
+    )
+      throw new Error('分页位置无效')
+    result.offset = r.offset
+  }
+  if (r.limit !== undefined) {
+    if (
+      typeof r.limit !== 'number' ||
+      !Number.isSafeInteger(r.limit) ||
+      r.limit < 1 ||
+      r.limit > 5000
+    )
+      throw new Error('分页条数无效')
+    result.limit = r.limit
+  }
+  if (r.sort !== undefined) {
+    if (typeof r.sort !== 'string' || !(USAGE_SORT_KEYS as readonly string[]).includes(r.sort))
+      throw new Error('排序字段无效')
+    result.sort = r.sort as UsageSortKey
+  }
+  if (r.desc !== undefined) {
+    if (typeof r.desc !== 'boolean') throw new Error('排序方向无效')
+    result.desc = r.desc
+  }
+  if (r.refresh !== undefined) {
+    if (typeof r.refresh !== 'boolean') throw new Error('刷新参数无效')
+    result.refresh = r.refresh
+  }
+  return result
+}
 
 /** 仅携带本地字段校验文案，与系统和原生协议错误分开。 */
 export class CodingAgentValidationError extends Error {}
@@ -199,8 +264,7 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
     if (!Array.isArray(patch.toolOrder) || patch.toolOrder.length > 100)
       throw new Error('工具顺序最多 100 项')
     const order = patch.toolOrder.map((id) => requireString(id, '工具标识', { maxLength: 64 }))
-    if (order.some((id) => !/^[a-z][a-z0-9-]{0,63}$/.test(id)))
-      throw new Error('工具标识无效')
+    if (order.some((id) => !/^[a-z][a-z0-9-]{0,63}$/.test(id))) throw new Error('工具标识无效')
     if (new Set(order).size !== order.length) throw new Error('工具顺序不能包含重复项')
     validated.toolOrder = order
   }
@@ -212,7 +276,10 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
         preferences.executablePath === null
           ? null
           : requireString(preferences.executablePath, 'OpenCode 程序路径', { maxLength: 4096 }),
-      directory: requireString(preferences.directory, '项目目录', { maxLength: 4096, allowEmpty: true })
+      directory: requireString(preferences.directory, '项目目录', {
+        maxLength: 4096,
+        allowEmpty: true
+      })
     }
   }
   return validated

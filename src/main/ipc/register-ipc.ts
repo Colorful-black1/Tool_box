@@ -23,6 +23,7 @@ import type { ShortcutManager } from '../shortcuts'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { registerOpenCodeIpc } from './opencode-ipc'
 import { registerCodingAgentsIpc } from './coding-agents-ipc'
+import { registerAgentUsageIpc } from './agent-usage-ipc'
 import { CodingAgentService } from '../services/coding-agents/coding-agent-service'
 import { OpenCodeAdapter } from '../services/coding-agents/opencode-adapter'
 import { CodexAdapter } from '../services/coding-agents/codex-adapter'
@@ -52,6 +53,7 @@ export interface IpcDependencies {
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerAgentUsageIpc()
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService([
     new OpenCodeAdapter(dependencies.opencode),

@@ -36,6 +36,11 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  agentUsage: {
+    query: (input) => ipcRenderer.invoke(IPC.agentUsageQuery, input),
+    chooseSource: (client) => ipcRenderer.invoke(IPC.agentUsageChooseSource, client),
+    resetSource: (client) => ipcRenderer.invoke(IPC.agentUsageResetSource, client)
+  },
   codingAgents: {
     listRuntimes: () => ipcRenderer.invoke(IPC.codingAgentRuntimes),
     inspect: (id) => ipcRenderer.invoke(IPC.codingAgentInspect, id),

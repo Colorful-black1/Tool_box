@@ -9,6 +9,7 @@ const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
 const verifyOpenCode = require('./opencode.cjs')
 const verifyCodingAgents = require('./coding-agents.cjs')
+const verifyAgentUsage = require('./agent-usage.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
@@ -20,6 +21,7 @@ async function main() {
   const tempRoot = path.resolve(os.tmpdir())
   const profile = await fs.mkdtemp(path.join(tempRoot, 'toolbox-ui-'))
   const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
+  if (process.argv.includes('--agent-usage-only')) env.TOOLBOX_USAGE_VERIFY = '1'
   if (process.argv.includes('--coding-agents-only')) env.TOOLBOX_CODING_AGENT_VERIFY = '1'
   delete env.ELECTRON_RUN_AS_NODE
   let app
@@ -59,6 +61,12 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--agent-usage-only')) {
+      await verifyAgentUsage({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`Token 统计验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--coding-agents-only')) {
       await verifyCodingAgents({ page, app, check, capture })
       assert.deepEqual(errors, [])

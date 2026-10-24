@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron')
 const fixture = require('./fixture.cjs')()
+if (process.env.TOOLBOX_USAGE_VERIFY === '1') {
+  const usage = require('./agent-usage-fixture.cjs')()
+  fixture.toolbox.agentUsage = usage.bridge
+  Object.assign(fixture.controls, usage.controls)
+}
 if (process.env.TOOLBOX_CODING_AGENT_VERIFY === '1') {
   const agents = require('./coding-agents-fixture.cjs')()
   fixture.toolbox.codingAgents = agents.bridge
