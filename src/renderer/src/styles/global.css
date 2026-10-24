@@ -1386,6 +1386,37 @@ textarea,
   gap: 12px;
 }
 
+/* 设置页：关于与版本信息 */
+.settings-about {
+  display: grid;
+  gap: 2px;
+  max-width: 460px;
+  margin-top: 14px;
+}
+
+.settings-about-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--gold-line);
+  color: var(--text-hi);
+  font-size: 13px;
+}
+
+.settings-about-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-version {
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  user-select: text;
+}
+
 .field-select-narrow {
   width: auto;
   min-width: 168px;

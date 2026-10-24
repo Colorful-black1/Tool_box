@@ -76,6 +76,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const removeProfile = useAppStore((state) => state.removeProfile)
   const activateProfile = useAppStore((state) => state.activateProfile)
   const fetchModels = useAppStore((state) => state.fetchModels)
+  const appInfo = useAppStore((state) => state.appInfo)
 
   // 草稿是表单的唯一真相源：档案列表高亮直接由 draft.id 推导，
   // 避免用 selectedId 另存一份状态后与草稿不同步。
@@ -623,8 +624,40 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
           </div>
         </div>
       </section>
+
+      <section className="glass settings-card" aria-label="关于">
+        <div className="sec-head">
+          <h2 className="sec-title">关于</h2>
+        </div>
+        <div className="settings-about">
+          <div className="settings-about-row">
+            <span className="field-label">应用</span>
+            <span>私人百宝箱</span>
+          </div>
+          <div className="settings-about-row">
+            <span className="field-label">版本 · VERSION</span>
+            <strong className="settings-version">
+              {appInfo?.version ? `v${appInfo.version}` : '未知'}
+            </strong>
+          </div>
+          <div className="settings-about-row">
+            <span className="field-label">平台</span>
+            <span>{platformName(appInfo?.platform)}</span>
+          </div>
+        </div>
+        <p className="field-hint">
+          本地优先：对话配置、密码与笔记都保存在当前用户目录，不上传版本信息。
+        </p>
+      </section>
     </div>
   )
+}
+
+/** 主进程返回的是 Node 平台标识，设置页展示更易读的名称。 */
+function platformName(platform: string | undefined): string {
+  if (!platform) return '未知'
+  const names: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
+  return names[platform] ?? platform
 }
 
 /** 档案视图 → 表单草稿：Key 一律清空，已存 Key 只以占位提示呈现 */
