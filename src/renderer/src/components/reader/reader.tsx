@@ -5,6 +5,7 @@ import { READER_PADDING_H, READER_PADDING_V } from '../../../../shared/constants
 import { effectiveReaderTheme } from '../../../../shared/types'
 import type { Bookmark, ChapterContent, ChapterMeta } from '../../../../shared/types'
 import { paginate } from '../../lib/paginator'
+import { splitReaderParagraphs } from '../../lib/reader-text'
 import { useConfigStore } from '../../stores/config-store'
 import { useReaderStore } from '../../stores/reader-store'
 import { ReadSettingsPanel } from './read-settings-panel'
@@ -167,6 +168,13 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
     [bookmarks, chapterIdx, pageIdx]
   )
 
+  // 章节正文按 TXT 原有换行切成段落，渲染层统一做首行缩进与段间距，
+  // 不再依赖文件里的全角空格，也避免整章被 pre-wrap 拉成一大段。
+  const paragraphs = useMemo(
+    () => splitReaderParagraphs(chapter?.content ?? ''),
+    [chapter?.content]
+  )
+
   const onToggleBookmark = useCallback(async () => {
     if (!chapter) return
     const { pageIdx: currentPage, pageOffsets } = useReaderStore.getState()
@@ -220,7 +228,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
     lineHeight: config.lineSpacing,
     fontFamily: config.fontFamily || undefined
   }
-  // 绝对定位的测量层/翻页层不继承父级 padding，需各自应用，保证测量宽度与可视宽度一致
+  // 绝对定位的测量层/翻页插槽不继承普通流内边距，需各自应用，保证测量宽度与可视宽度一致
   const layerPadding = { padding: `${READER_PADDING_V}px ${READER_PADDING_H}px` }
 
   // 章节标题在导入时已从正文中剥离（body 从标题行之后开始），
@@ -228,6 +236,16 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
   const chapterHeading = chapter ? (
     <div className="reader-chapter-heading">{chapter.title}</div>
   ) : null
+  const chapterBody = (
+    <>
+      {chapterHeading}
+      <div className="reader-body">
+        {paragraphs.map((paragraph, index) => (
+          <p key={`${index}:${paragraph.slice(0, 12)}`}>{paragraph}</p>
+        ))}
+      </div>
+    </>
+  )
 
   return (
     <div
@@ -274,8 +292,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
             className="reader-content"
             style={{ ...contentStyle, ...layerPadding, color: theme.foreground }}
           >
-            {chapterHeading}
-            {chapter?.content}
+            {chapterBody}
           </div>
         ) : (
           <>
@@ -287,23 +304,26 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
               aria-hidden="true"
             >
               <div className="reader-content" style={contentStyle}>
-                {chapterHeading}
-                {chapter?.content}
+                {chapterBody}
               </div>
             </div>
 
-            {/* 可视层：整章一次渲染，按页偏移裁剪出当前页 */}
-            <div className="reader-pager" style={layerPadding}>
+            {/* 可视层：整章一次渲染，按页偏移裁剪出当前页。
+                内边距放在 page-slot 上，绝对定位的插槽才会真正让出上/左右留白，
+                与离屏测量层的 padding 保持一致。 */}
+            <div className="reader-pager">
               <div
                 className="reader-page-slot"
-                style={{ transform: `translateY(-${pageIdx * pageHeight}px)` }}
+                style={{
+                  ...layerPadding,
+                  transform: `translateY(-${pageIdx * pageHeight}px)`
+                }}
               >
                 <div
                   className="reader-content"
                   style={{ ...contentStyle, color: theme.foreground }}
                 >
-                  {chapterHeading}
-                  {chapter?.content}
+                  {chapterBody}
                 </div>
               </div>
             </div>

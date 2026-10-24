@@ -2252,9 +2252,27 @@ textarea,
   cursor: pointer;
 }
 
+/* 正文列宽：宽屏下保持约 38–40 字一行，避免整章被拉成一条长线。
+   content-box 让滚动模式（自带左右内边距）与翻页/测量层（内边距在外层）
+   的正文宽度一致，否则分页测量会和实际渲染错位。 */
 .reader-content {
+  box-sizing: content-box;
+  max-width: 40em;
+  margin: 0 auto;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 段落：TXT 的换行已在渲染层切成 <p>，这里统一首行缩进与段间距，
+   不再依赖文件里的全角空格；两端对齐让书页边距更整齐。 */
+.reader-body p {
+  margin: 0 0 0.7em;
+  text-indent: 2em;
+  text-align: justify;
+}
+
+.reader-body p:last-child {
+  margin-bottom: 0;
 }
 
 /* 章节标题：导入时标题行已从正文中剥离，在正文顶部重新呈现（传统小说居中大标题样式） */
