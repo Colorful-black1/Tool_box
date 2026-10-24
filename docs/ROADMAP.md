@@ -10,6 +10,12 @@
 
 当前版本 **0.2.0**（桌面端接入 Agent 工具接管、手机端完成 M6–M7）。
 
+2026-10-23 编程工作台主线：已实现 OpenCode / Codex 运行时选择、独立会话 / 草稿、统一运行互斥、
+Codex App Server 流式 / 审批 / 中断、原生子任务观测；易用性调整改为首次发送按需准备、历史列表直接恢复、消息转用与可选来源总结，取消旧交接表单和角色管理。
+本机 OpenCode 2.1.2 / Codex 0.163 无模型连接与历史探针通过；Codex 真实生成、权限和 Desktop 互见待验。
+Kimi / Claude 保持待接入，自动团队 / Paperclip / 并行工作区不在本次范围。
+实施前基线已提交，新实现未提交；细项与证据见 [任务清单](../tasks/todo.md)、[验证记录](coding-agent-verification.md)。
+
 最近更新：M10（工具页 / 全局搜索 / 桌面端常驻）完成：新增「开发者工具」树形工具页与 ⌘K 命令面板，
 桌面端支持关闭到托盘与全局快捷键；其中手机实现尚未经过真机验收，现已归档暂停，不阻塞桌面主线。
 
@@ -87,8 +93,8 @@ M6 的工具入参校验手写而不引 zod，Markdown 解析与占位封面都�
 | IP 与提示词美化 | 本机地址、手动 AI 润色和模板交接 | 已完成；非回环 IPv4 / IPv6、刷新复制、占位符保护、结果转新模板 / Agent 草稿，规格见 `docs/SPEC-ip-prompt-tools.md` |
 | 开发诊断工具 | Cron、Spring 配置、JWT / 证书、IP 下的端口与进程 | 已实现；Windows 真实 TCP / UDP 与 PID 查询、三主题隔离 UI 验收通过；配置语法和只读边界见 `docs/developer-utilities.md`，待用户实际项目配置验收 |
 | AI 流式输出 | 提示词美化、桌面 / 手机密码识别 | 已接入真实分片、停止、脱敏预览与完整结果校验；原 AI 助手和 OpenCode 保留现有流式链路，见 `docs/SPEC-ai-streaming.md` |
-| 多 Agent 工作台 | 统一 OpenCode 兼容层，再接入 Codex → Kimi Code → Claude | 主线计划已修订，未实施；一次对话绑定所选原生会话，连接 / 切换不新建、不广播，Desktop 可见性逐个验证；见 [执行计划](../tasks/plan.md) 和 [任务清单](../tasks/todo.md) |
-| 原生子代理与手动交接 | 原生子任务按能力展示 → 用户预览后交给另一 Agent 的选定会话 | 当前主线；复用原生委派，不重建调度器，交接只填草稿、手动发送，完成后交付主线 |
+| 多 Agent 工作台 | 已接入 OpenCode / Codex，首次发送按需连接与建会话 | 统一入口与历史列表已调整；Kimi / Claude 延期；真实 Codex 生成 / 权限 / Desktop 互见待验 |
+| 原生子任务与消息转用 | 执行详情折叠，明确回复转入另一 Agent 的同项目草稿 | 取消手填交接表单和角色管理；来源总结仅主动点击时请求模型；见 [易用性方案](PLAN-coding-agent-usability.md) |
 | 自动团队与可选集成 | 自建持久化 / 自动串行 / 并行工作区；DSH、WorkBuddy、CodeBuddy、Paperclip 独立选取 | 后置可选，主线完成不自动启动；Paperclip 需本机或自有服务器实例及其 API，可替代自建调度，详见计划前提 |
 
 A 阶段验收范围：回归用例覆盖非全局 / 粘连 / Unicode 零宽正则、200 条上限，

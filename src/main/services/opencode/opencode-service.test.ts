@@ -295,6 +295,14 @@ describe('OpenCode 会话业务', () => {
     await expect(service.setOption(session.id, 'mode', 'invented')).rejects.toThrow('提供的配置项')
     service.disconnect()
   })
+  it('恢复历史保留原生模式，不静默切换成 Plan', async () => {
+    const { service, requests } = setup()
+    await service.connect(process.cwd())
+    const restored = await service.openSession('saved-build-session')
+    expect(restored.options[0].currentValue).toBe('build')
+    expect(requests.some((item) => item.method === 'session/set_config_option')).toBe(false)
+    service.disconnect()
+  })
   it('发送只运行当前会话，拒绝并发与未知会话', async () => {
     const { service, notify, finish } = setup()
     await service.connect(process.cwd())

@@ -41,8 +41,37 @@ import type {
   ShortcutSetResult,
   StatsSummary
 } from './types'
+import type {
+  CodingAgentId,
+  CodingAgentEvent,
+  CodingAgentRuntimeView,
+  CodingAgentSessionView,
+  CodingAgentSessionSummary,
+  CodingAgentSessionInput
+} from './coding-agents'
 
 export interface ToolboxBridge {
+  codingAgents: {
+    listRuntimes(): Promise<CodingAgentRuntimeView[]>
+    inspect(runtimeId: CodingAgentId): Promise<CodingAgentRuntimeView>
+    chooseExecutable(runtimeId: CodingAgentId): Promise<CodingAgentRuntimeView | null>
+    chooseDirectory(): Promise<string | null>
+    connect(input: { runtimeId: CodingAgentId; directory: string }): Promise<CodingAgentRuntimeView>
+    disconnect(runtimeId: CodingAgentId): Promise<void>
+    listSessions(runtimeId: CodingAgentId): Promise<CodingAgentSessionSummary[]>
+    createSession(runtimeId: CodingAgentId): Promise<CodingAgentSessionView>
+    resumeSession(input: CodingAgentSessionInput): Promise<CodingAgentSessionView>
+    setOption(
+      input: CodingAgentSessionInput & { optionId: string; value: string }
+    ): Promise<CodingAgentSessionView>
+    send(input: CodingAgentSessionInput & { content: string }): Promise<void>
+    stop(input: CodingAgentSessionInput): Promise<void>
+    approve(
+      input: CodingAgentSessionInput & { approvalId: string; approved: boolean }
+    ): Promise<void>
+    openDesktop(runtimeId: CodingAgentId): Promise<void>
+    onEvent(listener: (event: CodingAgentEvent) => void): () => void
+  }
   tools: {
     inspectCertificate(text: string): Promise<CertificateView[]>
     /** 手动润色；通过 requestId 关联增量，返回最终校验结果，不执行任务或保存会话。 */
@@ -59,7 +88,11 @@ export interface ToolboxBridge {
     disconnect(): Promise<void>
     listSessions(): Promise<OpenCodeSessionSummary[]>
     openSession(id?: string): Promise<OpenCodeSession>
-    setOption(input: { sessionId: string; optionId: string; value: string }): Promise<OpenCodeSession>
+    setOption(input: {
+      sessionId: string
+      optionId: string
+      value: string
+    }): Promise<OpenCodeSession>
     send(input: { sessionId: string; content: string }): Promise<void>
     stop(sessionId: string): Promise<void>
     approve(input: { sessionId: string; approvalId: string; approved: boolean }): Promise<void>

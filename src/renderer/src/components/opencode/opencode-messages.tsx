@@ -3,20 +3,33 @@ import type { JSX } from 'react'
 import type { OpenCodeSession } from '@shared/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { CodeIcon } from '../icons'
+import { useCodingAgentStore } from '../../stores/coding-agent-store'
 
 /** 只在用户位于底部时跟随更新，上滚后保持阅读位置。 */
 export function OpenCodeMessages({
   session,
-  connected
+  agentName = 'OpenCode'
 }: {
   session: OpenCodeSession | undefined
-  connected: boolean
+  agentName?: string
 }): JSX.Element {
   const container = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const [away, setAway] = useState(false)
+  const [copied, setCopied] = useState<{ id: string; message: string } | null>(null)
+  const runtimeId = useCodingAgentStore((state) => state.runtimeId)
+  const transferMessage = useCodingAgentStore((state) => state.transferMessage)
+  const targetName = runtimeId === 'codex' ? 'OpenCode' : 'Codex'
   const id = session?.id
   const lastText = session?.messages.at(-1)?.content
+  const copyMessage = async (messageId: string, content: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied({ id: messageId, message: '已复制' })
+    } catch {
+      setCopied({ id: messageId, message: '复制失败，请选中文字后复制' })
+    }
+  }
   useEffect(() => {
     following.current = true
     setAway(false)
@@ -50,14 +63,8 @@ export function OpenCodeMessages({
             <span className="opencode-empty-icon">
               <CodeIcon />
             </span>
-            <h3>{!session && connected ? '选择一个编程会话' : '从一个明确的任务开始'}</h3>
-            <p>
-              {session
-                ? '可以从 Prompt 模板填入任务，或在下方描述要分析的问题。'
-                : connected
-                  ? '点击左侧「新建编程会话」，或读取并选择 OpenCode 历史。连接不会自动创建会话。'
-                  : '选择项目并连接 OpenCode 后，便可在这里使用编程 Agent。'}
-            </p>
+            <h3>从一个明确的任务开始</h3>
+            <p>在下方输入任务即可开始，也可以从左侧继续历史会话。</p>
             <span className="field-hint">
               例如：先阅读项目结构，列出入口和核心模块，不修改文件。
             </span>
@@ -65,7 +72,7 @@ export function OpenCodeMessages({
         ) : (
           session.messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
-              <div className="message-meta">{message.role === 'user' ? '你' : 'OpenCode'}</div>
+              <div className="message-meta">{message.role === 'user' ? '你' : agentName}</div>
               {message.role === 'assistant' ? (
                 <div
                   className="markdown-body"
@@ -74,6 +81,26 @@ export function OpenCodeMessages({
               ) : (
                 <div className="message-content">{message.content}</div>
               )}
+              {message.role === 'assistant' && message.content ? (
+                <div className="opencode-message-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => void copyMessage(message.id, message.content)}
+                  >
+                    复制
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={session.status === 'running' || session.status === 'stopping'}
+                    onClick={() => transferMessage(message.id)}
+                  >
+                    用于 {targetName}
+                  </button>
+                  {copied?.id === message.id ? <span role="status">{copied.message}</span> : null}
+                </div>
+              ) : null}
             </article>
           ))
         )}

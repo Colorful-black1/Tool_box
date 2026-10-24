@@ -14,7 +14,8 @@ import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
 import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
-import { useOpenCodeStore } from './stores/opencode-store'
+import { useCodingAgentStore } from './stores/coding-agent-store'
+import { codingAgentClient } from './lib/coding-agent-client'
 import { SettingsPage } from './routes/settings-page'
 import { applyAppAppearance } from './lib/app-appearance'
 import { useAppearanceStore } from './stores/appearance-store'
@@ -26,7 +27,7 @@ import { usePromptPolishStore } from './stores/prompt-polish-store'
 import { usePasswordAiStore } from './stores/password-ai-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
-  opencode: { title: '编程 Agent', subtitle: 'OPENCODE · 从提示词到项目实践' },
+  opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
   reading: { title: '沉浸阅读', subtitle: 'READING · 与群星同行' },
@@ -120,9 +121,8 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    const bridge = window.toolbox?.opencode
-    if (!bridge) return
-    return bridge.onEvent((event) => useOpenCodeStore.getState().receive(event))
+    if (!window.toolbox?.codingAgents && !window.toolbox?.opencode) return
+    return codingAgentClient().onEvent((event) => useCodingAgentStore.getState().receive(event))
   }, [])
 
   useEffect(() => {

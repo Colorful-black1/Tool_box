@@ -32,3 +32,17 @@ Build order:
 7. 静态检查、测试、手动验收
 
 延后能力：生图、Agent 工具调用、RAG、移动端、云同步、自动更新。
+
+## 2026-10-23 编程工作台主线
+
+上表保留最初 MVP 的模块 ID；本次扩展按下表索引。PC 优先，手机暂停维护。
+
+| Module id | Responsibility | Depends on | Spec |
+|---|---|---|---|
+| coding-agent-contract | 运行时、原生会话归属、能力、事件与审批契约 | shared | [契约](docs/SPEC-coding-agent-contract.md) |
+| coding-agent-runtime | 原生适配、连接所有权、顶层运行互斥与生命周期 | coding-agent-contract | [运行时](docs/SPEC-coding-agent-runtime.md) |
+| coding-agent-workbench | 统一入口、会话、审批和原生子代理观测 | coding-agent-runtime | [工作台](docs/SPEC-coding-agent-workbench.md) |
+| agent-role-handoff | 消息转用与可选来源总结；旧模块 ID 保留，角色管理已取消 | coding-agent-workbench | [消息转用](docs/SPEC-agent-role-handoff.md) |
+
+当前主线：统一工作台 → 按需开始对话 / 历史列表 → 原生执行详情 → 消息转用。易用性调整见 [方案](docs/PLAN-coding-agent-usability.md)。
+自动团队、并行工作区、Paperclip 另行选择，不随主线完成自动启动。

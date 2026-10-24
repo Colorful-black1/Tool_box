@@ -1,228 +1,144 @@
 /* global window:readonly, document:readonly */
 const assert = require('node:assert/strict')
 
+/** 保留旧 OpenCode 桥接的回归验收，交互与新的统一工作台一致。 */
 module.exports = async function verifyOpenCode({ page, app, check, capture }) {
+  const draft = () => page.getByRole('textbox', { name: '编程任务草稿', exact: true })
+  const click = (name) => page.getByRole('button', { name, exact: true }).click()
+  const more = async (name) => {
+    await page.locator('.opencode-more > summary').click()
+    await click(name)
+  }
   const initialChatCount = await page.evaluate(() => window.uiVerification.chatSendCount())
-  await check('OpenCode 未选择项目时说明连接按钮禁用原因', async () => {
-    await page.getByRole('button', { name: '编程 Agent', exact: true }).click()
-    await page.getByRole('textbox', { name: 'OpenCode 程序路径', exact: true }).waitFor()
-    await page
-      .getByText('已检测到 OpenCode 程序，请先点击「选择项目」，再连接。', { exact: true })
-      .waitFor()
+  await check('未选择项目不能开始任务，正常入口不展开程序路径', async () => {
+    await click('编程 Agent')
+    await draft().fill('首次任务')
     assert.equal(
-      await page.getByRole('button', { name: '连接 OpenCode', exact: true }).isDisabled(),
+      await page.getByRole('button', { name: '开始对话 · OpenCode', exact: true }).isDisabled(),
       true
     )
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
+    assert.equal(await page.getByRole('textbox', { name: 'OpenCode 程序路径' }).count(), 0)
+    await click('选择项目')
     await capture('opencode-select-project')
   })
-  await check('OpenCode 未检测到程序时可重新检测，保留已选项目且不自动发送', async () => {
-    await page.getByRole('button', { name: '选择项目', exact: true }).click()
-    const directory = await page
-      .getByRole('textbox', { name: '编程项目目录', exact: true })
-      .inputValue()
+  await check('程序缺失可在设置中重新检测，保留项目和输入', async () => {
+    await click('连接设置')
     await page.evaluate(() => window.uiVerification.codeSetDetectedExecutable(null))
-    await page.getByRole('button', { name: '重新检测', exact: true }).click()
-    await page
-      .getByText('未检测到 OpenCode 内置程序，请点击「重新检测」或「选择程序」。', { exact: true })
-      .waitFor()
+    await click('重新检测')
     assert.equal(
-      await page.getByRole('button', { name: '连接 OpenCode', exact: true }).isDisabled(),
+      await page.getByRole('button', { name: '开始对话 · OpenCode', exact: true }).isDisabled(),
       true
     )
-    await capture('opencode-missing-program')
+    assert.equal(await draft().inputValue(), '首次任务')
     await page.evaluate(() =>
       window.uiVerification.codeSetDetectedExecutable('C:\\合成程序\\resources\\opencode-cli.exe')
     )
-    await page.getByRole('button', { name: '重新检测', exact: true }).click()
-    await page
-      .getByText('准备就绪，点击「连接 OpenCode」即可；无需先打开 Desktop。', { exact: true })
-      .waitFor()
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程项目目录', exact: true }).inputValue(),
-      directory
-    )
-    assert.equal(
-      await page.getByRole('button', { name: '连接 OpenCode', exact: true }).isEnabled(),
-      true
-    )
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
+    await click('重新检测')
+    await click('连接设置')
   })
-  await check('OpenCode 连接不新建或恢复对话，保留草稿并等待手动选择', async () => {
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('连接前草稿')
-    await page.getByRole('button', { name: '连接 OpenCode', exact: true }).click()
-    await page.getByRole('heading', { name: '选择一个编程会话', exact: true }).waitFor()
-    assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), 0)
+  await check('首次发送自动连接与创建，默认 Plan，失败保留草稿并复用会话', async () => {
+    await page.evaluate(() => window.uiVerification.codeFailNextSend())
+    await click('开始对话 · OpenCode')
+    await page.getByRole('alert').filter({ hasText: '合成发送失败' }).waitFor()
+    assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), 1)
     assert.equal(await page.evaluate(() => window.uiVerification.codeLoadCount()), 0)
-    assert.equal(await page.locator('.opencode-session-item').count(), 0)
-    assert.equal(
-      await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).isDisabled(),
-      true
-    )
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).inputValue(),
-      '连接前草稿'
-    )
-    await capture('opencode-connected-empty')
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('')
-  })
-  await check('OpenCode 手动新建会话默认 Plan 且不发送任务', async () => {
-    await page.getByRole('button', { name: '新建编程会话', exact: true }).click()
-    await page.getByRole('button', { name: 'OpenCode 工作模式', exact: true }).waitFor()
+    assert.equal(await draft().inputValue(), '首次任务')
     assert.equal(
       await page.getByRole('button', { name: 'OpenCode 工作模式', exact: true }).textContent(),
       'Plan▾'
     )
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
+    await click('发送给 OpenCode')
+    await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
+    await page.evaluate(() => window.uiVerification.codeComplete())
+    await page.getByText('合成回答', { exact: true }).waitFor()
+    assert.equal(await page.locator('.opencode-messages pre code').count(), 1)
     assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), 1)
     await capture('opencode-connected')
   })
-  await check('OpenCode 模型仅显示 Desktop 勾选项，同步后要求重新选择隐藏的当前模型', async () => {
+  await check('模型只显示可见项，同步不改变用户草稿或静默切换模型', async () => {
     const dropdown = page.getByRole('button', { name: 'OpenCode 模型', exact: true })
     await dropdown.click()
     assert.equal(await page.getByRole('option').count(), 2)
-    assert.equal(await page.getByRole('option', { name: '合成隐藏模型', exact: true }).count(), 0)
     await page.keyboard.press('Escape')
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('同步时保留草稿')
+    await draft().fill('同步时保留草稿')
     await page.evaluate(() => window.uiVerification.codeSetVisibleModels(['fixture/model-two']))
-    await page.getByRole('button', { name: '同步模型', exact: true }).click()
+    await more('同步模型')
     await page
-      .getByText(
-        '当前会话模型未在 Desktop 中启用，请选择已启用模型后发送；更改勾选后可同步模型。',
-        { exact: true }
-      )
+      .getByText('当前模型不可用，请选择已启用模型，或在更多菜单同步模型。', { exact: true })
       .waitFor()
     assert.equal(
       await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).isDisabled(),
       true
     )
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).inputValue(),
-      '同步时保留草稿'
-    )
+    assert.equal(await draft().inputValue(), '同步时保留草稿')
     await dropdown.click()
     assert.equal(await page.getByRole('option').count(), 1)
-    await capture('opencode-model-sync')
-    await page.getByRole('option', { name: '合成模型二', exact: true }).click()
-    assert.equal(
-      await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).isEnabled(),
-      true
-    )
+    await clickOption('合成模型二')
     await page.evaluate(() =>
       window.uiVerification.codeSetVisibleModels(['fixture/model-one', 'fixture/model-two'])
     )
-    await page.getByRole('button', { name: '同步模型', exact: true }).click()
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('')
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
-    assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), 1)
-    assert.equal(await page.evaluate(() => window.uiVerification.codeLoadCount()), 0)
+    await more('同步模型')
+    await draft().fill('')
   })
-  await check('OpenCode 连接后收起配置，展开设置不改变项目或触发任务', async () => {
-    assert.equal(
-      await page.getByRole('textbox', { name: 'OpenCode 程序路径', exact: true }).count(),
-      0
-    )
-    assert.equal(
-      await page
-        .locator('.opencode-connection')
-        .evaluate((element) => element.getBoundingClientRect().height < 110),
-      true
-    )
-    assert.equal(
-      await page
-        .locator('.opencode-messages')
-        .evaluate((element) => element.getBoundingClientRect().height > 300),
-      true
-    )
-    await page.getByRole('button', { name: '连接设置', exact: true }).click()
-    const project = page.getByRole('textbox', { name: '编程项目目录', exact: true })
-    await project.waitFor()
-    assert.equal(await project.inputValue(), 'E:\\合成项目')
-    assert.equal(
-      await page.getByRole('button', { name: '选择项目', exact: true }).isDisabled(),
-      true
-    )
-    await capture('opencode-settings')
-    await page.getByRole('button', { name: '连接设置', exact: true }).click()
-    assert.equal(await project.count(), 0)
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
-    await capture('opencode-connected')
-  })
-  await check('Prompt 生成内容填入编程草稿，拒绝替换可保留原稿', async () => {
-    await page.getByRole('button', { name: '工具', exact: true }).click()
-    await page.getByRole('button', { name: 'Prompt 模板库', exact: true }).click()
+  async function clickOption(name) {
+    await page.getByRole('option', { name, exact: true }).click()
+  }
+  await check('Prompt 和工具结果仍只填编程草稿，拒绝覆盖保留原稿', async () => {
+    const before = await page.evaluate(() => window.uiVerification.codeSendCount())
+    await click('工具')
+    await click('Prompt 模板库')
     await page
       .getByRole('textbox', { name: '变量 context', exact: true })
       .fill('合成 Java 异常上下文')
     const output = await page
       .getByRole('textbox', { name: '生成的 Prompt', exact: true })
       .inputValue()
-    await page.getByRole('button', { name: '用于编程 Agent', exact: true }).click()
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).inputValue(),
-      output
-    )
-    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), 0)
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('保留编程草稿')
-    await page.getByRole('button', { name: '工具', exact: true }).click()
-    await page.getByRole('button', { name: 'JSON 工具箱', exact: true }).click()
+    await click('用于编程 Agent')
+    assert.equal(await draft().inputValue(), output)
+    await draft().fill('保留编程草稿')
+    await click('工具')
+    await click('JSON 工具箱')
     await page.getByRole('textbox', { name: 'JSON 输入', exact: true }).fill('{"synthetic":true}')
     page.once('dialog', (dialog) => dialog.dismiss())
-    await page.getByRole('button', { name: '用于编程 Agent', exact: true }).click()
-    await page.getByRole('button', { name: '编程 Agent', exact: true }).click()
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).inputValue(),
-      '保留编程草稿'
-    )
+    await click('用于编程 Agent')
+    await click('编程 Agent')
+    assert.equal(await draft().inputValue(), '保留编程草稿')
+    assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), before)
   })
-  await check('OpenCode 发送失败保留草稿，重试后显示回复与代码块', async () => {
-    await page.evaluate(() => window.uiVerification.codeFailNextSend())
-    await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).click()
-    await page.getByRole('alert').filter({ hasText: '合成发送失败' }).waitFor()
-    assert.equal(
-      await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).inputValue(),
-      '保留编程草稿'
-    )
-    await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).click()
-    await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
-    await page.evaluate(() => window.uiVerification.codeComplete())
-    await page.getByText('合成回答', { exact: true }).waitFor()
-    assert.equal(await page.locator('.opencode-messages pre code').count(), 1)
-  })
-  await check('OpenCode 模型/模式可切换，待审批可拒绝并可停止任务', async () => {
-    await page.getByRole('button', { name: 'OpenCode 工作模式', exact: true }).click()
-    await page.getByRole('option', { name: 'Build', exact: true }).click()
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).fill('合成待审批任务')
-    await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).click()
+  await check('审批保持即时可见，拒绝和停止可用', async () => {
+    await click('OpenCode 工作模式')
+    await clickOption('Build')
+    await click('发送给 OpenCode')
     await page.evaluate(() => window.uiVerification.codePermission())
     await page.getByRole('region', { name: 'OpenCode 操作审批', exact: true }).waitFor()
     await capture('opencode-approval')
-    await page.getByRole('button', { name: '拒绝操作', exact: true }).click()
+    await click('拒绝操作')
     assert.equal(
       await page.getByRole('region', { name: 'OpenCode 操作审批', exact: true }).count(),
       0
     )
-    await page.getByRole('button', { name: '停止任务', exact: true }).click()
+    await click('停止任务')
     await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).waitFor()
   })
-  await check('OpenCode 历史会话可恢复，原生记录不与项目助手混合', async () => {
-    await page.getByRole('button', { name: '读取 OpenCode 历史', exact: true }).click()
-    await page.getByRole('button', { name: '恢复编程会话', exact: true }).click()
-    await page.getByRole('option', { name: '合成历史会话', exact: true }).click()
+  await check('新对话不创建原生记录，历史列表直接恢复且不混入普通助手', async () => {
+    const created = await page.evaluate(() => window.uiVerification.codeCreateCount())
+    await click('新对话')
+    assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), created)
+    await click('历史会话')
+    await page.locator('.opencode-session-item').filter({ hasText: '合成历史会话' }).click()
     await page.getByText('合成历史正文', { exact: true }).waitFor()
     assert.equal(await page.evaluate(() => window.uiVerification.chatSendCount()), initialChatCount)
   })
-  await check('OpenCode 重连不新建或恢复会话，可手动选择历史继续使用', async () => {
+  await check('断开后读取历史只连接和列出，不自动恢复或新建', async () => {
     const created = await page.evaluate(() => window.uiVerification.codeCreateCount())
     const loaded = await page.evaluate(() => window.uiVerification.codeLoadCount())
-    await page.getByRole('button', { name: '断开连接', exact: true }).click()
-    await page.getByRole('button', { name: '连接 OpenCode', exact: true }).click()
-    await page.getByRole('heading', { name: '选择一个编程会话', exact: true }).waitFor()
+    await click('连接设置')
+    await click('断开连接')
+    await click('连接设置')
+    await click('刷新历史会话')
     assert.equal(await page.evaluate(() => window.uiVerification.codeCreateCount()), created)
     assert.equal(await page.evaluate(() => window.uiVerification.codeLoadCount()), loaded)
-    await page.getByRole('button', { name: '读取 OpenCode 历史', exact: true }).click()
-    await page.getByRole('button', { name: '恢复编程会话', exact: true }).click()
-    await page.getByRole('option', { name: '合成历史会话', exact: true }).click()
+    await page.locator('.opencode-session-item').filter({ hasText: '合成历史会话' }).click()
     await page.getByText('合成历史正文', { exact: true }).waitFor()
     assert.equal(await page.evaluate(() => window.uiVerification.codeLoadCount()), loaded + 1)
   })
@@ -231,18 +147,12 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
     ['静夜石墨', 'graphite'],
     ['晨光纸白', 'paper']
   ]) {
-    await check(`${name}下 OpenCode 工作台布局和菜单`, async () => {
-      await page.getByRole('button', { name: '设置', exact: true }).click()
-      await page.getByRole('button', { name, exact: true }).click()
-      await page.waitForFunction((id) => document.documentElement.dataset.theme === id, id)
-      await page.getByRole('button', { name: '编程 Agent', exact: true }).click()
-      assert.equal(
-        await page
-          .locator('.viewport')
-          .evaluate((element) => element.scrollWidth > element.clientWidth),
-        false
-      )
-      await page.getByRole('button', { name: 'OpenCode 模型', exact: true }).click()
+    await check(`${name} 主题与模型菜单不溢出`, async () => {
+      await click('设置')
+      await click(name)
+      await page.waitForFunction((value) => document.documentElement.dataset.theme === value, id)
+      await click('编程 Agent')
+      await click('OpenCode 模型')
       assert.equal(
         await page.locator('.ui-dropdown-menu').evaluate((element) => {
           const box = element.getBoundingClientRect()
@@ -259,7 +169,7 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
       await capture(`opencode-${id}`)
     })
   }
-  await check('1024×680 下 OpenCode 工作台无横向溢出', async () => {
+  await check('1024×680 下输入和主要动作可见', async () => {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setContentSize(1024, 680)
     )
@@ -269,15 +179,8 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
         .evaluate((element) => element.scrollWidth > element.clientWidth),
       false
     )
+    const box = await draft().boundingBox()
+    assert.ok(box.height >= 48 && box.y + box.height < 680)
     await capture('opencode-narrow')
-    await page.getByRole('textbox', { name: '编程任务草稿', exact: true }).scrollIntoViewIfNeeded()
-    assert.equal(
-      await page.getByRole('button', { name: '发送给 OpenCode', exact: true }).isVisible(),
-      true
-    )
-    await capture('opencode-narrow-draft')
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
-    )
   })
 }

@@ -1,5 +1,82 @@
 import { APP_THEMES } from '../../shared/appearance'
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
+import { CODING_AGENT_IDS } from '../../shared/coding-agents'
+import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
+import { validateAgentRoles } from '../../shared/agent-handoff'
+
+/** 仅携带本地字段校验文案，与系统和原生协议错误分开。 */
+export class CodingAgentValidationError extends Error {}
+
+function codingAgentObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new CodingAgentValidationError('编程请求应为对象')
+  return value as Record<string, unknown>
+}
+
+export function validateCodingAgentId(value: unknown): CodingAgentId {
+  if (typeof value !== 'string' || !CODING_AGENT_IDS.some((id) => id === value))
+    throw new CodingAgentValidationError('编程 Agent 无效')
+  return value as CodingAgentId
+}
+
+/** 限制 trim 前的长度；所有新协议字符串均在主进程收窄。 */
+export function requireCodingAgentText(value: unknown, name: string, maxLength: number): string {
+  if (typeof value !== 'string' || value.length > maxLength || !value.trim())
+    throw new CodingAgentValidationError(`${name}应为 1 至 ${maxLength} 字符的文本`)
+  return value.trim()
+}
+
+export function validateCodingAgentSession(value: unknown): CodingAgentSessionInput {
+  const input = codingAgentObject(value)
+  return {
+    runtimeId: validateCodingAgentId(input.runtimeId),
+    sessionId: requireCodingAgentText(input.sessionId, '编程会话', 200)
+  }
+}
+
+export function validateCodingAgentConnect(value: unknown): {
+  runtimeId: CodingAgentId
+  directory: string
+} {
+  const input = codingAgentObject(value)
+  return {
+    runtimeId: validateCodingAgentId(input.runtimeId),
+    directory: requireCodingAgentText(input.directory, '项目目录', 4096)
+  }
+}
+
+export function validateCodingAgentSend(
+  value: unknown
+): CodingAgentSessionInput & { content: string } {
+  const input = codingAgentObject(value)
+  return {
+    ...validateCodingAgentSession(input),
+    content: requireCodingAgentText(input.content, '编程任务', 50_000)
+  }
+}
+
+export function validateCodingAgentOption(
+  value: unknown
+): CodingAgentSessionInput & { optionId: string; value: string } {
+  const input = codingAgentObject(value)
+  return {
+    ...validateCodingAgentSession(input),
+    optionId: requireCodingAgentText(input.optionId, '配置项', 100),
+    value: requireCodingAgentText(input.value, '配置值', 512)
+  }
+}
+
+export function validateCodingAgentApproval(
+  value: unknown
+): CodingAgentSessionInput & { approvalId: string; approved: boolean } {
+  const input = codingAgentObject(value)
+  if (typeof input.approved !== 'boolean') throw new CodingAgentValidationError('审批结果无效')
+  return {
+    ...validateCodingAgentSession(input),
+    approvalId: requireCodingAgentText(input.approvalId, '审批标识', 100),
+    approved: input.approved
+  }
+}
 
 /** 在 trim 前限制原始 IPC 长度，避免无效空白或大文件拖慢主进程。 */
 export function validateCertificateInput(value: unknown): string {
@@ -116,6 +193,8 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
   }
   if (Object.hasOwn(patch, 'promptTemplates'))
     validated.promptTemplates = validatePromptLibrary(patch.promptTemplates)
+  if (Object.hasOwn(patch, 'agentRoles'))
+    validated.agentRoles = validateAgentRoles(patch.agentRoles)
   if (Object.hasOwn(patch, 'toolOrder')) {
     if (!Array.isArray(patch.toolOrder) || patch.toolOrder.length > 100)
       throw new Error('工具顺序最多 100 项')
@@ -125,9 +204,10 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
     if (new Set(order).size !== order.length) throw new Error('工具顺序不能包含重复项')
     validated.toolOrder = order
   }
-  if (Object.hasOwn(patch, 'opencode')) {
-    const preferences = assertObject(patch.opencode, 'OpenCode 配置')
-    validated.opencode = {
+  for (const runtime of ['opencode', 'codex']) {
+    if (!Object.hasOwn(patch, runtime)) continue
+    const preferences = assertObject(patch[runtime], '编程 Agent 配置')
+    validated[runtime] = {
       executablePath:
         preferences.executablePath === null
           ? null

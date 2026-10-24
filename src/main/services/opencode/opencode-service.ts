@@ -236,11 +236,11 @@ export class OpenCodeService {
       session.id = sessionId
       session.options = acpOptions(result?.configOptions)
       this.sessions.set(sessionId, session)
-      // 创建后还没有模型请求，先切到 Plan，防止首次发送意外进入构建模式。
+      // 新会话以 Plan 开始；恢复会话保留原生模式，避免悄悄改变用户已选的权限。
       const mode = session.options.find((option) => option.category === 'mode')
-      if (!mode?.options.some((option) => option.value === 'plan'))
+      if (!id && !mode?.options.some((option) => option.value === 'plan'))
         throw new OpenCodeError('当前 OpenCode 未提供可确认的 Plan 模式，请更新桌面版后重试')
-      if (mode?.options.some((option) => option.value === 'plan') && mode.currentValue !== 'plan')
+      if (!id && mode && mode.currentValue !== 'plan')
         await this.setOption(session.id, mode.id, 'plan')
       await this.refreshSessionTitles(peer)
       if (peer !== this.peer) throw new OpenCodeError('连接已结束')

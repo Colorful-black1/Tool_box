@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { IPC, WINDOW_EVENT } from '../../shared/ipc-contract'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { OpenCodeError } from '../services/opencode/opencode-error'
+import type { CodingAgentService } from '../services/coding-agents/coding-agent-service'
+import { CodingAgentError } from '../services/coding-agents/adapter'
 import {
   optionalString,
   requireString,
@@ -13,7 +15,7 @@ import {
 } from './validation'
 
 /** 独立的新协议边界；系统异常不向 renderer 回显，权限只接受当前主窗口的请求。 */
-export function registerOpenCodeIpc(service: OpenCodeService): void {
+export function registerOpenCodeIpc(service: OpenCodeService, unified?: CodingAgentService): void {
   const handle = (
     channel: string,
     action: (value: unknown) => unknown | Promise<unknown>
@@ -25,10 +27,12 @@ export function registerOpenCodeIpc(service: OpenCodeService): void {
       )
         throw new Error('当前页面无权使用编程工作台')
       try {
-        return await action(value)
+        return unified
+          ? await unified.runLegacy(event.sender.id, channel, () => action(value))
+          : await action(value)
       } catch (error) {
         throw new Error(
-          error instanceof OpenCodeError
+          error instanceof OpenCodeError || error instanceof CodingAgentError
             ? error.message
             : 'OpenCode 操作失败，请检查程序、项目目录及登录配置后重试',
           { cause: error }
@@ -79,25 +83,29 @@ export function registerOpenCodeIpc(service: OpenCodeService): void {
     const input = validateOpenCodeApproval(value)
     service.approve(input.sessionId, input.approvalId, input.approved)
   })
-  handle(IPC.opencodeDesktop, async () => {
-    const path =
-      process.platform === 'win32' && process.env.LOCALAPPDATA
-        ? join(process.env.LOCALAPPDATA, 'Programs', '@opencodedesktop', 'OpenCode.exe')
-        : process.platform === 'darwin'
-          ? '/Applications/OpenCode.app'
-          : ''
-    if (!path) throw new OpenCodeError('请通过系统应用入口打开 OpenCode Desktop')
-    await access(path)
-    if (await shell.openPath(path))
-      throw new OpenCodeError('无法打开 OpenCode Desktop，请通过系统应用入口打开')
-  })
+  handle(IPC.opencodeDesktop, openOpenCodeDesktop)
   const unsubscribe = service.subscribe((event) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) window.webContents.send(WINDOW_EVENT.opencode, event)
+      if (!window.isDestroyed() && (!unified || unified.ownsOpenCode(window.webContents.id)))
+        window.webContents.send(WINDOW_EVENT.opencode, event)
     }
   })
   app.once('before-quit', () => {
     service.disconnect()
     unsubscribe()
   })
+}
+
+/** 保留已验证的 Desktop 外部入口，统一工作台与旧接口共用。 */
+export async function openOpenCodeDesktop(): Promise<void> {
+  const path =
+    process.platform === 'win32' && process.env.LOCALAPPDATA
+      ? join(process.env.LOCALAPPDATA, 'Programs', '@opencodedesktop', 'OpenCode.exe')
+      : process.platform === 'darwin'
+        ? '/Applications/OpenCode.app'
+        : ''
+  if (!path) throw new OpenCodeError('请通过系统应用入口打开 OpenCode Desktop')
+  await access(path)
+  if (await shell.openPath(path))
+    throw new OpenCodeError('无法打开 OpenCode Desktop，请通过系统应用入口打开')
 }

@@ -22,6 +22,10 @@ import type { SettingsService } from '../services/settings/settings-service'
 import type { ShortcutManager } from '../shortcuts'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { registerOpenCodeIpc } from './opencode-ipc'
+import { registerCodingAgentsIpc } from './coding-agents-ipc'
+import { CodingAgentService } from '../services/coding-agents/coding-agent-service'
+import { OpenCodeAdapter } from '../services/coding-agents/opencode-adapter'
+import { CodexAdapter } from '../services/coding-agents/codex-adapter'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
@@ -49,7 +53,12 @@ export interface IpcDependencies {
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerDeveloperDiagnosticsIpc()
-  registerOpenCodeIpc(dependencies.opencode)
+  const codingAgents = new CodingAgentService([
+    new OpenCodeAdapter(dependencies.opencode),
+    new CodexAdapter(dependencies.store)
+  ])
+  registerCodingAgentsIpc(codingAgents)
+  registerOpenCodeIpc(dependencies.opencode, codingAgents)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
   registerAiOutputIpc({
     gateway: aiGateway,

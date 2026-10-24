@@ -23,6 +23,20 @@ export const IPC = {
   opencodeStop: 'opencode:stop',
   opencodeApprove: 'opencode:approve',
   opencodeDesktop: 'opencode:desktop:open',
+  codingAgentRuntimes: 'coding-agent:runtime:list',
+  codingAgentInspect: 'coding-agent:runtime:inspect',
+  codingAgentExecutable: 'coding-agent:runtime:choose-executable',
+  codingAgentDirectory: 'coding-agent:project:choose',
+  codingAgentConnect: 'coding-agent:runtime:connect',
+  codingAgentDisconnect: 'coding-agent:runtime:disconnect',
+  codingAgentSessions: 'coding-agent:session:list',
+  codingAgentCreate: 'coding-agent:session:create',
+  codingAgentResume: 'coding-agent:session:resume',
+  codingAgentOption: 'coding-agent:session:configure',
+  codingAgentSend: 'coding-agent:run:send',
+  codingAgentStop: 'coding-agent:run:stop',
+  codingAgentApprove: 'coding-agent:run:approve',
+  codingAgentDesktop: 'coding-agent:desktop:open',
   configGet: 'config:get',
   configSet: 'config:set',
 
@@ -96,6 +110,7 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  codingAgent: 'coding-agent:event:state',
   aiOutput: 'tools:event:ai-output',
   opencode: 'opencode:event:state',
   blur: 'window:event:blur',

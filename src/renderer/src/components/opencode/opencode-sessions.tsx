@@ -1,6 +1,6 @@
+import { useState } from 'react'
 import type { JSX } from 'react'
-import { useOpenCodeStore } from '../../stores/opencode-store'
-import { Dropdown } from '../dropdown'
+import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { PlusIcon, RefreshIcon } from '../icons'
 
 export const OPENCODE_STATUS = {
@@ -11,77 +11,108 @@ export const OPENCODE_STATUS = {
   error: '任务失败'
 }
 
-export function OpenCodeSessions({ running }: { running: boolean }): JSX.Element {
-  const info = useOpenCodeStore((state) => state.info)
-  const sessions = useOpenCodeStore((state) => state.sessions)
-  const activeId = useOpenCodeStore((state) => state.activeId)
-  const history = useOpenCodeStore((state) => state.history)
-  const busy = useOpenCodeStore((state) => state.busy)
-  const openSession = useOpenCodeStore((state) => state.openSession)
-  const listSessions = useOpenCodeStore((state) => state.listSessions)
-  const selectSession = useOpenCodeStore((state) => state.selectSession)
+/** 原生历史与已打开会话共用一份列表，只有明确打开历史时才连接读取。 */
+export function OpenCodeSessions(): JSX.Element {
+  const info = useCodingAgentStore((state) => state.info)
+  const directory = useCodingAgentStore((state) => state.directory)
+  const sessions = useCodingAgentStore((state) => state.sessions)
+  const activeId = useCodingAgentStore((state) => state.activeId)
+  const history = useCodingAgentStore((state) => state.history)
+  const historyLoaded = useCodingAgentStore((state) => state.historyLoaded)
+  const busy = useCodingAgentStore((state) => state.busy)
+  const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
+  const newSession = useCodingAgentStore((state) => state.newSession)
+  const openSession = useCodingAgentStore((state) => state.openSession)
+  const listSessions = useCodingAgentStore((state) => state.listSessions)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const local = Object.values(sessions).filter(
+    (item) => item.connectionId === info?.connectionId && item.directory === directory
+  )
+  const items = new Map(
+    (historyOpen ? history : []).map((item) => [item.id, { ...item, ref: '', status: '历史' }])
+  )
+  for (const item of local)
+    items.set(item.nativeSessionId, {
+      id: item.nativeSessionId,
+      title: item.title,
+      ref: item.id,
+      status: OPENCODE_STATUS[item.status]
+    })
+  const visible = [...items.values()].filter((item) =>
+    item.title.toLowerCase().includes(query.trim().toLowerCase())
+  )
   return (
     <aside className="glass opencode-sessions" aria-label="编程会话列表">
       <div className="opencode-sessions-head">
         <h2 className="chat-title">项目会话</h2>
-        <span>{Object.keys(sessions).length}</span>
-      </div>
-      <button
-        type="button"
-        className="btn-ghost"
-        disabled={!info?.connected || busy || running}
-        onClick={() => void openSession()}
-      >
-        <PlusIcon />
-        新建编程会话
-      </button>
-      <button
-        type="button"
-        className="btn-ghost"
-        disabled={!info?.connected || busy || running}
-        onClick={() => void listSessions()}
-      >
-        <RefreshIcon />
-        读取 OpenCode 历史
-      </button>
-      {history.length ? (
-        <Dropdown
-          ariaLabel="恢复编程会话"
-          value=""
-          placeholder="选择历史会话"
-          options={history.map((item) => ({ value: item.id, label: item.title }))}
-          onChange={(id) => void openSession(id)}
-          disabled={busy || running || !info?.canLoadSession}
-          searchable
-          align="left"
-        />
-      ) : null}
-      <div className="opencode-session-list">
-        {!Object.keys(sessions).length ? (
-          <p className="opencode-session-empty">
-            {info?.connected
-              ? '手动新建会话，或读取并选择历史会话。'
-              : '连接项目后，在这里管理编程会话。'}
-          </p>
-        ) : null}
-        {Object.values(sessions).map((item) => (
+        {historyOpen ? (
           <button
             type="button"
-            className={`btn-ghost opencode-session-item${item.id === activeId ? ' active' : ''}`}
+            className="icon-btn"
+            aria-label="刷新历史会话"
+            disabled={busy || !!runningRuntime}
+            onClick={() => void listSessions()}
+          >
+            <RefreshIcon />
+          </button>
+        ) : (
+          <span>{items.size}</span>
+        )}
+      </div>
+      <button type="button" className="btn-ghost" disabled={busy} onClick={newSession}>
+        <PlusIcon />
+        新对话
+      </button>
+      <button
+        type="button"
+        className="btn-ghost"
+        aria-expanded={historyOpen}
+        disabled={!directory || busy || !!runningRuntime}
+        onClick={() => {
+          setHistoryOpen(!historyOpen)
+          if (!historyOpen && !historyLoaded) void listSessions()
+        }}
+      >
+        历史会话
+      </button>
+      {items.size > 6 ? (
+        <input
+          className="field-input"
+          aria-label="搜索会话"
+          placeholder="搜索会话"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      ) : null}
+      <div className="opencode-session-list" aria-busy={busy}>
+        {!visible.length ? (
+          <p className="opencode-session-empty">
+            {busy
+              ? '正在读取…'
+              : query
+                ? '没有匹配的会话'
+                : historyOpen && historyLoaded
+                  ? '当前项目暂无会话。'
+                  : '直接输入任务开始，或打开历史会话。'}
+          </p>
+        ) : null}
+        {visible.map((item) => (
+          <button
+            type="button"
             key={item.id}
-            onClick={() => selectSession(item.id)}
-            aria-current={item.id === activeId ? 'page' : undefined}
+            className={`btn-ghost opencode-session-item${item.ref && item.ref === activeId ? ' active' : ''}`}
+            disabled={busy || (!item.ref && (!!runningRuntime || !info?.canLoadSession))}
+            onClick={() => void openSession(item.id)}
+            aria-current={item.ref === activeId ? 'page' : undefined}
           >
             <span className="opencode-session-title" title={item.title}>
               {item.title}
             </span>
-            <small className="opencode-session-state" data-status={item.status}>
-              {OPENCODE_STATUS[item.status]}
-            </small>
+            <small className="opencode-session-state">{item.status}</small>
           </button>
         ))}
       </div>
-      <p className="field-hint">原生记录由 OpenCode 保存。读取历史仅列出所选项目的会话。</p>
     </aside>
   )
 }

@@ -23,6 +23,7 @@ import type {
   ShortcutConfig
 } from '../shared/types'
 import type { ToolboxBridge } from '../shared/bridge'
+import type { CodingAgentEvent } from '../shared/coding-agents'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const wrapped = (_event: unknown, payload: T): void => {
@@ -35,6 +36,23 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  codingAgents: {
+    listRuntimes: () => ipcRenderer.invoke(IPC.codingAgentRuntimes),
+    inspect: (id) => ipcRenderer.invoke(IPC.codingAgentInspect, id),
+    chooseExecutable: (id) => ipcRenderer.invoke(IPC.codingAgentExecutable, id),
+    chooseDirectory: () => ipcRenderer.invoke(IPC.codingAgentDirectory),
+    connect: (input) => ipcRenderer.invoke(IPC.codingAgentConnect, input),
+    disconnect: (id) => ipcRenderer.invoke(IPC.codingAgentDisconnect, id),
+    listSessions: (id) => ipcRenderer.invoke(IPC.codingAgentSessions, id),
+    createSession: (id) => ipcRenderer.invoke(IPC.codingAgentCreate, id),
+    resumeSession: (input) => ipcRenderer.invoke(IPC.codingAgentResume, input),
+    setOption: (input) => ipcRenderer.invoke(IPC.codingAgentOption, input),
+    send: (input) => ipcRenderer.invoke(IPC.codingAgentSend, input),
+    stop: (input) => ipcRenderer.invoke(IPC.codingAgentStop, input),
+    approve: (input) => ipcRenderer.invoke(IPC.codingAgentApprove, input),
+    openDesktop: (id) => ipcRenderer.invoke(IPC.codingAgentDesktop, id),
+    onEvent: (listener) => subscribe<CodingAgentEvent>(WINDOW_EVENT.codingAgent, listener)
+  },
   tools: {
     inspectCertificate: (text) => ipcRenderer.invoke(IPC.toolsCertificateInspect, text),
     polishPrompt: (text, requestId) => ipcRenderer.invoke(IPC.toolsPromptPolish, text, requestId),

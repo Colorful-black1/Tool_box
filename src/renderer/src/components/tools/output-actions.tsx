@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { useAppStore } from '../../stores/app-store'
 import { useToolTransferStore } from '../../stores/tool-transfer-store'
-import { useOpenCodeStore } from '../../stores/opencode-store'
+import { useCodingAgentStore as useOpenCodeStore } from '../../stores/coding-agent-store'
 
 /** 所有外发/保存均由按钮触发；放入对话只填草稿，不调用发送接口。 */
 export function ToolOutputActions({

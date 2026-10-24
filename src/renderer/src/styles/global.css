@@ -349,7 +349,9 @@ textarea,
   font-weight: 700;
   color: #1a1408;
   background: linear-gradient(135deg, #f5dfa8, #d3ab5e 60%, #a87f3a);
-  box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 0 18px rgba(var(--accent-rgb), 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
   clip-path: polygon(12% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 12%);
 }
 
@@ -592,7 +594,9 @@ textarea,
   letter-spacing: 2px;
   white-space: nowrap;
   background: var(--button-fill);
-  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 4px 16px rgba(var(--accent-rgb), 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   cursor: pointer;
   transition: all 0.22s;
@@ -1386,7 +1390,9 @@ textarea,
 
 .book-card:hover .book-cover {
   transform: translateY(-6px);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.6), 0 0 20px rgba(var(--accent-rgb), 0.2);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.6),
+    0 0 20px rgba(var(--accent-rgb), 0.2);
 }
 
 .book-cover img {
@@ -2843,6 +2849,91 @@ textarea,
   gap: 12px;
 }
 
+.opencode-connection {
+  position: relative;
+  z-index: 30;
+}
+
+.opencode-agent-switch,
+.opencode-message-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opencode-agent-switch .btn-ghost[aria-pressed='true'] {
+  border-color: var(--gold-line);
+  color: var(--gold);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.opencode-message-actions {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.opencode-message-actions .btn-ghost {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.opencode-start-hint {
+  margin: 0;
+  padding: 10px 18px;
+  font-size: 11px;
+}
+
+.opencode-more {
+  position: relative;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.opencode-more summary,
+.opencode-transfer-target summary {
+  cursor: pointer;
+  color: var(--gold-dim);
+}
+
+.opencode-more summary:focus-visible,
+.opencode-transfer-target summary:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 4px;
+}
+
+.opencode-more-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 35;
+  display: grid;
+  gap: 4px;
+  min-width: 170px;
+  padding: 8px;
+  background: var(--bg-menu);
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.opencode-transfer-target {
+  margin-bottom: 8px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.opencode-transfer-target > .ui-dropdown {
+  margin-top: 8px;
+}
+
+.opencode-transfer-target .ui-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  max-height: min(240px, 35vh);
+}
+
 .opencode-identity h2 {
   margin: 0;
   font-family: var(--sans);
@@ -3043,6 +3134,7 @@ textarea,
 
 .opencode-panel .chat-head {
   min-height: 50px;
+  padding: 8px 18px;
   flex-shrink: 0;
 }
 
@@ -3182,10 +3274,36 @@ textarea,
   flex: none;
 }
 
+.opencode-transfer-space {
+  flex: 1;
+  min-height: 0;
+}
+
+.opencode-panel .opencode-transferred {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 1;
+  min-height: 0;
+}
+
+.opencode-panel .opencode-transferred .composer-box {
+  flex: 1;
+  min-height: 0;
+}
+
+.opencode-panel .opencode-transferred .composer-input {
+  height: min(180px, 30vh);
+  min-height: 80px;
+  max-height: 40vh;
+  flex: 0 1 auto;
+  resize: vertical;
+}
+
 .opencode-panel .composer-actions {
   width: 100%;
   flex-wrap: wrap;
   gap: 8px 12px;
+  flex-shrink: 0;
 }
 
 .opencode-panel .composer-actions > .field-hint {
@@ -3476,7 +3594,10 @@ textarea,
   font-size: 11.5px;
   letter-spacing: 0.5px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 
 .ui-dropdown-trigger:hover:not(:disabled) {
@@ -3931,7 +4052,8 @@ textarea,
 }
 
 /* 设置页：拉模型列表的按钮 + 结果说明 */
-.model-fetch-row {  display: flex;
+.model-fetch-row {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
@@ -4069,7 +4191,9 @@ textarea,
   background: rgba(var(--neutral-rgb), 0.04);
   color: var(--text-mid);
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .icon-btn:hover:not(:disabled) {
