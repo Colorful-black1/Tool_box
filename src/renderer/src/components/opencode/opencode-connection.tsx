@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
-import { CODING_AGENT_NAMES } from '@shared/coding-agents'
+import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
 import { CodeIcon, RefreshIcon, SettingsIcon } from '../icons'
 
 /** 正常操作只选择 Agent 和项目，程序诊断收进连接设置。 */
@@ -31,7 +31,7 @@ export function OpenCodeConnection(): JSX.Element {
         <div className="opencode-identity">
           <div className="opencode-identity-title">
             <div className="opencode-agent-switch" role="group" aria-label="选择编程 Agent">
-              {(['opencode', 'codex'] as const).map((id) => (
+              {WORKBENCH_AGENT_IDS.map((id) => (
                 <button
                   key={id}
                   type="button"

@@ -4,6 +4,9 @@ import type { OpenCodeSession } from '@shared/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { CodeIcon } from '../icons'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
+import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
+import type { CodingAgentId } from '@shared/coding-agents'
+import { Dropdown } from '../dropdown'
 
 /** 只在用户位于底部时跟随更新，上滚后保持阅读位置。 */
 export function OpenCodeMessages({
@@ -19,7 +22,8 @@ export function OpenCodeMessages({
   const [copied, setCopied] = useState<{ id: string; message: string } | null>(null)
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const transferMessage = useCodingAgentStore((state) => state.transferMessage)
-  const targetName = runtimeId === 'codex' ? 'OpenCode' : 'Codex'
+  const targetId = runtimeId === 'opencode' ? 'codex' : 'opencode'
+  const targetName = CODING_AGENT_NAMES[targetId]
   const id = session?.id
   const lastText = session?.messages.at(-1)?.content
   const copyMessage = async (messageId: string, content: string): Promise<void> => {
@@ -94,10 +98,21 @@ export function OpenCodeMessages({
                     type="button"
                     className="btn-ghost"
                     disabled={session.status === 'running' || session.status === 'stopping'}
-                    onClick={() => transferMessage(message.id)}
+                    onClick={() => transferMessage(message.id, targetId)}
                   >
                     用于 {targetName}
                   </button>
+                  <Dropdown
+                    ariaLabel="其他消息转用目标"
+                    value=""
+                    placeholder="其他 Agent"
+                    options={WORKBENCH_AGENT_IDS.filter(
+                      (id) => id !== runtimeId && id !== targetId
+                    ).map((value) => ({ value, label: `用于 ${CODING_AGENT_NAMES[value]}` }))}
+                    disabled={session.status === 'running' || session.status === 'stopping'}
+                    onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
+                    align="left"
+                  />
                   {copied?.id === message.id ? <span role="status">{copied.message}</span> : null}
                 </div>
               ) : null}

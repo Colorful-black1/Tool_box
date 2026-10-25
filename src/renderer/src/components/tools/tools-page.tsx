@@ -13,6 +13,11 @@ import { DEFAULT_TOOL_ID, findGroupOfTool, findTool, TOOL_GROUPS } from './regis
 import { filterToolGroups, moveTool, orderToolGroups } from './tool-navigation'
 import { useToolOrderStore } from '../../stores/tool-order-store'
 import { CloseIcon, SearchIcon } from '../icons'
+import { ToolShortcuts } from './tool-shortcuts'
+import { useToolShortcutStore } from '../../stores/tool-shortcut-store'
+
+const ALL_TOOLS = TOOL_GROUPS.flatMap((group) => group.tools)
+const TOOL_IDS = ALL_TOOLS.map((tool) => tool.id)
 
 export function ToolsPage(): JSX.Element {
   const activeId = useAppStore((state) => state.toolsActiveId)
@@ -25,6 +30,14 @@ export function ToolsPage(): JSX.Element {
   const message = useToolOrderStore((state) => state.message)
   const load = useToolOrderStore((state) => state.load)
   const save = useToolOrderStore((state) => state.save)
+  const favorites = useToolShortcutStore((state) => state.favorites)
+  const recent = useToolShortcutStore((state) => state.recent)
+  const shortcutsReady = useToolShortcutStore((state) => state.loaded)
+  const shortcutsLoading = useToolShortcutStore((state) => state.loading)
+  const shortcutsError = useToolShortcutStore((state) => state.error)
+  const loadShortcuts = useToolShortcutStore((state) => state.load)
+  const favorite = useToolShortcutStore((state) => state.toggleFavorite)
+  const recordOpened = useToolShortcutStore((state) => state.recordOpened)
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const orderedGroups = useMemo(() => orderToolGroups(TOOL_GROUPS, order), [order])
@@ -37,18 +50,24 @@ export function ToolsPage(): JSX.Element {
 
   useEffect(() => {
     void load()
-  }, [load])
+    void loadShortcuts()
+  }, [load, loadShortcuts])
 
   const tool = findTool(activeId ?? DEFAULT_TOOL_ID) ?? TOOL_GROUPS[0].tools[0]
   const group = findGroupOfTool(tool.id)
   const selectTool = (toolId: string): void => {
-    if (toolId === tool.id) return
+    if (!findTool(toolId)) return
+    if (toolId === tool.id) {
+      void recordOpened(toolId)
+      return
+    }
     if (
       useAppStore.getState().hasUnsavedChanges &&
       !window.confirm('当前模板有未保存的修改，是否放弃模板修改并切换工具？')
     )
       return
     setToolsActive(toolId)
+    void recordOpened(toolId)
   }
 
   return (
@@ -121,12 +140,39 @@ export function ToolsPage(): JSX.Element {
             没有匹配的工具，试试名称、用途或英文标识。
           </p>
         ) : null}
+        {shortcutsError ? (
+          <div className="status-banner tools-order-error" role="alert">
+            <span>{shortcutsError}</span>
+            {!shortcutsReady ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={shortcutsLoading}
+                onClick={() => void loadShortcuts()}
+              >
+                重试快捷入口
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!searching ? (
+          <ToolShortcuts
+            tools={ALL_TOOLS}
+            favorites={favorites}
+            recent={recent}
+            activeId={tool.id}
+            onSelect={selectTool}
+          />
+        ) : null}
         <ToolTree
           groups={visibleGroups}
           activeId={tool.id}
           onSelect={selectTool}
           searching={searching}
           editable={editable}
+          favorites={favorites}
+          shortcutsReady={shortcutsReady}
+          onFavorite={(id) => void favorite(id, TOOL_IDS)}
           onMove={(sourceId, targetId, placement) => {
             if (!editable) return
             const sourceGroup = orderedGroups.find((item) =>

@@ -1,12 +1,15 @@
 /** 首版每种工具一个默认原生 profile；运行时和模型分别选择。 */
-export const CODING_AGENT_IDS = ['opencode', 'codex', 'kimi', 'claude'] as const
+export const CODING_AGENT_IDS = ['opencode', 'codex', 'kimi', 'claude', 'dsh'] as const
 export type CodingAgentId = (typeof CODING_AGENT_IDS)[number]
+/** 当前有真实适配器的工作台入口；预留 Kimi 不混入可操作选项。 */
+export const WORKBENCH_AGENT_IDS = ['opencode', 'codex', 'claude', 'dsh'] as const
 export type CodingAgentCapability = 'unknown' | 'supported' | 'unsupported'
 export const CODING_AGENT_NAMES: Record<CodingAgentId, string> = {
   opencode: 'OpenCode',
   codex: 'Codex',
   kimi: 'Kimi Code',
-  claude: 'Claude Code'
+  claude: 'Claude Code',
+  dsh: 'DeepSeek Harness'
 }
 
 /** 接口可观测性独立于运行时自身是否具有该功能。 */

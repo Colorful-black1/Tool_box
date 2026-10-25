@@ -7,26 +7,29 @@ module.exports = function codingAgentsFixture() {
     active = null,
     failHistory = false
   const calls = []
-  const names = { opencode: 'OpenCode', codex: 'Codex', kimi: 'Kimi Code', claude: 'Claude Code' }
+  const names = {
+    opencode: 'OpenCode',
+    codex: 'Codex',
+    kimi: 'Kimi Code',
+    claude: 'Claude Code',
+    dsh: 'DeepSeek Harness'
+  }
   const copy = (value) => JSON.parse(JSON.stringify(value))
   const info = (id) =>
     states.get(id)?.info ?? {
       runtimeId: id,
       name: names[id],
       directory: id === 'codex' ? 'E:\\合成项目' : '',
-      executablePath: id === 'opencode' || id === 'codex' ? `C:\\合成程序\\${id}.exe` : null,
+      executablePath: id !== 'kimi' ? `C:\\合成程序\\${id}.exe` : null,
       version: 'fixture',
       connected: false,
       connectionId: '',
-      available: id === 'opencode' || id === 'codex',
-      detail:
-        id === 'kimi' || id === 'claude'
-          ? '此运行时尚未接入；不会自动安装或调用其他 Agent'
-          : '原生程序已检测',
+      available: id !== 'kimi',
+      detail: id === 'kimi' ? '此运行时尚未接入；不会自动安装或调用其他 Agent' : '原生程序已检测',
       canLoadSession: true,
       visibleModelIds: ['fixture/model'],
       capabilities: {
-        history: 'supported',
+        history: id === 'dsh' ? 'unsupported' : 'supported',
         resume: 'supported',
         subagents: id === 'codex' ? 'supported' : 'unknown',
         stopSubagent: 'unsupported',
@@ -54,12 +57,13 @@ module.exports = function codingAgentsFixture() {
       directory: state.info.directory,
       status: 'ready',
       outcome: null,
-      messages: nativeId
-        ? [
-            { id: 'u1', role: 'user', content: '检查 Java 并发边界' },
-            { id: 'a1', role: 'assistant', content: '已完成实现，请检查停止与审批边界。' }
-          ]
-        : [],
+      messages:
+        nativeId && id !== 'dsh'
+          ? [
+              { id: 'u1', role: 'user', content: '检查 Java 并发边界' },
+              { id: 'a1', role: 'assistant', content: '已完成实现，请检查停止与审批边界。' }
+            ]
+          : [],
       tools: [],
       approvals: [],
       subtasks: [],

@@ -3974,6 +3974,72 @@ textarea,
   font-variant-numeric: tabular-nums;
 }
 
+.agent-draft-recovery {
+  flex-shrink: 0;
+  padding: 0 16px 12px;
+}
+
+.agent-draft-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.agent-draft-status > .field-hint {
+  margin-right: auto;
+}
+
+.agent-draft-status .btn-ghost,
+.agent-draft-row .btn-ghost,
+.agent-draft-row .btn-danger {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.agent-draft-list {
+  margin-top: 8px;
+  padding: 12px;
+  max-height: min(260px, 35vh);
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+}
+
+.agent-draft-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--gold-line);
+  font-size: 12px;
+}
+
+.agent-draft-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-draft-row p,
+.agent-draft-row .field-hint {
+  margin: 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opencode-message-actions .ui-dropdown {
+  width: auto;
+  min-width: 100px;
+}
+
+.opencode-message-actions .ui-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 .opencode-latest {
   position: absolute;
   right: 20px;
@@ -4974,6 +5040,10 @@ textarea,
   border: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: 14px;
   background: rgba(var(--neutral-rgb), 0.03);
+  max-height: calc(100dvh - 136px);
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
 }
 
 .tools-side-caption {
@@ -5108,6 +5178,64 @@ textarea,
   align-items: center;
   gap: 3px;
   min-width: 0;
+}
+
+.tools-shortcuts {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--gold-line);
+}
+.tools-shortcut-section h3 {
+  margin: 0 0 6px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tools-shortcut-section p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.tools-shortcut-link.btn-ghost {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 12px;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tools-shortcut-link.active {
+  border-color: var(--gold-line);
+  color: var(--gold);
+}
+.tools-favorite.icon-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 28px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.tools-favorite[aria-pressed='true'] {
+  color: var(--gold);
+}
+.tools-favorite[aria-pressed='true'] svg {
+  fill: currentColor;
+  fill-opacity: 0.18;
+}
+.tools-favorite.icon-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+.tools-tree-leaf {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tools-tree-item.dragging {

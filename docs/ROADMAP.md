@@ -10,6 +10,12 @@
 
 当前版本 **0.3.0**（桌面端新增 Token 统计与多 Agent 工作台；手机端暂停维护，保留 M0–M7 历史实现）。
 
+2026-10-25 桌面便捷功能：新增工具收藏／最近使用与 Ctrl+K 优先入口，编程草稿加密保存及重启恢复，
+接入 Claude Code 官方 SDK 与 DeepSeek Harness ACP。用户已同意新 IPC／加密接口、固定 SDK 及必需依赖、DSH 输出限制；schema 保持 v4。
+Claude 支持增量解析与官方历史接口，默认计划模式；DSH 提交后更新、可续接但不回放旧消息，使用独立 acp profile。
+类型／lint／桌面测试、隔离 SQLite／加密 UI、无模型连接和打包验证见 [本轮交付记录](desktop-convenience-agent-verification.md)。
+真实生成、文件权限与 Desktop 互见仍待用户手动验证；Kimi、手机和自动团队未扩展。
+
 2026-10-24 Token 统计：开发工作台新增独立入口，支持 14 类来源的本地只读扫描、日期 / Agent / 项目 / 模型筛选、每日趋势和会话明细。
 同日优化：修正 OpenCode 模型对象、缓存写入口径、空 usage 与 WorkBuddy 明细字段；新增指标卡、7 / 30 / 90 天堆叠趋势、
 模型与项目排行、可排序明细与详情抽屉、CSV 导出、单来源重扫与筛选记忆；统计缓存落盘 `agent-usage-cache.json`，启动先展示上次结果。
@@ -19,7 +25,7 @@
 2026-10-23 编程工作台主线：已实现 OpenCode / Codex 运行时选择、独立会话 / 草稿、统一运行互斥、
 Codex App Server 流式 / 审批 / 中断、原生子任务观测；易用性调整改为首次发送按需准备、历史列表直接恢复、消息转用与可选来源总结，取消旧交接表单和角色管理。
 本机 OpenCode 2.1.2 / Codex 0.163 无模型连接与历史探针通过；Codex 真实生成、权限和 Desktop 互见待验。
-Kimi / Claude 保持待接入，自动团队 / Paperclip / 并行工作区不在本次范围。
+该历史批次未接入 Kimi / Claude；Claude 的最新进展见上方 2026-10-25 记录。自动团队 / Paperclip / 并行工作区仍不在范围。
 实施前基线已提交，新实现未提交；细项与证据见 [任务清单](../tasks/todo.md)、[验证记录](coding-agent-verification.md)。
 
 最近更新：M10（工具页 / 全局搜索 / 桌面端常驻）完成：新增「开发者工具」树形工具页与 ⌘K 命令面板，

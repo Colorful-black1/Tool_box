@@ -26,6 +26,9 @@ export const IPC = {
   opencodeStop: 'opencode:stop',
   opencodeApprove: 'opencode:approve',
   opencodeDesktop: 'opencode:desktop:open',
+  agentDraftRead: 'agent-draft:read',
+  agentDraftSave: 'agent-draft:save',
+  agentDraftFlushed: 'agent-draft:flushed',
   codingAgentRuntimes: 'coding-agent:runtime:list',
   codingAgentInspect: 'coding-agent:runtime:inspect',
   codingAgentExecutable: 'coding-agent:runtime:choose-executable',
@@ -113,6 +116,7 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  agentDraftFlush: 'agent-draft:event:flush',
   codingAgent: 'coding-agent:event:state',
   aiOutput: 'tools:event:ai-output',
   opencode: 'opencode:event:state',

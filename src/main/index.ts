@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import { BrowserWindow, Menu, Tray, app, safeStorage } from 'electron'
+import { BrowserWindow, Menu, Tray, app, safeStorage, dialog } from 'electron'
 
 import { DB_FILE_NAME } from '../shared/constants'
 import type { SafeStorageAdapter } from '../shared/safe-storage'
@@ -12,6 +12,8 @@ import { ImportService } from './services/library/import-service'
 import { PasswordAiService } from './services/password/password-ai-service'
 import { SettingsService } from './services/settings/settings-service'
 import { OpenCodeService } from './services/opencode/opencode-service'
+import { AgentDraftService } from './services/coding-agents/agent-draft-service'
+import { AgentDraftQuitFlush, registerAgentDraftsIpc } from './ipc/agent-drafts-ipc'
 import { ShortcutManager } from './shortcuts'
 import { createTray, showMainWindow } from './tray'
 
@@ -25,6 +27,8 @@ let tray: Tray | null = null
 let shortcuts: ShortcutManager | null = null
 /** 是否正在退出：退出流程里不该再拦截窗口关闭 */
 let quitting = false
+let checkingQuit = false
+const draftQuitFlush = new AgentDraftQuitFlush()
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -50,9 +54,10 @@ function createMainWindow(): BrowserWindow {
 
   // 关窗不退出：隐藏到托盘，等用户从托盘唤回或明确退出
   win.on('close', (event) => {
-    if (quitting || !tray) return
+    if (quitting) return
     event.preventDefault()
-    win.hide()
+    if (tray) win.hide()
+    else app.quit()
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -70,6 +75,7 @@ function initializeServices(): void {
   const settings = new SettingsService(userDataDir, safeStorageAdapter)
   const secretBox = new SafeStorageSecretBox(userDataDir, safeStorageAdapter)
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
+  registerAgentDraftsIpc(new AgentDraftService(store, secretBox), draftQuitFlush)
   const importService = new ImportService()
   const aiGateway = new AiGateway(settings, store, importService, promptDir)
   const passwordAi = new PasswordAiService(promptDir, (system, user, options) =>
@@ -118,7 +124,41 @@ app.on('window-all-closed', () => {
   if (!tray) app.quit()
 })
 
-app.on('before-quit', () => {
-  quitting = true
+app.on('before-quit', (event) => {
+  if (quitting) return
+  event.preventDefault()
+  if (checkingQuit) return
+  checkingQuit = true
+  void (async () => {
+    const saved =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await draftQuitFlush.request(mainWindow.webContents)
+        : false
+    if (!saved) {
+      const choice = await dialog.showMessageBox({
+        type: 'warning',
+        title: '草稿尚未保存',
+        message: '未能确认最新草稿已保存',
+        detail: '可以返回应用重试。仍然退出可能丢失最后一段尚未保存的文字，已保存记录会保留。',
+        buttons: ['返回应用', '仍然退出'],
+        defaultId: 0,
+        cancelId: 0
+      })
+      if (choice.response === 0) {
+        checkingQuit = false
+        showMainWindow(mainWindow)
+        return
+      }
+    }
+    quitting = true
+    app.quit()
+  })().catch(() => {
+    checkingQuit = false
+    showMainWindow(mainWindow)
+    console.warn('草稿退出确认未完成，已返回应用')
+  })
+})
+
+app.on('will-quit', () => {
   shortcuts?.dispose()
 })

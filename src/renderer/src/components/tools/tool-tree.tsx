@@ -9,7 +9,7 @@ import type { JSX } from 'react'
 
 import type { ToolGroup } from './registry'
 import type { ToolPlacement } from './tool-navigation'
-import { DragHandleIcon } from '../icons'
+import { DragHandleIcon, FavoriteIcon } from '../icons'
 
 export interface ToolTreeProps {
   groups: ToolGroup[]
@@ -19,6 +19,9 @@ export interface ToolTreeProps {
   searching: boolean
   editable: boolean
   onMove: (sourceId: string, targetId: string, placement: ToolPlacement) => void
+  favorites: string[]
+  shortcutsReady: boolean
+  onFavorite(id: string): void
 }
 
 export function ToolTree({
@@ -27,7 +30,10 @@ export function ToolTree({
   onSelect,
   searching,
   editable,
-  onMove
+  onMove,
+  favorites,
+  shortcutsReady,
+  onFavorite
 }: ToolTreeProps): JSX.Element {
   // 默认全部展开：主树不多，折叠反而让人多点一次
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -105,6 +111,16 @@ export function ToolTree({
                       onClick={() => onSelect(tool.id)}
                     >
                       {tool.name}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn tools-favorite"
+                      aria-label={`${favorites.includes(tool.id) ? '取消收藏' : '收藏'}${tool.name}`}
+                      aria-pressed={favorites.includes(tool.id)}
+                      disabled={!shortcutsReady}
+                      onClick={() => onFavorite(tool.id)}
+                    >
+                      <FavoriteIcon />
                     </button>
                     <button
                       type="button"

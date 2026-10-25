@@ -1,5 +1,9 @@
 # 多 Agent 工作台执行计划
 
+## 当前交付：桌面便捷功能与常用 Agent 扩展（2026-10-25）
+
+已按 [执行方案](../docs/PLAN-desktop-convenience-agent-expansion.md) 完成收藏／最近使用、加密草稿恢复、Claude SDK、DSH ACP 接入。用户已明确同意草稿 IPC／加密扩展、固定 SDK 及必需依赖、DSH 输出限制；不改 schema、不处理手机或 Kimi、不新增自动团队、不提交。真实生成／权限验收与代码／合成验证分开记录，见 [交付记录](../docs/desktop-convenience-agent-verification.md)。
+
 ## 当前新增：本地 Token 统计（2026-10-24）
 
 按用户授权实施 [统计方案](../docs/PLAN-agent-token-usage.md)：独立契约与只读采集 → 统一口径 / 去重 → 统计页面 / 来源管理 → 合成与本机只读验证。

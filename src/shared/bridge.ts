@@ -50,8 +50,15 @@ import type {
   CodingAgentSessionInput
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
+import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
 
 export interface ToolboxBridge {
+  agentDrafts: {
+    read(): Promise<AgentDraftSnapshot>
+    save(input: AgentDraftSaveInput): Promise<AgentDraftSnapshot>
+    onFlush(listener: (requestId: string) => void): () => void
+    flushed(input: { requestId: string; saved: boolean }): Promise<void>
+  }
   agentUsage: {
     query(input: UsageQuery): Promise<UsageReport>
     chooseSource(client: UsageClient): Promise<boolean>

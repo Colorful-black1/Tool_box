@@ -57,7 +57,11 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
       title: `选择 ${info.name} 原生 CLI 程序`,
       properties: ['openFile'],
       filters: [
-        { name: '原生运行程序', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }
+        {
+          name: '原生运行程序',
+          extensions:
+            process.platform === 'win32' ? (id === 'dsh' ? ['exe', 'cmd'] : ['exe']) : ['*']
+        }
       ]
     })
     return result.canceled || !result.filePaths[0]
@@ -119,7 +123,7 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
     const window = BrowserWindow.getAllWindows().find((item) => item.webContents.id === owner)
     if (window && !window.isDestroyed()) window.webContents.send(WINDOW_EVENT.codingAgent, event)
   })
-  app.once('before-quit', () => {
+  app.once('will-quit', () => {
     service.dispose()
     dispose()
   })

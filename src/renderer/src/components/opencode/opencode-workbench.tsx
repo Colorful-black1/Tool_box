@@ -8,6 +8,7 @@ import { OpenCodeMessages } from './opencode-messages'
 import { SendIcon, StopIcon } from '../icons'
 import { OpenCodeSessions, OPENCODE_STATUS } from './opencode-sessions'
 import { OpenCodeActivity } from './opencode-activity'
+import { AgentDraftRecovery } from './agent-draft-recovery'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 
 const OPTION_NAMES: Record<string, string> = {
@@ -198,10 +199,22 @@ export function OpenCodeWorkbench(): JSX.Element {
           ) : (
             <p className="field-hint opencode-start-hint">
               首次发送会连接并新建会话。
-              {runtimeId === 'opencode' ? '新会话使用 Plan 模式。' : '新会话使用只读权限。'}
+              {runtimeId === 'opencode'
+                ? '新会话使用 Plan 模式。'
+                : runtimeId === 'claude'
+                  ? '新会话使用计划模式；标准模式中的操作遵循原生规则与审批。'
+                  : runtimeId === 'dsh'
+                    ? '操作权限沿用 DSH 原生规则，需要审批时在此确认。'
+                    : '新会话使用只读权限。'}
               模型沿用原生默认；不可用时会停下供你选择。
             </p>
           )}
+          {runtimeId === 'dsh' ? (
+            <p className="status-banner">
+              回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。历史属于独立 acp
+              profile。
+            </p>
+          ) : null}
           {session || !transferred ? (
             <OpenCodeMessages session={session} agentName={name} />
           ) : (
@@ -253,7 +266,7 @@ export function OpenCodeWorkbench(): JSX.Element {
                 placeholder="描述任务，点击发送开始；也可从 Prompt 或工具结果填入内容"
               />
               <div className="composer-actions">
-                <span className="field-hint">草稿保留在本次应用中</span>
+                <span className="field-hint">只恢复输入，不自动发送</span>
                 <span className="opencode-draft-count">{draft.length.toLocaleString()}/50,000</span>
                 {preparingRuntime ? (
                   <button type="button" className="btn-ghost" onClick={cancelPreparation}>
@@ -278,6 +291,7 @@ export function OpenCodeWorkbench(): JSX.Element {
               </div>
             </div>
           </form>
+          <AgentDraftRecovery />
         </section>
       </div>
     </div>

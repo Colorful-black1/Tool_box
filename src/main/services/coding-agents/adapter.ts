@@ -14,7 +14,9 @@ export type NativeCodingSession = Omit<
   subtasks?: CodingAgentSessionView['subtasks']
 }
 export type NativeCodingEvent =
-  { kind: 'connection'; connected: boolean } | { kind: 'session'; session: NativeCodingSession }
+  | { kind: 'connection'; connected: boolean }
+  | { kind: 'session'; session: NativeCodingSession }
+  | { kind: 'runtime'; runtime: Omit<CodingAgentRuntimeView, 'connectionId'> }
 
 /** 返回普通视图；不向 renderer 暴露原生 RPC 或认证数据。 */
 export interface CodingAgentAdapter {

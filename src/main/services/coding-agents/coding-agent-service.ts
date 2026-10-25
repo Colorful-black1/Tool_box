@@ -341,6 +341,10 @@ export class CodingAgentService {
   }
 
   private receive(state: RuntimeState, event: NativeCodingEvent): void {
+    if (event.kind === 'runtime') {
+      this.updateInfo(state, event.runtime)
+      return
+    }
     if (event.kind === 'connection') {
       if (!event.connected) {
         state.info.connected = false

@@ -90,7 +90,7 @@ export function registerOpenCodeIpc(service: OpenCodeService, unified?: CodingAg
         window.webContents.send(WINDOW_EVENT.opencode, event)
     }
   })
-  app.once('before-quit', () => {
+  app.once('will-quit', () => {
     service.disconnect()
     unsubscribe()
   })

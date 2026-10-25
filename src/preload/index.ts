@@ -36,6 +36,12 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  agentDrafts: {
+    read: () => ipcRenderer.invoke(IPC.agentDraftRead),
+    save: (input) => ipcRenderer.invoke(IPC.agentDraftSave, input),
+    onFlush: (listener) => subscribe<string>(WINDOW_EVENT.agentDraftFlush, listener),
+    flushed: (input) => ipcRenderer.invoke(IPC.agentDraftFlushed, input)
+  },
   agentUsage: {
     query: (input) => ipcRenderer.invoke(IPC.agentUsageQuery, input),
     chooseSource: (client) => ipcRenderer.invoke(IPC.agentUsageChooseSource, client),

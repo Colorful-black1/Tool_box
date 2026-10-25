@@ -10,7 +10,7 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
   await check('主流程只有已接入 Agent，进入页面不连接、建会话或发送', async () => {
     assert.equal(
       await page.getByRole('group', { name: '选择编程 Agent' }).getByRole('button').count(),
-      2
+      4
     )
     assert.equal(await page.getByRole('button', { name: '交接给其他 Agent' }).count(), 0)
     assert.equal(await page.getByRole('textbox', { name: 'OpenCode 程序路径' }).count(), 0)
@@ -201,10 +201,16 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
       }
     })
   }
-  await check('重新加载不恢复草稿或自动重发，不出现旧交接界面', async () => {
+  await check('重新加载恢复已保存草稿但不连接或自动重发，不出现旧交接界面', async () => {
+    const expected = await draft().inputValue()
+    assert.equal(await page.evaluate(() => window.uiVerification.flushDrafts()), true)
     await page.reload()
     await agent('编程 Agent')
-    assert.equal(await draft().inputValue(), '')
+    await page.waitForFunction(
+      (text) => document.querySelector('#opencode-draft')?.value === text,
+      expected
+    )
+    assert.equal(await draft().inputValue(), expected)
     assert.deepEqual(await calls(), [])
     assert.equal(await page.getByRole('button', { name: '交接给其他 Agent' }).count(), 0)
   })

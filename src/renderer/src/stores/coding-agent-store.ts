@@ -8,8 +8,11 @@ import type {
   CodingAgentSessionView
 } from '@shared/coding-agents'
 import { codingAgentClient } from '../lib/coding-agent-client'
+import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-agents'
+import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../shared/agent-drafts'
+import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
 
-/** 一个运行时的内存工作台；正文和草稿不进入偏好配置或聊天数据库。 */
+/** 正文只留在内存；未发送草稿由独立协调器加密保存。 */
 interface RuntimeWorkspace {
   info: CodingAgentRuntimeView | null
   directory: string
@@ -55,7 +58,11 @@ interface CodingAgentState extends RuntimeWorkspace {
   selectSession(id: string): void
   receive(event: CodingAgentEvent): void
   clearError(): void
-  transferMessage(messageId: string): void
+  transferMessage(messageId: string, targetId?: CodingAgentId): void
+  draftDocument(): AgentDraftDocument
+  restoreDrafts(document: AgentDraftDocument, dirty: Set<string>, selectionChanged: boolean): void
+  removeDrafts(identity?: string): void
+  retrieveDraft(draft: AgentDraft): void
 }
 
 function emptyWorkspace(): RuntimeWorkspace {
@@ -115,8 +122,8 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
 function draftKey(state: RuntimeWorkspace): string {
   const session = state.activeId ? state.sessions[state.activeId] : undefined
   return session
-    ? `session:${session.directory}:${session.nativeSessionId}`
-    : `project:${state.directory}`
+    ? draftEntryKey(session.directory, session.nativeSessionId)
+    : draftEntryKey(state.directory, null)
 }
 
 /** 两个运行时使用同一规范化项目路径；不把 renderer 路径当作主进程校验。 */
@@ -137,7 +144,7 @@ function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorks
     historyLoaded: false,
     selection: state.selection + 1,
     drafts: { ...state.drafts, [draftKey(state)]: state.draft },
-    draft: state.drafts[`project:${directory}`] ?? (state.directory ? '' : state.draft),
+    draft: state.drafts[draftEntryKey(directory, null)] ?? (state.directory ? '' : state.draft),
     transferred: false
   }
 }
@@ -229,7 +236,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     const session = state.sessions[ref]
     if (!session || !sameDirectory(session.directory, state.directory)) return
     if (state.activeId === ref) return
-    const key = `session:${session.directory}:${session.nativeSessionId}`
+    const key = draftEntryKey(session.directory, session.nativeSessionId)
     const existing = state.drafts[key] ?? ''
     if (
       carryDraft &&
@@ -377,7 +384,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         activeId: null,
         selection: state.selection + 1,
         drafts: { ...state.drafts, [draftKey(state)]: state.draft },
-        draft: state.drafts[`project:${state.directory}`] ?? '',
+        draft: state.drafts[draftEntryKey(state.directory, null)] ?? '',
         transferred: false
       })
     },
@@ -479,14 +486,15 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         set({ runningRuntime: null, runningSession: null })
     },
     clearError: () => update(get().runtimeId, { error: '' }),
-    transferMessage: (messageId) => {
+    transferMessage: (messageId, targetId) => {
       const sourceId = get().runtimeId
       const source = read(sourceId)
       const session = source.activeId ? source.sessions[source.activeId] : undefined
       const message = session?.messages.find((item) => item.id === messageId)
       if (!session || !message?.content.trim() || message.role !== 'assistant') return
       if (session.status === 'running' || session.status === 'stopping') return
-      const id = sourceId === 'opencode' ? 'codex' : 'opencode'
+      const id = targetId ?? (sourceId === 'opencode' ? 'codex' : 'opencode')
+      if (id === sourceId || !WORKBENCH_AGENT_IDS.some((value) => value === id)) return
       const target = read(id)
       if (target.busy) {
         update(sourceId, { error: '目标 Agent 正在处理操作，请稍后再转用' })
@@ -498,7 +506,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         return
       }
       const next = changeProject(target, session.directory)
-      const key = `project:${session.directory}`
+      const key = draftEntryKey(session.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
       if (existing.trim() && existing !== text && !window.confirm('目标已有新对话草稿，是否替换？'))
         return
@@ -512,6 +520,99 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         error: ''
       })
       get().switchRuntime(id)
+    },
+    draftDocument: () => {
+      const drafts: AgentDraft[] = []
+      for (const runtimeId of CODING_AGENT_IDS) {
+        const state = read(runtimeId)
+        const entries = { ...state.drafts, [draftKey(state)]: state.draft }
+        for (const [key, content] of Object.entries(entries)) {
+          if (!content) continue
+          const [directory, nativeSessionId] = JSON.parse(key) as [string, string | null]
+          // 尚未选择项目的内存输入，等用户选定绝对路径后再保存。
+          if (!/^(?:[a-z]:\/|\/)/i.test(directory)) continue
+          drafts.push({ runtimeId, directory, nativeSessionId, content })
+        }
+      }
+      const { runtimeId, directory } = get()
+      return {
+        version: 1,
+        selection: directory ? { runtimeId, directory: normalizeDraftDirectory(directory) } : null,
+        drafts: drafts.sort((a, b) => draftIdentity(a).localeCompare(draftIdentity(b)))
+      }
+    },
+    restoreDrafts: (document, dirty, selectionChanged) => {
+      // 重读时同步远端已清除的条目；本窗口加载期间修改过的身份始终优先。
+      for (const runtimeId of CODING_AGENT_IDS) {
+        update(runtimeId, (state) => {
+          const drafts = Object.fromEntries(
+            Object.entries(state.drafts).filter(([key]) =>
+              dirty.has(JSON.stringify([runtimeId, key]))
+            )
+          )
+          return {
+            drafts,
+            ...(dirty.has(JSON.stringify([runtimeId, draftKey(state)])) ? {} : { draft: '' })
+          }
+        })
+      }
+      for (const entry of document.drafts) {
+        if (dirty.has(draftIdentity(entry))) continue
+        update(entry.runtimeId, (state) => ({
+          drafts: {
+            ...state.drafts,
+            [draftEntryKey(entry.directory, entry.nativeSessionId)]: entry.content
+          },
+          ...(draftKey(state) === draftEntryKey(entry.directory, entry.nativeSessionId)
+            ? { draft: entry.content }
+            : {})
+        }))
+      }
+      if (!selectionChanged && document.selection) {
+        const { runtimeId, directory } = document.selection
+        const previous = get()
+        const next = changeProject(read(runtimeId), directory)
+        set({
+          ...next,
+          runtimeId,
+          workspaces: { ...previous.workspaces, [previous.runtimeId]: workspace(previous) }
+        })
+      }
+    },
+    removeDrafts: (identity) => {
+      for (const runtimeId of CODING_AGENT_IDS) {
+        update(runtimeId, (state) => {
+          const drafts = { ...state.drafts }
+          for (const key of Object.keys(drafts)) {
+            const [directory, nativeSessionId] = JSON.parse(key) as [string, string | null]
+            if (!identity || identity === draftIdentity({ runtimeId, directory, nativeSessionId }))
+              delete drafts[key]
+          }
+          const current = JSON.stringify([runtimeId, draftKey(state)])
+          return {
+            drafts,
+            ...(!identity || identity === current ? { draft: '', transferred: false } : {})
+          }
+        })
+      }
+    },
+    retrieveDraft: (entry) => {
+      const target = read(entry.runtimeId)
+      if (target.busy || get().runningRuntime) return
+      const next = changeProject(target, entry.directory)
+      const key = draftEntryKey(entry.directory, null)
+      const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
+      if (existing && existing !== entry.content && !window.confirm('新对话已有草稿，是否替换？'))
+        return
+      update(entry.runtimeId, {
+        ...next,
+        activeId: null,
+        selection: next.selection + 1,
+        drafts: { ...next.drafts, [draftKey(next)]: next.draft, [key]: entry.content },
+        draft: entry.content,
+        transferred: false
+      })
+      get().switchRuntime(entry.runtimeId)
     }
   }
 })

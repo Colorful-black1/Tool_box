@@ -1,9 +1,12 @@
 import { APP_THEMES } from '../../shared/appearance'
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
-import { CODING_AGENT_IDS } from '../../shared/coding-agents'
+import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../shared/coding-agents'
 import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
 import { validateAgentRoles } from '../../shared/agent-handoff'
+import { MAX_TOOL_FAVORITES, MAX_TOOL_RECENT, validateToolIds } from '../../shared/tool-shortcuts'
 import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
+import { parseAgentDraftDocument } from '../../shared/agent-drafts'
+import type { AgentDraftDocument, AgentDraftSaveInput } from '../../shared/agent-drafts'
 import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
 
 /** 统计参数独立校验，不复用只包含两个已接入运行时的枚举。 */
@@ -71,6 +74,25 @@ export function validateUsageQuery(value: unknown): UsageQuery {
 
 /** 仅携带本地字段校验文案，与系统和原生协议错误分开。 */
 export class CodingAgentValidationError extends Error {}
+
+/** 草稿同样在主进程校验；纯解析器也用于解密后的数据。 */
+export function validateAgentDraftDocument(value: unknown): AgentDraftDocument {
+  return parseAgentDraftDocument(value)
+}
+
+export function validateAgentDraftSave(value: unknown): AgentDraftSaveInput {
+  const input = assertObject(value, '保存草稿')
+  if (typeof input.revision !== 'number' || !Number.isSafeInteger(input.revision) || input.revision < 0)
+    throw new Error('草稿修订号无效')
+  return { revision: input.revision, document: validateAgentDraftDocument(input.document) }
+}
+
+export function validateAgentDraftFlush(value: unknown): { requestId: string; saved: boolean } {
+  const input = assertObject(value, '草稿刷新')
+  const requestId = requireCodingAgentText(input.requestId, '刷新标识', 100)
+  if (typeof input.saved !== 'boolean') throw new Error('草稿刷新状态无效')
+  return { requestId, saved: input.saved }
+}
 
 function codingAgentObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -268,14 +290,18 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
     if (new Set(order).size !== order.length) throw new Error('工具顺序不能包含重复项')
     validated.toolOrder = order
   }
-  for (const runtime of ['opencode', 'codex']) {
+  if (Object.hasOwn(patch, 'toolFavorites'))
+    validated.toolFavorites = validateToolIds(patch.toolFavorites, MAX_TOOL_FAVORITES)
+  if (Object.hasOwn(patch, 'toolRecent'))
+    validated.toolRecent = validateToolIds(patch.toolRecent, MAX_TOOL_RECENT)
+  for (const runtime of WORKBENCH_AGENT_IDS) {
     if (!Object.hasOwn(patch, runtime)) continue
     const preferences = assertObject(patch[runtime], '编程 Agent 配置')
     validated[runtime] = {
       executablePath:
         preferences.executablePath === null
           ? null
-          : requireString(preferences.executablePath, 'OpenCode 程序路径', { maxLength: 4096 }),
+          : requireString(preferences.executablePath, 'Agent 程序路径', { maxLength: 4096 }),
       directory: requireString(preferences.directory, '项目目录', {
         maxLength: 4096,
         allowEmpty: true

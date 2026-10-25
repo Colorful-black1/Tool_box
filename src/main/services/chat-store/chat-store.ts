@@ -128,6 +128,21 @@ export class ToolboxStore {
     return next
   }
 
+  /** 独立 kv 记录仅接受密文，不经普通 config 接口返回。 */
+  agentDraftCipherGet(): string | null {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get('agent_drafts_v1') as
+      { value: string } | undefined
+    return row?.value ?? null
+  }
+
+  agentDraftCipherSet(cipherText: string): void {
+    this.db
+      .prepare(
+        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+      )
+      .run('agent_drafts_v1', cipherText)
+  }
+
   // ==================== AI 会话 ====================
 
   listConversations(): ConversationSummary[] {

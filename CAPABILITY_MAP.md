@@ -47,3 +47,14 @@ Build order:
 
 当前主线：统一工作台 → 按需开始对话 / 历史列表 → 原生执行详情 → 消息转用。易用性调整见 [方案](docs/PLAN-coding-agent-usability.md)。
 自动团队、并行工作区、Paperclip 另行选择，不随主线完成自动启动。
+
+## 2026-10-25 桌面便捷功能与原生 Agent 扩展
+
+| Module id | Responsibility | Depends on | Spec |
+|---|---|---|---|
+| tool-shortcuts | 工具收藏、最近使用、Ctrl+K 优先入口；仅持久化工具 ID | renderer-ui, persistence, shared | [实施记录](docs/desktop-convenience-agent-verification.md) |
+| agent-draft-recovery | 未发送文字加密保存、修订号合并、恢复／管理与退出刷新 | coding-agent-workbench, persistence, shared | [草稿契约](docs/desktop-convenience-agent-verification.md#草稿契约与加密边界) |
+| claude-runtime | 官方 SDK 的增量、审批、停止、模型及原生历史；结构化问答明确降级 | coding-agent-runtime | [能力与验证](docs/desktop-convenience-agent-verification.md) |
+| dsh-runtime | 独立 ACP、受控 CLI 启动、单次审批／取消；提交后更新，不回放旧消息 | coding-agent-runtime | [能力与验证](docs/desktop-convenience-agent-verification.md) |
+
+本轮 schema 保持 v4；手机、Kimi 和自动团队不扩展。真实模型任务未执行，连接证据与合成验证分别记录。

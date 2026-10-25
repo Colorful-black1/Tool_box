@@ -17,6 +17,7 @@ import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
 import { AgentUsagePage } from './components/agent-usage/agent-usage-page'
 import { useCodingAgentStore } from './stores/coding-agent-store'
 import { codingAgentClient } from './lib/coding-agent-client'
+import { startAgentDraftSync, flushAgentDrafts } from './lib/agent-draft-sync'
 import { SettingsPage } from './routes/settings-page'
 import { applyAppAppearance } from './lib/app-appearance'
 import { useAppearanceStore } from './stores/appearance-store'
@@ -121,6 +122,21 @@ export default function App(): JSX.Element {
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    const dispose = startAgentDraftSync()
+    const unsubscribe = window.toolbox?.agentDrafts?.onFlush((requestId) => {
+      void flushAgentDrafts()
+        .then((saved) => window.toolbox.agentDrafts.flushed({ requestId, saved }))
+        .catch(() => {
+          // 主进程可能已超时或窗口正在关闭；刷新失败由退出对话框处理。
+        })
+    })
+    return () => {
+      unsubscribe?.()
+      dispose()
+    }
   }, [])
 
   useEffect(() => {

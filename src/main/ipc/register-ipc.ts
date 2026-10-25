@@ -27,6 +27,8 @@ import { registerAgentUsageIpc } from './agent-usage-ipc'
 import { CodingAgentService } from '../services/coding-agents/coding-agent-service'
 import { OpenCodeAdapter } from '../services/coding-agents/opencode-adapter'
 import { CodexAdapter } from '../services/coding-agents/codex-adapter'
+import { ClaudeAdapter } from '../services/coding-agents/claude-adapter'
+import { DshAdapter } from '../services/coding-agents/dsh-adapter'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
@@ -57,7 +59,9 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService([
     new OpenCodeAdapter(dependencies.opencode),
-    new CodexAdapter(dependencies.store)
+    new CodexAdapter(dependencies.store),
+    new ClaudeAdapter(dependencies.store),
+    new DshAdapter(dependencies.store)
   ])
   registerCodingAgentsIpc(codingAgents)
   registerOpenCodeIpc(dependencies.opencode, codingAgents)

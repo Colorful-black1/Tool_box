@@ -14,6 +14,7 @@ const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
 const verifyDeveloperUtilities = require('./developer-utilities.cjs')
+const { verifyConvenience, verifyConvenienceAfterRestart } = require('./desktop-convenience.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
 
@@ -23,6 +24,7 @@ async function main() {
   const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
   if (process.argv.includes('--agent-usage-only')) env.TOOLBOX_USAGE_VERIFY = '1'
   if (process.argv.includes('--coding-agents-only')) env.TOOLBOX_CODING_AGENT_VERIFY = '1'
+  if (process.argv.includes('--convenience-only')) env.TOOLBOX_CONVENIENCE_VERIFY = '1'
   delete env.ELECTRON_RUN_AS_NODE
   let app
   const passed = []
@@ -61,6 +63,19 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--convenience-only')) {
+      await verifyConvenience({ page, app, check, capture })
+      await check('完整退出并重启后收藏与草稿恢复，不创建连接或任务', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyConvenienceAfterRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`桌面便捷功能验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--agent-usage-only')) {
       await verifyAgentUsage({ page, app, check, capture })
       assert.deepEqual(errors, [])

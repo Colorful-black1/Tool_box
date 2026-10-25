@@ -16,6 +16,8 @@ import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import type { AppView, SearchTarget } from '../../stores/app-store'
 import { TOOL_GROUPS } from '../tools/registry'
+import { useToolShortcutStore } from '../../stores/tool-shortcut-store'
+import { shortcutToolIds } from '../../../../shared/tool-shortcuts'
 
 /** 面板里能执行的动作 */
 type PaletteAction =
@@ -50,6 +52,9 @@ function formatDate(ms: number): string {
 }
 
 export function CommandPalette(): JSX.Element | null {
+  const favorites = useToolShortcutStore((state) => state.favorites)
+  const recent = useToolShortcutStore((state) => state.recent)
+  const loadShortcuts = useToolShortcutStore((state) => state.load)
   const settings = useAppStore((state) => state.settings)
   const conversations = useAppStore((state) => state.conversations)
   const books = useAppStore((state) => state.books)
@@ -71,6 +76,10 @@ export function CommandPalette(): JSX.Element | null {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const restoreFocus = useRef(true)
+
+  useEffect(() => {
+    if (open) void loadShortcuts()
+  }, [open, loadShortcuts])
 
   useOverlayEscape(() => setOpen(false))
 
@@ -192,12 +201,23 @@ export function CommandPalette(): JSX.Element | null {
     const trimmed = query.trim()
     if (!trimmed) {
       // 没输入时只给命令与工具，别把几百本书糊在脸上
-      return sources
-        .filter((item) => item.kind === 'command' || item.kind === 'tool')
-        .slice(0, 12)
+      const tools = sources.filter((item) => item.kind === 'tool')
+      const ids = shortcutToolIds(
+        tools.map((item) => item.id),
+        favorites,
+        recent
+      )
+      const shortcuts = ids.flatMap((id) => tools.find((tool) => tool.id === id) ?? [])
+      const used = new Set(ids)
+      return [
+        ...shortcuts,
+        ...sources.filter(
+          (item) => item.kind === 'command' || (item.kind === 'tool' && !used.has(item.id))
+        )
+      ].slice(0, Math.max(12, shortcuts.length))
     }
     return searchAll(trimmed, sources, 24)
-  }, [query, sources])
+  }, [query, sources, favorites, recent])
 
   const activeIndex = Math.min(active, Math.max(0, hits.length - 1))
   useEffect(() => {
@@ -232,6 +252,7 @@ export function CommandPalette(): JSX.Element | null {
       case 'openTool':
         setToolsActive(action.toolId)
         setView('tools')
+        void useToolShortcutStore.getState().recordOpened(action.toolId)
         break
       case 'openTarget':
         openSearchTarget(action.target)
