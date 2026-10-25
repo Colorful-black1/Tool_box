@@ -44,9 +44,13 @@ export function OpenCodeWorkbench(): JSX.Element {
   const openSession = useCodingAgentStore((state) => state.openSession)
   const clearError = useCodingAgentStore((state) => state.clearError)
   const [advanced, setAdvanced] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const menu = useRef<HTMLDetailsElement>(null)
-  const closeMenu = (): void => menu.current?.removeAttribute('open')
-  useOverlayEscape(closeMenu)
+  const closeMenu = (): void => {
+    setMenuOpen(false)
+    menu.current?.querySelector('summary')?.focus()
+  }
+  useOverlayEscape(closeMenu, menuOpen)
   const name = CODING_AGENT_NAMES[runtimeId]
   const session = activeId ? sessions[activeId] : undefined
   const visibleModels = new Set(info?.visibleModelIds ?? [])
@@ -81,7 +85,7 @@ export function OpenCodeWorkbench(): JSX.Element {
   useEffect(() => {
     const outside = (event: MouseEvent): void => {
       if (event.target instanceof Node && !menu.current?.contains(event.target))
-        menu.current?.removeAttribute('open')
+        setMenuOpen(false)
     }
     document.addEventListener('mousedown', outside)
     return () => document.removeEventListener('mousedown', outside)
@@ -114,8 +118,20 @@ export function OpenCodeWorkbench(): JSX.Element {
         <section className="glass chat-panel opencode-panel" aria-label={`${name} 工作台`}>
           <header className="chat-head">
             <h2 className="chat-title">{session?.title ?? '新对话'}</h2>
-            <details className="opencode-more" ref={menu}>
-              <summary>更多</summary>
+            <details
+              className="opencode-more"
+              ref={menu}
+              open={menuOpen}
+            >
+              <summary
+                aria-expanded={menuOpen}
+                onClick={(event) => {
+                  event.preventDefault()
+                  setMenuOpen(!menuOpen)
+                }}
+              >
+                更多
+              </summary>
               <div className="opencode-more-menu">
                 <button
                   type="button"

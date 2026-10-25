@@ -1,4 +1,5 @@
-﻿import { useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BookSummary } from '../../../../shared/types'
@@ -22,6 +23,8 @@ export function BookDetailSheet({
   const [author, setAuthor] = useState(book.author)
   const [saving, setSaving] = useState(false)
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(onClose)
 
   async function save(): Promise<void> {
@@ -37,11 +40,16 @@ export function BookDetailSheet({
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="书籍详情" onClick={onClose}>
-      <div
-        className="glass overlay-card book-detail"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div
+      className="overlay"
+      ref={modalRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="书籍详情"
+      onClick={onClose}
+    >
+      <div className="glass overlay-card book-detail" onClick={(event) => event.stopPropagation()}>
         <div className="book-detail-cover">
           {book.coverPath ? (
             <img

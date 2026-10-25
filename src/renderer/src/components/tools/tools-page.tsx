@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../stores/dialog-store'
 /**
  * 工具页：左侧树（主树 → 工具），右侧当前工具的面板。
  *
@@ -55,7 +56,7 @@ export function ToolsPage(): JSX.Element {
 
   const tool = findTool(activeId ?? DEFAULT_TOOL_ID) ?? TOOL_GROUPS[0].tools[0]
   const group = findGroupOfTool(tool.id)
-  const selectTool = (toolId: string): void => {
+  const selectTool = async (toolId: string): Promise<void> => {
     if (!findTool(toolId)) return
     if (toolId === tool.id) {
       void recordOpened(toolId)
@@ -63,7 +64,7 @@ export function ToolsPage(): JSX.Element {
     }
     if (
       useAppStore.getState().hasUnsavedChanges &&
-      !window.confirm('当前模板有未保存的修改，是否放弃模板修改并切换工具？')
+      !(await confirmDialog('当前模板有未保存的修改，是否放弃模板修改并切换工具？'))
     )
       return
     setToolsActive(toolId)

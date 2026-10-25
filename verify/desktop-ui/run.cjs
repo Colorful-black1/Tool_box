@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /** npm run build 后执行：node verify/desktop-ui/run.cjs */
 /* global document:readonly, window:readonly, Event:readonly, innerWidth:readonly, innerHeight:readonly */
 // 上述浏览器全局只在 Playwright 的页面回调中使用，不在 Node 侧读取。
@@ -7,6 +8,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
+const verifyUiControls = require('./ui-controls.cjs')
 const verifyOpenCode = require('./opencode.cjs')
 const verifyCodingAgents = require('./coding-agents.cjs')
 const verifyAgentUsage = require('./agent-usage.cjs')
@@ -64,6 +66,12 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--ui-controls-only')) {
+      await verifyUiControls({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`桌面控件验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--tool-expansion-only')) {
       await verifyToolExpansion({ page, app, check, capture })
       await check('待办完整退出重启后仍保留，编辑完成和提醒开关持久化', async () => {
@@ -151,6 +159,19 @@ async function main() {
       return
     }
 
+    if (process.argv.includes('--dev-tools-only')) {
+      await verifyDevTools({ page, app, check, capture })
+      await check('重启后恢复模板及历史，变量值不恢复', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyTemplatesAfterRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`数据工具与模板验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--tools-only')) {
       await verifyDeveloperUtilities({ page, app, check, capture })
       await verifyIpPrompt({ page, app, check, capture })
@@ -180,8 +201,9 @@ async function main() {
     await check('取消跳转保留草稿并恢复焦点', async () => {
       await page.getByRole('textbox', { name: '笔记正文' }).fill('未保存的合成草稿')
       await search('验收笔记乙')
-      page.once('dialog', (dialog) => dialog.dismiss())
-      await select()
+      await withDialog(page, false, async () => {
+        await select()
+      })
       assert.equal(
         await page.getByRole('textbox', { name: '笔记正文' }).inputValue(),
         '未保存的合成草稿'
@@ -197,8 +219,9 @@ async function main() {
     })
     await check('同页切换笔记重置编辑器', async () => {
       await search('验收笔记乙')
-      page.once('dialog', (dialog) => dialog.accept())
-      await select()
+      await withDialog(page, true, async () => {
+        await select()
+      })
       await page.waitForFunction(
         () => document.querySelector('.note-title-input')?.value === '验收笔记乙'
       )
@@ -207,8 +230,9 @@ async function main() {
     await check('重复打开同一笔记也重置已确认放弃的草稿', async () => {
       await page.getByRole('textbox', { name: '笔记正文' }).fill('准备放弃的同页草稿')
       await search('验收笔记乙')
-      page.once('dialog', (dialog) => dialog.accept())
-      await select()
+      await withDialog(page, true, async () => {
+        await select()
+      })
       await page.waitForFunction(
         () => document.querySelector('.note-body-input')?.value === '乙笔记正文'
       )
@@ -236,8 +260,9 @@ async function main() {
         .click()
       await page.getByRole('textbox', { name: '名称 *', exact: true }).fill('未保存的合成条目')
       await search('验收分组乙')
-      page.once('dialog', (dialog) => dialog.dismiss())
-      await select()
+      await withDialog(page, false, async () => {
+        await select()
+      })
       await page.keyboard.press('Escape')
       assert.equal(await page.getByRole('dialog', { name: '密码编辑' }).isVisible(), true)
       assert.equal(
@@ -247,8 +272,9 @@ async function main() {
     })
     await check('分组搜索选中过滤目标分组', async () => {
       await search('验收分组乙')
-      page.once('dialog', (dialog) => dialog.accept())
-      await select()
+      await withDialog(page, true, async () => {
+        await select()
+      })
       await page.getByRole('button', { name: '验收分组乙', exact: true }).waitFor()
       await page.waitForFunction(
         () => document.querySelector('.group-chip.active')?.textContent === '验收分组乙'
@@ -287,6 +313,11 @@ async function main() {
       )
       await page.keyboard.press('Escape')
     })
+    if (process.argv.includes('--modal-only')) {
+      assert.deepEqual(errors, [])
+      process.stdout.write(`搜索与模态焦点验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     await check('底部跟随流式消息，上滚后保持阅读位置', async () => {
       await page.getByRole('button', { name: '对话', exact: true }).click()
       await bottom()
@@ -449,6 +480,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(String(error) + '\n')
+  process.stderr.write((error.stack ?? String(error)) + '\n')
   process.exitCode = 1
 })

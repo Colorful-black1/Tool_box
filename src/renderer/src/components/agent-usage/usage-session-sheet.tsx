@@ -1,3 +1,5 @@
+import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef } from 'react'
 import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
 import type { UsageSessionView } from '@shared/agent-usage'
@@ -18,6 +20,8 @@ export function UsageSessionSheet({
   onFilterModel,
   onFilterProject
 }: UsageSessionSheetProps): JSX.Element {
+  const modalRef = useRef<HTMLElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(onClose)
   const tokens: Array<[string, number | null]> = [
     ['未缓存输入', row.tokens.input],
@@ -36,6 +40,8 @@ export function UsageSessionSheet({
     >
       <aside
         className="glass usage-sheet"
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="会话用量详情"

@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../../stores/dialog-store'
 import { useEffect } from 'react'
 import type { JSX } from 'react'
 import { usePromptStore } from '../../../stores/prompt-store'
@@ -38,11 +39,13 @@ export function PromptPolishPanel(): JSX.Element {
           value=""
           placeholder="从 Prompt 模板载入"
           options={templates.map((item) => ({ value: item.id, label: item.title }))}
-          onChange={(id) => {
+          onChange={async (id) => {
             const template = templates.find((item) => item.id === id)
             if (
               !template ||
-              (input.trim() && input !== template.body && !window.confirm('替换当前待润色提示词？'))
+              (input.trim() &&
+                input !== template.body &&
+                !(await confirmDialog('替换当前待润色提示词？')))
             )
               return
             setInput(template.body, template.title)

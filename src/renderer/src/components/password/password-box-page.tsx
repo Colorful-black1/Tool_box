@@ -1,4 +1,6 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { confirmDialog } from '../../stores/dialog-store'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { PasswordEntryView } from '../../../../shared/types'
@@ -453,6 +455,8 @@ function PasswordEditor(props: {
     return () => setUnsavedChanges(false)
   }, [dirty, setUnsavedChanges])
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
 
   /** 生成一个随机密码填进输入框 */
@@ -484,11 +488,16 @@ function PasswordEditor(props: {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="密码编辑" onClick={props.onClose}>
-      <div
-        className="glass overlay-card"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div
+      className="overlay"
+      ref={modalRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="密码编辑"
+      onClick={props.onClose}
+    >
+      <div className="glass overlay-card" onClick={(event) => event.stopPropagation()}>
         <div className="overlay-head-row">
           <h3 className="panel-title">{props.initial ? '编辑条目' : '新增条目'}</h3>
         </div>
@@ -527,7 +536,7 @@ function PasswordEditor(props: {
               id="pwd-title"
               className="field-input"
               value={form.title}
-              autoFocus
+              data-autofocus
               onChange={(event) => setForm({ ...form, title: event.target.value })}
             />
           </div>
@@ -642,6 +651,8 @@ function PasswordDetailSheet(props: {
   const { entry } = props
   const [showPassword, setShowPassword] = useState(false)
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
 
   async function copy(label: string, value: string): Promise<void> {
@@ -651,11 +662,16 @@ function PasswordDetailSheet(props: {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="条目详情" onClick={props.onClose}>
-      <div
-        className="glass overlay-card"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div
+      className="overlay"
+      ref={modalRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="条目详情"
+      onClick={props.onClose}
+    >
+      <div className="glass overlay-card" onClick={(event) => event.stopPropagation()}>
         <div className="overlay-head-row">
           <h3 className="panel-title">{entry.title}</h3>
           <button
@@ -729,8 +745,8 @@ function PasswordDetailSheet(props: {
           <button
             type="button"
             className="btn-ghost btn-danger"
-            onClick={() => {
-              if (window.confirm(`确定删除「${entry.title}」吗？该操作不可恢复。`)) {
+            onClick={async () => {
+              if (await confirmDialog(`确定删除「${entry.title}」吗？该操作不可恢复。`)) {
                 void props.onDelete()
               }
             }}

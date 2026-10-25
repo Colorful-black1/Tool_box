@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
 
@@ -56,7 +57,7 @@ async function verifyToolExpansion({ page, app, check, capture }) {
     await button('待办清单').click()
     await text('待办标题').fill('首批验收待办')
     await text('待办备注').fill('本地临时数据库的合成事项')
-    await page.getByLabel('待办开始时间', { exact: true }).fill('2030-10-25T09:00')
+    await page.getByLabel('待办开始时间', { exact: true }).fill('2030-10-25 09:00')
     await page.getByLabel('待办截止时间', { exact: true }).fill('2030-10-24T18:00')
     await button('添加待办').click()
     await page.getByRole('alert').filter({ hasText: '开始时间不能晚于截止时间' }).waitFor()
@@ -75,8 +76,9 @@ async function verifyToolExpansion({ page, app, check, capture }) {
     await page.getByRole('checkbox', { name: '完成 首批验收待办', exact: true }).click()
     await page.waitForFunction(() => document.querySelectorAll('.todo-card').length === 0)
     await choose('待办筛选', '未完成')
-    page.once('dialog', (dialog) => dialog.accept())
-    await button('归档').click()
+    await withDialog(page, true, async () => {
+      await button('归档').click()
+    })
     await page.waitForFunction(() => document.querySelectorAll('.todo-card').length === 0)
     await choose('待办筛选', '已归档')
     await button('恢复').click()
@@ -126,7 +128,7 @@ async function verifyToolExpansion({ page, app, check, capture }) {
         await capture(`expansion-todos-${theme}-${width}`)
         await tool('时间戳换算')
         await button('源时区').click()
-        const box = await page.getByRole('listbox', { name: '源时区' }).boundingBox()
+        const box = await page.locator('.dropdown-popover').boundingBox()
         assert.ok(
           box &&
             box.x >= 0 &&
@@ -148,7 +150,7 @@ async function verifyTodoRestart(page) {
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   assert.equal(
     await page.getByLabel('待办开始时间', { exact: true }).inputValue(),
-    '2030-10-25T09:00'
+    '2030-10-25 09:00'
   )
   assert.equal(
     await page.getByRole('checkbox', { name: '开始／截止时通知我', exact: true }).isChecked(),

@@ -1,3 +1,5 @@
+import { confirmDialog } from './dialog-store'
+vi.mock('./dialog-store', () => ({ confirmDialog: vi.fn(async () => true) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   CodingAgentId,
@@ -278,7 +280,7 @@ describe('消息转用与来源总结', () => {
     await store.getState().chooseDirectory()
     await store.getState().openSession('same-native-id')
     const connected = api.connect.mock.calls.length
-    store.getState().transferMessage('answer')
+    await store.getState().transferMessage('answer')
     expect(api.connect).toHaveBeenCalledTimes(connected)
     expect(store.getState().directory).toBe('/fixture/project')
     expect(store.getState().info?.directory).toBe('/fixture/other')
@@ -296,7 +298,7 @@ describe('消息转用与来源总结', () => {
     await store.getState().openSession('same-native-id')
     store.getState().setDraft('来源未发草稿')
     api.connect.mockClear()
-    store.getState().transferMessage('answer')
+    await store.getState().transferMessage('answer')
     expect(store.getState().runtimeId).toBe('codex')
     expect(store.getState().activeId).toBeNull()
     expect(store.getState().directory).toBe('/fixture/project')
@@ -317,8 +319,8 @@ describe('消息转用与来源总结', () => {
     store.getState().newSession()
     store.getState().setDraft('目标新草稿')
     store.getState().switchRuntime('opencode')
-    vi.mocked(window.confirm).mockReturnValueOnce(false)
-    store.getState().transferMessage('answer')
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
+    await store.getState().transferMessage('answer')
     expect(store.getState().runtimeId).toBe('opencode')
     store.getState().switchRuntime('codex')
     expect(store.getState().draft).toBe('目标新草稿')
@@ -332,9 +334,9 @@ describe('消息转用与来源总结', () => {
     store.getState().setDraft('历史原稿')
     store.getState().switchRuntime('opencode')
     await store.getState().openSession('same-native-id')
-    store.getState().transferMessage('answer')
+    await store.getState().transferMessage('answer')
     const transferred = store.getState().draft
-    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
     await store.getState().openSession('same-native-id', true)
     expect(store.getState().draft).toBe(transferred)
     expect(store.getState().activeId).toBeNull()
@@ -350,7 +352,7 @@ describe('消息转用与来源总结', () => {
       kind: 'session',
       session: { ...session('opencode', 'opencode-ref', 2), status: 'running' }
     })
-    store.getState().transferMessage('answer')
+    await store.getState().transferMessage('answer')
     expect(store.getState().runtimeId).toBe('opencode')
     store.getState().receive({
       kind: 'session',
@@ -359,7 +361,7 @@ describe('消息转用与来源总结', () => {
         messages: [{ id: 'answer', role: 'assistant', content: 'x'.repeat(50_000) }]
       }
     })
-    store.getState().transferMessage('answer')
+    await store.getState().transferMessage('answer')
     expect(store.getState().error).toContain('超过')
     expect(api.send).not.toHaveBeenCalled()
   })
@@ -464,5 +466,64 @@ describe('原生事件和运行身份', () => {
       session: { ...session('opencode', 'opencode-ref', 5), status: 'ready' }
     })
     expect(store.getState().runningRuntime).toBeNull()
+  })
+  it('等待转用确认期间目标草稿变化，不覆盖新内容', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    store.getState().setDraft('目标原稿')
+    store.getState().switchRuntime('opencode')
+    let answer!: (value: boolean) => void
+    vi.mocked(confirmDialog).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    const pending = store.getState().transferMessage('answer')
+    store.getState().switchRuntime('codex')
+    store.getState().setDraft('等待期间的新输入')
+    answer(true)
+    await pending
+    expect(store.getState().draft).toBe('等待期间的新输入')
+    expect(api.send).not.toHaveBeenCalled()
+  })
+  it('等待转用确认期间的目标会话事件不会被旧快照覆盖', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    await store.getState().openSession('same-native-id')
+    store.getState().newSession()
+    store.getState().setDraft('目标原稿')
+    store.getState().switchRuntime('opencode')
+    let answer!: (value: boolean) => void
+    vi.mocked(confirmDialog).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+    const pending = store.getState().transferMessage('answer')
+    const updated = { ...session('codex', 'codex-ref', 8), title: '等待期间更新的标题' }
+    store.getState().receive({ kind: 'session', session: updated })
+    answer(true)
+    await pending
+    expect(store.getState().runtimeId).toBe('codex')
+    expect(store.getState().sessions['codex-ref'].title).toBe('等待期间更新的标题')
+    expect(store.getState().sessions['codex-ref'].revision).toBe(8)
+  })
+  it('等待会话覆盖确认期间输入变化，保持当前会话和两份草稿', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('历史草稿')
+    store.getState().newSession()
+    store.getState().setDraft('带入草稿')
+    let answer!: (value: boolean) => void
+    vi.mocked(confirmDialog).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    const pending = store.getState().openSession('same-native-id', true)
+    store.getState().setDraft('新输入')
+    answer(true)
+    await pending
+    expect(store.getState().activeId).toBeNull()
+    expect(store.getState().draft).toBe('新输入')
+    await store.getState().openSession('same-native-id')
+    expect(store.getState().draft).toBe('历史草稿')
   })
 })

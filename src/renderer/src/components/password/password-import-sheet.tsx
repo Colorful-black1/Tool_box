@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { PasswordDraft, PasswordImportMode } from '../../../../shared/types'
@@ -58,6 +59,8 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
       .filter((index) => index >= 0)))
   }, [aiDrafts])
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(onClose)
 
   function reset(): void {
@@ -124,6 +127,8 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
   return (
     <div
       className="overlay import-overlay"
+      ref={modalRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="批量导入密码"

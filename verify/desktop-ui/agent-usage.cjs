@@ -136,7 +136,7 @@ module.exports = async function verifyAgentUsage({ page, app, check, capture }) 
       await open()
       await page.locator('.agent-usage-ledger tbody tr').first().waitFor()
       await select('统计时间', '自定义日期')
-      assert.equal(await page.locator('input[type="date"]').count(), 2)
+      assert.equal(await page.locator('.date-picker input').count(), 2)
       for (const [width, height] of [
         [1280, 820],
         [1024, 680]

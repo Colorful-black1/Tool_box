@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../stores/dialog-store'
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { CODING_AGENT_NAMES } from '@shared/coding-agents'
@@ -15,6 +16,7 @@ export function AgentDraftRecovery(): JSX.Element {
   const directory = useCodingAgentStore((state) => state.directory)
   const draft = useCodingAgentStore((state) => state.draft)
   const [expanded, setExpanded] = useState(false)
+  const [warning, setWarning] = useState('')
   return (
     <div className="agent-draft-recovery">
       <div className="agent-draft-status" aria-live="polite">
@@ -43,6 +45,11 @@ export function AgentDraftRecovery(): JSX.Element {
         </button>
       </div>
       {message ? <div className="status-banner">{message}</div> : null}
+      {warning ? (
+        <p className="field-hint warn" role="status">
+          {warning}
+        </p>
+      ) : null}
       {expanded ? (
         <div className="agent-draft-list">
           <p className="field-hint">
@@ -69,9 +76,18 @@ export function AgentDraftRecovery(): JSX.Element {
               <button
                 type="button"
                 className="btn-danger"
-                onClick={() => {
-                  if (window.confirm('清除此条未发送草稿？'))
-                    useCodingAgentStore.getState().removeDrafts(draftIdentity(entry))
+                onClick={async () => {
+                  setWarning('')
+                  if (!(await confirmDialog('清除此条未发送草稿？'))) return
+                  const state = useCodingAgentStore.getState()
+                  const current = state
+                    .draftDocument()
+                    .drafts.find((item) => draftIdentity(item) === draftIdentity(entry))
+                  if (current?.content !== entry.content) {
+                    setWarning('草稿已变化，请核对后重新清除')
+                    return
+                  }
+                  state.removeDrafts(draftIdentity(entry))
                 }}
               >
                 清除
@@ -82,9 +98,16 @@ export function AgentDraftRecovery(): JSX.Element {
             <button
               type="button"
               className="btn-danger"
-              onClick={() => {
-                if (window.confirm('清除全部 Agent 未发送草稿？此操作无法撤销。'))
-                  useCodingAgentStore.getState().removeDrafts()
+              onClick={async () => {
+                setWarning('')
+                const before = JSON.stringify(useCodingAgentStore.getState().draftDocument().drafts)
+                if (!(await confirmDialog('清除全部 Agent 未发送草稿？此操作无法撤销。'))) return
+                const state = useCodingAgentStore.getState()
+                if (JSON.stringify(state.draftDocument().drafts) !== before) {
+                  setWarning('草稿已变化，请核对后重新清除')
+                  return
+                }
+                state.removeDrafts()
               }}
             >
               清除全部草稿

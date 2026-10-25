@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global window:readonly, document:readonly, innerWidth:readonly */
 const assert = require('node:assert/strict')
 
@@ -53,8 +54,9 @@ async function verifyConvenience({ page, app, check, capture }) {
       async () => (await window.uiVerification.readConfig()).toolRecent?.[0] === 'prompt'
     )
     const before = (await config()).toolRecent
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await button('打开收藏的JSON 工具箱').click()
+    await withDialog(page, false, async () => {
+      await button('打开收藏的JSON 工具箱').click()
+    })
     assert.deepEqual((await config()).toolRecent, before)
     assert.ok((await body.inputValue()).includes('收藏入口验收草稿'))
     await page.evaluate(() => window.uiVerification.failNextConfigSave())
@@ -65,8 +67,9 @@ async function verifyConvenience({ page, app, check, capture }) {
     await page.waitForFunction(async () =>
       (await window.uiVerification.readConfig()).toolFavorites?.includes('regex')
     )
-    page.once('dialog', (dialog) => dialog.accept())
-    await button('打开收藏的JSON 工具箱').click()
+    await withDialog(page, true, async () => {
+      await button('打开收藏的JSON 工具箱').click()
+    })
   })
   await button('编程 Agent').click()
   await check('四个 Agent 的新对话和历史草稿隔离，落库使用真实密文', async () => {
@@ -132,14 +135,17 @@ async function verifyConvenience({ page, app, check, capture }) {
     await page.getByRole('button', { name: /^管理草稿/ }).click()
     const row = page.locator('.agent-draft-row').filter({ hasText: 'OpenCode · 历史会话' })
     const before = await page.evaluate(() => window.uiVerification.agentCalls())
-    page.once('dialog', (dialog) => dialog.accept())
-    await row.getByRole('button', { name: '取回', exact: true }).click()
+    await withDialog(page, true, async () => {
+      await row.getByRole('button', { name: '取回', exact: true }).click()
+    })
     assert.equal(await draft().inputValue(), '合成草稿 · OpenCode 历史会话')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await row.getByRole('button', { name: '清除', exact: true }).click()
+    await withDialog(page, false, async () => {
+      await row.getByRole('button', { name: '清除', exact: true }).click()
+    })
     assert.equal(await row.count(), 1)
-    page.once('dialog', (dialog) => dialog.accept())
-    await row.getByRole('button', { name: '清除', exact: true }).click()
+    await withDialog(page, true, async () => {
+      await row.getByRole('button', { name: '清除', exact: true }).click()
+    })
     assert.equal(await row.count(), 0)
     assert.deepEqual(await page.evaluate(() => window.uiVerification.agentCalls()), before)
     assert.equal(await flush(), true)
@@ -153,8 +159,9 @@ async function verifyConvenience({ page, app, check, capture }) {
       .click()
     const before = await page.evaluate(() => window.uiVerification.agentCalls())
     await button('其他消息转用目标').click()
-    page.once('dialog', (dialog) => dialog.accept())
-    await page.getByRole('option', { name: '用于 Claude Code', exact: true }).click()
+    await withDialog(page, true, async () => {
+      await page.getByRole('option', { name: '用于 Claude Code', exact: true }).click()
+    })
     assert.ok((await draft().inputValue()).includes('已完成实现'))
     assert.deepEqual(await page.evaluate(() => window.uiVerification.agentCalls()), before)
   })

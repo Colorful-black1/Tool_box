@@ -14,6 +14,7 @@ import { DEFAULT_SHORTCUT_CONFIG, SHORTCUT_ACCELERATORS } from '@shared/types'
 import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
+import { Dropdown } from '../components/dropdown'
 
 /** 快捷键的中文说明（accelerator 本身是技术写法，界面上给中文） */
 const ACCELERATOR_LABELS: Record<string, string> = {
@@ -369,18 +370,17 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                 <label className="field-label" htmlFor="profile-provider">
                   供应商 · PROVIDER
                 </label>
-                <select
+                <Dropdown
                   id="profile-provider"
-                  className="field-select"
+                  triggerClassName="dropdown-field"
                   value={draft.provider}
-                  onChange={(event) => pickProvider(event.target.value as AiProviderId)}
-                >
-                  {AI_PROVIDER_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </select>
+                  ariaLabel="服务商"
+                  options={AI_PROVIDER_PRESETS.map((preset) => ({
+                    value: preset.id,
+                    label: preset.name
+                  }))}
+                  onChange={(value) => pickProvider(value as AiProviderId)}
+                />
                 <p className="field-hint">
                   选择后自动填入官方接口地址；列表外的服务商请选「自定义」手填。
                 </p>
@@ -598,20 +598,15 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
           </div>
 
           <div className="settings-shortcut-row">
-            <select
-              className="field-select field-select-narrow"
+            <Dropdown
               value={shortcut.accelerator}
-              aria-label="快捷键组合"
-              onChange={(event) =>
-                void applyShortcut({ ...shortcut, accelerator: event.target.value })
-              }
-            >
-              {SHORTCUT_ACCELERATORS.map((accelerator) => (
-                <option key={accelerator} value={accelerator}>
-                  {ACCELERATOR_LABELS[accelerator] ?? accelerator}
-                </option>
-              ))}
-            </select>
+              ariaLabel="快捷键组合"
+              options={SHORTCUT_ACCELERATORS.map((accelerator) => ({
+                value: accelerator,
+                label: ACCELERATOR_LABELS[accelerator] ?? accelerator
+              }))}
+              onChange={(value) => void applyShortcut({ ...shortcut, accelerator: value })}
+            />
             {shortcutError ? (
               <span className="field-hint warn" role="alert">
                 {shortcutError}

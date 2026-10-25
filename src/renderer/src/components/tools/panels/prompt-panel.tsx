@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../../stores/dialog-store'
 import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 import { generateUuid } from '@shared/dev-tools'
@@ -86,16 +87,16 @@ export function PromptPanel(): JSX.Element {
       }
     }
   }, [body, values])
-  const permitSwitch = (): boolean =>
-    !dirty || window.confirm('模板有未保存的修改，是否放弃这些修改？')
-  const selectTemplate = (id: string): void => {
-    if (id === selectedId || !permitSwitch()) return
+  const permitSwitch = async (): Promise<boolean> =>
+    !dirty || (await confirmDialog('模板有未保存的修改，是否放弃这些修改？'))
+  const selectTemplate = async (id: string): Promise<void> => {
+    if (id === selectedId || !(await permitSwitch())) return
     setSelectedId(id)
     setVersion('current')
     setStatus('')
   }
-  const newTemplate = (): void => {
-    if (!permitSwitch()) return
+  const newTemplate = async (): Promise<void> => {
+    if (!(await permitSwitch())) return
     setSelectedId('')
     setVersion('current')
     setDraft({ id: generateUuid(), title: '', body: NEW_TEMPLATE_BODY })
@@ -108,9 +109,9 @@ export function PromptPanel(): JSX.Element {
       setStatus('模板已保存；变量值未保存')
     }
   }
-  const compareVersion = (): void => {
+  const compareVersion = async (): Promise<void> => {
     const previous = historical ?? selected?.versions[0]
-    if (!previous || !selected || !permitSwitch()) return
+    if (!previous || !selected || !(await permitSwitch())) return
     useToolTransferStore.getState().send('diff', previous.body, selected.body, 'text')
   }
 
@@ -145,8 +146,8 @@ export function PromptPanel(): JSX.Element {
           type="button"
           className="btn-ghost"
           disabled={saving || !body.trim()}
-          onClick={() => {
-            if (permitSwitch())
+          onClick={async () => {
+            if (await permitSwitch())
               useToolTransferStore
                 .getState()
                 .send('prompt-polish', body, historical?.title ?? draft.title)
@@ -215,8 +216,8 @@ export function PromptPanel(): JSX.Element {
             type="button"
             className="btn-ghost"
             disabled={saving}
-            onClick={() => {
-              if (!permitSwitch()) return
+            onClick={async () => {
+              if (!(await permitSwitch())) return
               setDraft((current) => ({
                 ...current,
                 title: historical.title,
@@ -274,8 +275,8 @@ export function PromptPanel(): JSX.Element {
             type="button"
             className="btn-ghost"
             disabled={!generated.output || saving}
-            onClick={() => {
-              if (permitSwitch())
+            onClick={async () => {
+              if (await permitSwitch())
                 useToolTransferStore.getState().send('prompt-polish', generated.output, draft.title)
             }}
           >

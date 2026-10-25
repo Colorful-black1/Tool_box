@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
 
@@ -15,6 +16,7 @@ async function verifyToolNavigation({ page, app, check, capture }) {
       id
     )
   await page.getByText('拖动右侧手柄排序 · Alt+↑/↓', { exact: true }).waitFor()
+  const catalogSize = await leaves.count()
 
   await check('工具搜索匹配名称、用途与全半角英文，不自动切换面板', async () => {
     await page.getByRole('button', { name: 'JSON 工具箱', exact: true }).click()
@@ -42,19 +44,23 @@ async function verifyToolNavigation({ page, app, check, capture }) {
     assert.equal(await leaves.count(), 0)
     await search.press('Escape')
     assert.equal(await search.inputValue(), '')
-    assert.equal(await leaves.count(), 17)
+    assert.equal(await leaves.count(), catalogSize)
     await search.fill('json')
     await page.getByRole('button', { name: '清空工具搜索', exact: true }).click()
-    assert.equal(await leaves.count(), 17)
+    assert.equal(await leaves.count(), catalogSize)
   })
   await check('真实鼠标拖动调整顺序并持久化，不切换当前工具', async () => {
+    // 隐藏 Electron 窗口不提供系统拖动时的自动滚动；让源与目标同时可见。
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 1600))
     await handle('UUID 生成器').dragTo(
       page.getByRole('button', { name: '正则测试', exact: true }),
       { targetPosition: { x: 24, y: 3 } }
     )
     await savedFirst('uuid')
+    await page.waitForFunction(() => document.querySelector('.tools-tree-leaf')?.textContent === 'UUID 生成器')
     assert.equal(await leaves.first().textContent(), 'UUID 生成器')
     assert.equal(await page.locator('.tool-panel-title').textContent(), 'UUID 生成器')
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820))
     await capture('tools-reordered')
   })
   await check('Alt 方向键可连续排序且保留焦点，保存失败回退后可重试', async () => {
@@ -81,8 +87,9 @@ async function verifyToolNavigation({ page, app, check, capture }) {
     const draft = (await body.inputValue()) + '\n导航验收草稿'
     await body.fill(draft)
     await search.fill('json')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await search.press('Enter')
+    await withDialog(page, false, async () => {
+      await search.press('Enter')
+    })
     assert.equal(await body.inputValue(), draft)
     await search.press('Escape')
     await handle('UUID 生成器').focus()
@@ -91,8 +98,9 @@ async function verifyToolNavigation({ page, app, check, capture }) {
     assert.equal(await body.inputValue(), draft)
     await page.keyboard.press('Alt+ArrowUp')
     await savedFirst('uuid')
-    page.once('dialog', (dialog) => dialog.accept())
-    await page.getByRole('button', { name: '正则测试', exact: true }).click()
+    await withDialog(page, true, async () => {
+      await page.getByRole('button', { name: '正则测试', exact: true }).click()
+    })
   })
   for (const [name, id] of [
     ['星轨深空', 'starry'],

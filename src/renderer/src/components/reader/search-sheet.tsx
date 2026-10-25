@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef, useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { ChapterMeta, ReaderTheme } from '../../../../shared/types'
@@ -22,6 +23,8 @@ export function SearchSheet(props: SearchSheetProps): JSX.Element {
   const [scanning, setScanning] = useState(false)
   const [contents, setContents] = useState<Record<number, string>>({})
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
 
   useEffect(() => {
@@ -91,7 +94,10 @@ export function SearchSheet(props: SearchSheetProps): JSX.Element {
         className="sheet-panel search-sheet"
         style={{ background: theme.background, color: theme.foreground }}
         onClick={(event) => event.stopPropagation()}
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
+        aria-modal="true"
         aria-label="书内搜索"
       >
         <div className="sheet-tabs">
@@ -110,7 +116,7 @@ export function SearchSheet(props: SearchSheetProps): JSX.Element {
           <input
             className="field-input"
             type="text"
-            autoFocus
+            data-autofocus
             placeholder="输入关键词搜索全书"
             value={query}
             onChange={(event) => setQuery(event.target.value)}

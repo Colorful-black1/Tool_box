@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global window:readonly, document:readonly, innerWidth:readonly */
 const assert = require('node:assert/strict')
 
@@ -64,13 +65,15 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
     await agent('Codex')
     await draft().fill('目标新对话原稿')
     await agent('OpenCode')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await agent('用于 Codex')
+    await withDialog(page, false, async () => {
+      await agent('用于 Codex')
+    })
     await agent('Codex')
     assert.equal(await draft().inputValue(), '目标新对话原稿')
     await agent('OpenCode')
-    page.once('dialog', (dialog) => dialog.accept())
-    await agent('用于 Codex')
+    await withDialog(page, true, async () => {
+      await agent('用于 Codex')
+    })
     await capture('coding-agents-transfer')
   })
   await check('切换沿用项目，目标首次发送与真实流式事件分开处理', async () => {

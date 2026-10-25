@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { JSX } from 'react'
 import { TodosPage } from './components/todos/todos-page'
 import { useTodoStore } from './stores/todo-store'
+import { AppDialog } from './components/app-dialog'
 
 import { BookshelfPage } from './components/bookshelf/bookshelf-page'
 import { ChatPanel } from './components/chat-panel'
@@ -181,6 +182,7 @@ export default function App(): JSX.Element {
       <Starfield />
       {/* 全局命令面板：⌘K / Ctrl+K 唤起，挂在壳层外，任何页面都能用 */}
       <CommandPalette />
+      <AppDialog />
       <div className={`app-shell${railCollapsed ? ' rail-collapsed' : ' rail-expanded'}`}>
         <SideRail
           view={view}

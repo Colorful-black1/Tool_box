@@ -103,7 +103,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.todo-editor input[type='datetime-local'] {
+.todo-editor .date-picker input {
   min-width: 0;
 }
 @media (max-width: 1100px) {
@@ -5985,4 +5985,324 @@ textarea,
 ::-webkit-scrollbar-thumb {
   background: rgba(var(--accent-rgb), 0.25);
   border-radius: 3px;
+}
+
+
+/* ---------- 统一桌面控件：浮层脱离滚动容器，三主题共用令牌 ---------- */
+.ui-popover {
+  position: fixed;
+  z-index: 1200;
+  max-width: calc(100vw - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  background: var(--bg-menu);
+  box-shadow: var(--overlay-shadow);
+  color: var(--text-hi);
+}
+.dropdown-popover {
+  width: max-content;
+  max-width: min(420px, calc(100vw - 16px));
+}
+.dropdown-popover .ui-dropdown-menu {
+  position: static;
+  width: auto;
+  min-width: 150px;
+  max-height: none;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+.dropdown-popover .ui-dropdown-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.dropdown-popover .ui-dropdown-item-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ui-dropdown-item.highlighted {
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--gold);
+}
+.ui-dropdown-trigger:focus-visible,
+.calendar-day:focus-visible,
+.icon-btn:focus-visible,
+.btn-ghost:focus-visible,
+.btn-gold:focus-visible,
+.btn-danger:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.dropdown-field {
+  width: 100%;
+  padding: 10px 12px;
+  justify-content: space-between;
+}
+.settings-grid .ui-dropdown {
+  display: flex;
+}
+.date-picker {
+  min-width: 0;
+  width: 100%;
+}
+.date-picker-field {
+  position: relative;
+}
+.date-picker-field .field-input {
+  width: 100%;
+  padding-right: 40px;
+  font-family: var(--mono);
+}
+.date-picker-field.invalid .field-input {
+  border-color: var(--pink);
+}
+.date-picker-trigger {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.date-picker-trigger svg {
+  width: 17px;
+  height: 17px;
+}
+.calendar-popover {
+  width: 310px;
+  padding: 12px;
+}
+.calendar-head,
+.calendar-footer,
+.calendar-time {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.calendar-head strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  margin: 12px 0;
+}
+.calendar-grid > [role='row'] {
+  display: contents;
+}
+.calendar-grid [role='columnheader'] {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 4px 0;
+}
+.calendar-day {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--text-hi);
+  font: 12px var(--mono);
+  cursor: pointer;
+}
+.calendar-day.muted {
+  color: var(--text-dim);
+}
+.calendar-day.today {
+  border-color: var(--gold-line);
+}
+.calendar-day.selected {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.calendar-day:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: var(--gold);
+}
+.calendar-day:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.calendar-time {
+  font-size: 12px;
+  color: var(--text-mid);
+  margin-bottom: 12px;
+}
+.calendar-time .field-input {
+  width: 110px;
+  padding: 6px 8px;
+  font-family: var(--mono);
+}
+.calendar-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--gold-line);
+  padding-top: 10px;
+}
+.calendar-popover .field-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.app-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.app-dialog {
+  width: 420px;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--bg-menu);
+  box-shadow: var(--overlay-shadow);
+  outline: none;
+}
+.app-dialog h2 {
+  margin: 0 0 14px;
+  color: var(--gold);
+  font: 18px var(--serif);
+}
+.app-dialog p {
+  margin: 0 0 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-hi);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.app-dialog .field-input {
+  width: 100%;
+  margin-bottom: 18px;
+}
+.app-dialog .overlay-actions {
+  margin: 0;
+}
+input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  vertical-align: middle;
+  border: 1px solid var(--gold-line);
+  border-radius: 4px;
+  background: rgba(var(--neutral-rgb), 0.04);
+  color: var(--bg-deep);
+  cursor: pointer;
+}
+input[type='checkbox']::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+}
+input[type='checkbox']:checked {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+input[type='checkbox']:checked::after {
+  transform: translateY(-1px) rotate(-45deg);
+}
+input[type='checkbox']:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+input[type='checkbox']:disabled,
+input[type='range']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+input[type='range'] {
+  appearance: none;
+  height: 5px;
+  border-radius: 9px;
+  background: rgba(var(--accent-rgb), 0.24);
+  cursor: pointer;
+  accent-color: var(--gold);
+}
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 2px solid var(--bg-panel);
+  box-shadow: 0 0 0 1px var(--gold-line);
+}
+input[type='range']:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 7px;
+}
+input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
+}
+.number-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--gold-line);
+  border-radius: 9px;
+  background: rgba(var(--neutral-rgb), 0.04);
+}
+.number-stepper .field-input {
+  width: 65px;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  padding: 6px 2px;
+  appearance: textfield;
+}
+.number-stepper input::-webkit-inner-spin-button,
+.number-stepper input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.number-stepper .icon-btn {
+  flex: none;
+}
+.number-stepper:focus-within {
+  border-color: var(--gold);
+}
+.group-tab-wrap,
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.group-tab-wrap {
+  display: inline-flex;
+}
+.group-tab-wrap .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+.bookmark-row .toc-item {
+  flex: 1;
+  min-width: 0;
 }

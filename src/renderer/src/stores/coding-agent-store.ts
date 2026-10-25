@@ -1,3 +1,4 @@
+import { confirmDialog } from './dialog-store'
 import { create } from 'zustand'
 import { CODING_AGENT_NAMES } from '../../../shared/coding-agents'
 import type {
@@ -55,14 +56,14 @@ interface CodingAgentState extends RuntimeWorkspace {
   approve(id: string, approved: boolean): Promise<void>
   openDesktop(): Promise<void>
   setDraft(text: string): void
-  selectSession(id: string): void
+  selectSession(id: string): Promise<void>
   receive(event: CodingAgentEvent): void
   clearError(): void
-  transferMessage(messageId: string, targetId?: CodingAgentId): void
+  transferMessage(messageId: string, targetId?: CodingAgentId): Promise<void>
   draftDocument(): AgentDraftDocument
   restoreDrafts(document: AgentDraftDocument, dirty: Set<string>, selectionChanged: boolean): void
   removeDrafts(identity?: string): void
-  retrieveDraft(draft: AgentDraft): void
+  retrieveDraft(draft: AgentDraft): Promise<void>
 }
 
 function emptyWorkspace(): RuntimeWorkspace {
@@ -231,7 +232,18 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       update(id, { connecting: false })
     }
   }
-  const activate = (id: CodingAgentId, ref: string, carryDraft = false): void => {
+  // 确认框不阻塞事件循环，恢复/同步期间的新输入不能被旧快照覆盖。
+  const unchanged = (id: CodingAgentId, before: RuntimeWorkspace): boolean => {
+    const current = read(id)
+    return (
+      current.selection === before.selection &&
+      sameDirectory(current.directory, before.directory) &&
+      current.draft === before.draft &&
+      Object.keys(current.drafts).length === Object.keys(before.drafts).length &&
+      Object.entries(before.drafts).every(([key, text]) => current.drafts[key] === text)
+    )
+  }
+  const activate = async (id: CodingAgentId, ref: string, carryDraft = false): Promise<void> => {
     const state = read(id)
     const session = state.sessions[ref]
     if (!session || !sameDirectory(session.directory, state.directory)) return
@@ -242,9 +254,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       carryDraft &&
       existing.trim() &&
       existing !== state.draft &&
-      !window.confirm('目标会话已有未发送草稿，是否替换？')
+      !(await confirmDialog('目标会话已有未发送草稿，是否替换？'))
     )
       return
+    if (!unchanged(id, state) || !read(id).sessions[ref]) {
+      update(get().runtimeId, { error: '草稿或当前选择已变化，请重新操作' })
+      return
+    }
     update(id, {
       activeId: ref,
       selection: state.selection + 1,
@@ -400,7 +416,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
             sameDirectory(item.directory, before.directory)
         )
         if (cached) {
-          activate(id, cached.id, carryDraft)
+          await activate(id, cached.id, carryDraft)
           return
         }
         if (get().runningRuntime || submission) throw new Error('请先等待或停止当前任务')
@@ -410,7 +426,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         const view = await codingAgentClient().resumeSession({ runtimeId: id, sessionId: nativeId })
         upsert(view)
         if (read(id).info?.connectionId !== view.connectionId) return
-        if (read(id).selection === selection) activate(id, view.id, carryDraft)
+        if (read(id).selection === selection) await activate(id, view.id, carryDraft)
       }),
     listSessions: () =>
       perform(async (id) => {
@@ -442,7 +458,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const session = read(id).sessions[ref]
       if (session) {
         update(id, (state) => changeProject(state, session.directory))
-        activate(id, ref)
+        void activate(id, ref)
       }
     },
     stop: () => {
@@ -486,7 +502,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         set({ runningRuntime: null, runningSession: null })
     },
     clearError: () => update(get().runtimeId, { error: '' }),
-    transferMessage: (messageId, targetId) => {
+    transferMessage: async (messageId, targetId) => {
       const sourceId = get().runtimeId
       const source = read(sourceId)
       const session = source.activeId ? source.sessions[source.activeId] : undefined
@@ -508,13 +524,19 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const next = changeProject(target, session.directory)
       const key = draftEntryKey(session.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
-      if (existing.trim() && existing !== text && !window.confirm('目标已有新对话草稿，是否替换？'))
+      if (existing.trim() && existing !== text && !(await confirmDialog('目标已有新对话草稿，是否替换？')))
         return
+      if (!unchanged(id, target) || !unchanged(sourceId, source) || read(id).busy || get().runtimeId !== sourceId) {
+        update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新转用' })
+        return
+      }
+      // 等待期间会话/连接仍会推送；只更新草稿相关字段，保留最新运行态。
+      const approved = changeProject(read(id), session.directory)
       update(id, {
-        ...next,
+        ...approved,
         activeId: null,
-        selection: next.selection + 1,
-        drafts: { ...next.drafts, [draftKey(next)]: next.draft, [key]: text },
+        selection: approved.selection + 1,
+        drafts: { ...approved.drafts, [draftKey(approved)]: approved.draft, [key]: text },
         draft: text,
         transferred: true,
         error: ''
@@ -596,19 +618,24 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         })
       }
     },
-    retrieveDraft: (entry) => {
+    retrieveDraft: async (entry) => {
       const target = read(entry.runtimeId)
       if (target.busy || get().runningRuntime) return
       const next = changeProject(target, entry.directory)
       const key = draftEntryKey(entry.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
-      if (existing && existing !== entry.content && !window.confirm('新对话已有草稿，是否替换？'))
+      if (existing && existing !== entry.content && !(await confirmDialog('新对话已有草稿，是否替换？')))
         return
+      if (!unchanged(entry.runtimeId, target) || read(entry.runtimeId).busy || get().runningRuntime) {
+        update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新取回' })
+        return
+      }
+      const approved = changeProject(read(entry.runtimeId), entry.directory)
       update(entry.runtimeId, {
-        ...next,
+        ...approved,
         activeId: null,
-        selection: next.selection + 1,
-        drafts: { ...next.drafts, [draftKey(next)]: next.draft, [key]: entry.content },
+        selection: approved.selection + 1,
+        drafts: { ...approved.drafts, [draftKey(approved)]: approved.draft, [key]: entry.content },
         draft: entry.content,
         transferred: false
       })

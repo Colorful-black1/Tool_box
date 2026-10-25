@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { confirmDialog } from '../../stores/dialog-store'
+import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { NoteView } from '../../../../shared/types'
@@ -270,7 +271,7 @@ function NoteEditor(props: {
 
   async function handleDelete(): Promise<void> {
     if (!props.note) return
-    if (!window.confirm('确定删除该笔记吗？该操作不可恢复。')) return
+    if (!(await confirmDialog('确定删除该笔记吗？该操作不可恢复。'))) return
     await deleteNote(props.note.id)
     await props.onSaved()
   }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
+import { DatePicker } from '../date-picker'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
 import type {
   UsageClient,
@@ -336,39 +337,37 @@ export function AgentUsagePage(): JSX.Element {
         />
         {period === 'custom' ? (
           <div className="agent-usage-dates">
-            <label>
+            <div>
               <span className="sr-only">开始日期</span>
-              <input
-                type="date"
-                className="field-input"
+              <DatePicker
+                label="开始日期"
                 value={query.from ?? ''}
                 max={query.to}
-                onChange={(event) => {
-                  const from = event.target.value || undefined
+                onChange={(value) => {
+                  const from = value || undefined
                   change({
                     from,
                     ...(from && query.to && from > query.to ? { to: from } : {})
                   })
                 }}
               />
-            </label>
+            </div>
             <span>至</span>
-            <label>
+            <div>
               <span className="sr-only">结束日期</span>
-              <input
-                type="date"
-                className="field-input"
+              <DatePicker
+                label="结束日期"
                 value={query.to ?? ''}
                 min={query.from}
-                onChange={(event) => {
-                  const to = event.target.value || undefined
+                onChange={(value) => {
+                  const to = value || undefined
                   change({
                     to,
                     ...(to && query.from && to < query.from ? { from: to } : {})
                   })
                 }}
               />
-            </label>
+            </div>
           </div>
         ) : null}
         <Dropdown

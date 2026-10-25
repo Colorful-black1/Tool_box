@@ -23,7 +23,7 @@ module.exports = async function verifyDeveloperUtilities({ page, app, check, cap
   await button('工具').click()
   await check('Cron 三种格式、字段说明、未来时间和非法字段反馈', async () => {
     await open('Cron 计算器')
-    await page.getByLabel('计算起点', { exact: true }).fill('2026-10-22T08:00')
+    await page.getByLabel('计算起点', { exact: true }).fill('2026-10-22 08:00:00')
     await button('计算执行时间').click()
     assert.equal(
       await page.getByRole('list', { name: '执行时间' }).getByRole('listitem').count(),

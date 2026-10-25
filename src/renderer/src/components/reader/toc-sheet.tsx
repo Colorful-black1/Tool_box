@@ -1,4 +1,5 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { Bookmark, ChapterMeta, ReaderTheme } from '../../../../shared/types'
@@ -23,6 +24,8 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
   const [descending, setDescending] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
 
   const filtered = useMemo(() => {
@@ -39,7 +42,10 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
         className="sheet-panel toc-sheet"
         style={{ background: theme.background, color: theme.foreground }}
         onClick={(event) => event.stopPropagation()}
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
+        aria-modal="true"
         aria-label="目录"
       >
         <div className="sheet-tabs">
@@ -149,21 +155,29 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className="toc-item bookmark"
-                          onClick={() => props.onSelectBookmark(bookmark)}
-                          onContextMenu={(event) => {
-                            event.preventDefault()
-                            setConfirmId(bookmark.id)
-                          }}
-                          title="右键删除书签"
-                        >
-                          <span className="toc-item-title">{chapterName}</span>
-                          <span className="toc-item-sub">
-                            {bookmark.snippet || '（无摘录）'}
-                          </span>
-                        </button>
+                        <div className="bookmark-row">
+                          <button
+                            type="button"
+                            className="toc-item bookmark"
+                            onClick={() => props.onSelectBookmark(bookmark)}
+                            onContextMenu={(event) => {
+                              event.preventDefault()
+                              setConfirmId(bookmark.id)
+                            }}
+                            title="右键删除书签"
+                          >
+                            <span className="toc-item-title">{chapterName}</span>
+                            <span className="toc-item-sub">{bookmark.snippet || '（无摘录）'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label={`删除书签 ${chapterName}`}
+                            onClick={() => setConfirmId(bookmark.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
                       )}
                     </li>
                   )

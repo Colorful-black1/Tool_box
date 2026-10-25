@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global window:readonly, document:readonly */
 const assert = require('node:assert/strict')
 
@@ -99,8 +100,9 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
     await click('工具')
     await click('JSON 工具箱')
     await page.getByRole('textbox', { name: 'JSON 输入', exact: true }).fill('{"synthetic":true}')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await click('用于编程 Agent')
+    await withDialog(page, false, async () => {
+      await click('用于编程 Agent')
+    })
     await click('编程 Agent')
     assert.equal(await draft().inputValue(), '保留编程草稿')
     assert.equal(await page.evaluate(() => window.uiVerification.codeSendCount()), before)
@@ -154,7 +156,7 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
       await click('编程 Agent')
       await click('OpenCode 模型')
       assert.equal(
-        await page.locator('.ui-dropdown-menu').evaluate((element) => {
+        await page.locator('.dropdown-popover').evaluate((element) => {
           const box = element.getBoundingClientRect()
           return (
             box.left >= 0 &&

@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { formatCronTime, parseCronStart, previewCron } from '@shared/cron-tools'
 import type { CronDialect, CronPreview } from '@shared/cron-tools'
 import { Dropdown } from '../../dropdown'
+import { DatePicker } from '../../date-picker'
 import { CopyButton } from '../workbench'
 
 export function CronPanel(): JSX.Element {
@@ -12,6 +13,7 @@ export function CronPanel(): JSX.Element {
   const [start, setStart] = useState(() => formatCronTime(Date.now(), 480).replace(' ', 'T'))
   const [result, setResult] = useState<CronPreview | null>(null)
   const [error, setError] = useState('')
+  const [invalidStart, setInvalidStart] = useState(false)
   const reset = (): void => {
     setResult(null)
     setError('')
@@ -90,19 +92,20 @@ export function CronPanel(): JSX.Element {
         }}
       />
       <div className="tool-controls">
-        <label className="tool-inline-field">
+        <div className="tool-inline-field">
           计算起点
-          <input
-            className="field-input"
-            type="datetime-local"
-            step="1"
+          <DatePicker
+            label="计算起点"
+            withTime
+            seconds
             value={start}
-            onChange={(event) => {
+            onValidityChange={(valid) => setInvalidStart(!valid)}
+            onChange={(value) => {
               reset()
-              setStart(event.target.value)
+              setStart(value)
             }}
           />
-        </label>
+        </div>
         <button
           type="button"
           className="btn-ghost"
@@ -113,7 +116,7 @@ export function CronPanel(): JSX.Element {
         >
           从现在开始
         </button>
-        <button type="button" className="btn-gold" onClick={calculate}>
+        <button type="button" className="btn-gold" disabled={invalidStart} onClick={calculate}>
           计算执行时间
         </button>
       </div>

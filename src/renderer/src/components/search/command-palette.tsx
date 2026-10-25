@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../stores/dialog-store'
 /**
  * 命令面板（⌘K / Ctrl+K）。
  *
@@ -13,6 +14,7 @@ import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { SEARCH_KIND_LABELS, searchAll } from '@shared/global-search'
 import type { SearchSource } from '@shared/global-search'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
+import { useModalFocus } from '../../lib/use-modal-focus'
 import { useAppStore } from '../../stores/app-store'
 import type { AppView, SearchTarget } from '../../stores/app-store'
 import { TOOL_GROUPS } from '../tools/registry'
@@ -77,17 +79,23 @@ export function CommandPalette(): JSX.Element | null {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const restoreFocus = useRef(true)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useModalFocus(panelRef, open)
 
   useEffect(() => {
     if (open) void loadShortcuts()
   }, [open, loadShortcuts])
 
-  useOverlayEscape(() => setOpen(false))
+  useOverlayEscape(() => setOpen(false), open)
 
   // ⌘K / Ctrl+K 开关面板
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      if (
+        !document.querySelector('[data-app-dialog]') &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'k'
+      ) {
         event.preventDefault()
         setOpen((current) => !current)
       }
@@ -226,10 +234,10 @@ export function CommandPalette(): JSX.Element | null {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [open, activeIndex, hits])
 
-  const run = (action: PaletteAction): void => {
+  const run = async (action: PaletteAction): Promise<void> => {
     if (
       useAppStore.getState().hasUnsavedChanges &&
-      !window.confirm('当前有未保存的编辑，跳转将放弃这些内容。是否继续？')
+      !(await confirmDialog('当前有未保存的编辑，跳转将放弃这些内容。是否继续？'))
     ) {
       return
     }
@@ -297,6 +305,8 @@ export function CommandPalette(): JSX.Element | null {
     >
       <div
         className="palette-panel"
+        ref={panelRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="全局搜索"

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { JSX } from 'react'
-
-import { useOverlayEscape } from '../lib/use-overlay-dismiss'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { JSX, KeyboardEvent } from 'react'
+import { Popover } from './popover'
 
 export interface DropdownOption {
   value: string
@@ -18,6 +17,7 @@ interface DropdownProps {
   /** 未选中任何项时的占位文案 */
   placeholder?: string
   disabled?: boolean
+  id?: string
   /** 菜单展开方向（默认右对齐，贴容器右缘） */
   align?: 'left' | 'right'
   /** 触发按钮附加类名，用于尺寸/色彩微调 */
@@ -42,6 +42,7 @@ export function Dropdown({
   onChange,
   placeholder = '请选择',
   disabled = false,
+  id,
   align = 'right',
   triggerClassName = '',
   searchable = false,
@@ -49,25 +50,25 @@ export function Dropdown({
 }: DropdownProps): JSX.Element {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  useOverlayEscape(() => setOpen(false))
-
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: MouseEvent): void => {
-      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
-  }, [open])
+  const [active, setActive] = useState(0)
+  const optionId = useId()
+  const trigger = useRef<HTMLButtonElement>(null)
+  const list = useRef<HTMLUListElement>(null)
+  const search = useRef<HTMLInputElement>(null)
 
   const selected = options.find((option) => option.value === value) ?? null
 
-  // 每次打开都清掉上一次的过滤词，避免下次进来是空的
-  useEffect(() => {
-    if (open) setQuery('')
-  }, [open])
+  // 只在打开时复位；父页面的流式更新不能清掉正在输入的过滤词。
+  const show = (): void => {
+    setQuery('')
+    setActive(
+      Math.max(
+        0,
+        options.findIndex((option) => option.value === value)
+      )
+    )
+    setOpen(true)
+  }
 
   const showFilter = searchable && options.length > SEARCHABLE_THRESHOLD
   const visibleOptions = useMemo(() => {
@@ -77,16 +78,71 @@ export function Dropdown({
     return options.filter((option) => option.label.toLowerCase().includes(keyword))
   }, [options, query, showFilter])
 
+  useEffect(() => {
+    if (open) {
+      const option = list.current?.querySelectorAll('[role="option"]').item(active)
+      option?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [active, open])
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
+  const close = (): void => setOpen(false)
+  const choose = (option: DropdownOption): void => {
+    close()
+    trigger.current?.focus()
+    onChange(option.value)
+  }
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'Tab') {
+      close()
+      trigger.current?.focus()
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActive((index) =>
+        Math.max(
+          0,
+          Math.min(visibleOptions.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))
+        )
+      )
+    } else if ((event.key === 'Home' || event.key === 'End') && event.target !== search.current) {
+      event.preventDefault()
+      setActive(event.key === 'Home' ? 0 : Math.max(0, visibleOptions.length - 1))
+    } else if (event.key === 'Enter' && visibleOptions[active]) {
+      event.preventDefault()
+      choose(visibleOptions[active])
+    } else if (!showFilter && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+      const index = visibleOptions.findIndex((option) =>
+        option.label.toLowerCase().startsWith(event.key.toLowerCase())
+      )
+      if (index >= 0) setActive(index)
+    }
+  }
+
   return (
-    <div className="ui-dropdown" ref={wrapRef}>
+    <div className="ui-dropdown">
       <button
+        ref={trigger}
+        id={id}
         type="button"
         className={`ui-dropdown-trigger${triggerClassName ? ` ${triggerClassName}` : ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (open) close()
+          else show()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            show()
+          }
+        }}
       >
         <span className={`ui-dropdown-label${selected ? '' : ' placeholder'}`}>
           {selected?.label ?? placeholder}
@@ -97,44 +153,74 @@ export function Dropdown({
       </button>
 
       {open ? (
-        <ul className={`ui-dropdown-menu ${align}`} role="listbox" aria-label={ariaLabel}>
+        <Popover
+          anchor={trigger}
+          align={align}
+          onClose={close}
+          onReady={() => (showFilter ? search.current : list.current)?.focus()}
+          className="dropdown-popover"
+        >
           {showFilter ? (
-            <li className="ui-dropdown-search">
+            <div className="ui-dropdown-search">
               <input
+                ref={search}
                 className="ui-dropdown-search-input"
                 type="text"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setActive(0)
+                }}
+                onKeyDown={onKey}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={`${optionId}-options`}
+                aria-activedescendant={
+                  visibleOptions[active] ? `${optionId}-option-${active}` : undefined
+                }
                 placeholder="筛选…"
                 aria-label={`${ariaLabel} 过滤`}
                 autoFocus
               />
-            </li>
+            </div>
           ) : null}
-          {visibleOptions.length === 0 ? (
-            <li className="ui-dropdown-empty">暂无可选项</li>
-          ) : (
-            visibleOptions.map((option) => (
-              <li key={option.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  className={`ui-dropdown-item${option.value === value ? ' active' : ''}`}
-                  onClick={() => {
-                    onChange(option.value)
-                    setOpen(false)
-                  }}
-                >
-                  <span className="ui-dropdown-tick" aria-hidden="true">
-                    {option.value === value ? '✓' : ''}
-                  </span>
-                  <span className="ui-dropdown-item-label">{option.label}</span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
+          <ul
+            ref={list}
+            id={`${optionId}-options`}
+            className={`ui-dropdown-menu ${align}`}
+            role="listbox"
+            aria-label={ariaLabel}
+            tabIndex={-1}
+            onKeyDown={onKey}
+            aria-activedescendant={
+              visibleOptions[active] ? `${optionId}-option-${active}` : undefined
+            }
+          >
+            {visibleOptions.length === 0 ? (
+              <li className="ui-dropdown-empty">暂无可选项</li>
+            ) : (
+              visibleOptions.map((option, index) => (
+                <li key={option.value}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={option.value === value}
+                    id={`${optionId}-option-${index}`}
+                    tabIndex={-1}
+                    className={`ui-dropdown-item${option.value === value ? ' active' : ''}${index === active ? ' highlighted' : ''}`}
+                    onMouseMove={() => setActive(index)}
+                    onClick={() => choose(option)}
+                  >
+                    <span className="ui-dropdown-tick" aria-hidden="true">
+                      {option.value === value ? '✓' : ''}
+                    </span>
+                    <span className="ui-dropdown-item-label">{option.label}</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </Popover>
       ) : null}
     </div>
   )

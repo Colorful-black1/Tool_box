@@ -1,3 +1,4 @@
+vi.mock('../stores/dialog-store', () => ({ confirmDialog: vi.fn(async () => true) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { emptyDraftDocument, draftEntryKey } from '../../../shared/agent-drafts'
 import type { AgentDraftSnapshot } from '../../../shared/agent-drafts'
@@ -168,7 +169,7 @@ describe('草稿持久化协调器', () => {
     expect(store.getState().draft).toBe('新对话草稿')
     expect(store.getState().activeId).toBeNull()
     expect(store.getState().info).toBeNull()
-    store.getState().retrieveDraft(document.drafts[1])
+    await store.getState().retrieveDraft(document.drafts[1])
     expect(store.getState().draft).toBe('失效会话草稿')
     expect(store.getState().drafts[draftEntryKey('c:/one', 'deleted-native')]).toBe('失效会话草稿')
     store.getState().removeDrafts()

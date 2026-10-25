@@ -1,4 +1,6 @@
-﻿import type { JSX } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { useRef } from 'react'
+import type { JSX } from 'react'
 
 import { FONT_OPTIONS, READER_THEMES } from '../../../../shared/types'
 import type { ReadConfig, ReaderTheme } from '../../../../shared/types'
@@ -24,6 +26,8 @@ export function ReadSettingsPanel({
   const config = useConfigStore((state) => state.config)
   const patch = useConfigStore((state) => state.patch)
 
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(onClose)
 
   const set = (partial: Partial<ReadConfig>): void => {
@@ -36,7 +40,10 @@ export function ReadSettingsPanel({
         className="sheet-panel settings-sheet"
         style={{ background: theme.background, color: theme.foreground }}
         onClick={(event) => event.stopPropagation()}
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
+        aria-modal="true"
         aria-label="阅读设置"
       >
         <div className="sheet-tabs">

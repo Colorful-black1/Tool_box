@@ -10,6 +10,7 @@ import { generateUuidBatch } from '@shared/dev-tools'
 
 import { CopyButton } from '../workbench'
 import { AutoTextarea } from '../auto-textarea'
+import { NumberStepper } from '../../number-stepper'
 
 export function UuidPanel(): JSX.Element {
   const [count, setCount] = useState(5)
@@ -37,18 +38,11 @@ export function UuidPanel(): JSX.Element {
         <header className="tool-io-head">
           <span className="tool-io-label">生成数量</span>
           <span className="tool-io-actions">
-            <input
-              className="field-input tool-count-input"
-              type="number"
-              min={1}
-              max={1000}
-              value={count}
-              aria-label="生成数量"
-              onChange={(event) => setCount(Number(event.target.value))}
-            />
+            <NumberStepper min={1} max={1000} value={count} label="生成数量" onChange={setCount} />
             <button
               type="button"
               className="btn-ghost btn-mini"
+              disabled={!Number.isInteger(count) || count < 1 || count > 1000}
               onClick={() => generate(count)}
             >
               生成

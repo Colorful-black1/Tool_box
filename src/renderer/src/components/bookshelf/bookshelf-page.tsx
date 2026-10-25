@@ -1,4 +1,7 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useModalFocus } from '../../lib/use-modal-focus'
+import { confirmDialog, promptDialog } from '../../stores/dialog-store'
+import { Dropdown } from '../dropdown'
+import { useRef, useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BookGroup, BookSummary, BookshelfSort } from '../../../../shared/types'
@@ -37,7 +40,6 @@ export function BookshelfPage(): JSX.Element {
 
   const [query, setQuery] = useState('')
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
-  const [sortOpen, setSortOpen] = useState(false)
   /** 网格 / 列表视图切换（不落盘：属于纯观感偏好） */
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [editingMode, setEditingMode] = useState(false)
@@ -132,7 +134,7 @@ export function BookshelfPage(): JSX.Element {
   }
 
   async function handleCreateGroup(): Promise<void> {
-    const name = window.prompt('新建分组（最多 20 字）')
+    const name = await promptDialog('新建分组（最多 20 字）', 20)
     if (!name?.trim()) return
     const group = await createGroup(name)
     setActiveGroup(group.id)
@@ -140,7 +142,7 @@ export function BookshelfPage(): JSX.Element {
 
   async function handleDeleteSelected(): Promise<void> {
     if (selected.size === 0) return
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `确定从书架移除选中的 ${selected.size} 本书吗？\n（不会删除磁盘上的 TXT 文件）`
     )
     if (!ok) return
@@ -222,34 +224,12 @@ export function BookshelfPage(): JSX.Element {
             >
               {view === 'grid' ? '列表' : '网格'}
             </button>
-            <div className="sort-menu-wrap">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setSortOpen((open) => !open)}
-              >
-                {SORT_OPTIONS.find((item) => item.value === sort)?.label} ▾
-              </button>
-              {sortOpen ? (
-                <ul className="sort-menu">
-                  {SORT_OPTIONS.map((item) => (
-                    <li key={item.value}>
-                      <button
-                        type="button"
-                        className={`sort-item${sort === item.value ? ' active' : ''}`}
-                        onClick={() => {
-                          void patchConfig({ bookshelfSort: item.value })
-                          setSortOpen(false)
-                        }}
-                      >
-                        {item.value === sort ? '✓ ' : ''}
-                        {item.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
+            <Dropdown
+              value={sort}
+              options={SORT_OPTIONS}
+              ariaLabel="书架排序"
+              onChange={(value) => void patchConfig({ bookshelfSort: value as BookshelfSort })}
+            />
             <button
               type="button"
               className="btn-ghost"
@@ -281,20 +261,29 @@ export function BookshelfPage(): JSX.Element {
           全部
         </button>
         {groups.map((group) => (
-          <button
-            key={group.id}
-            type="button"
-            className={`group-chip${activeGroup === group.id ? ' active' : ''}`}
-            aria-pressed={activeGroup === group.id}
-            onClick={() => setActiveGroup(group.id)}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              setGroupMenu(group)
-            }}
-            title="右键管理分组"
-          >
-            {group.name}
-          </button>
+          <span className="group-tab-wrap" key={group.id}>
+            <button
+              type="button"
+              className={`group-chip${activeGroup === group.id ? ' active' : ''}`}
+              aria-pressed={activeGroup === group.id}
+              onClick={() => setActiveGroup(group.id)}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                setGroupMenu(group)
+              }}
+              title="右键管理分组"
+            >
+              {group.name}
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`管理分组 ${group.name}`}
+              onClick={() => setGroupMenu(group)}
+            >
+              ⋯
+            </button>
+          </span>
         ))}
         <button
           type="button"
@@ -330,9 +319,7 @@ export function BookshelfPage(): JSX.Element {
                 onToggleSelect={() => toggleSelect(book.id)}
                 onDetail={() => setDetail(book)}
                 onDelete={async () => {
-                  const ok = window.confirm(
-                    `确定删除「${book.title}」吗？该操作不可恢复。`
-                  )
+                  const ok = await confirmDialog(`确定删除「${book.title}」吗？该操作不可恢复。`)
                   if (!ok) return
                   await deleteBook(book.id)
                   toast('已删除')
@@ -375,9 +362,7 @@ export function BookshelfPage(): JSX.Element {
           }}
           onDelete={async () => {
             if (
-              !window.confirm(
-                `删除分组「${groupMenu.name}」？分组内书籍将回到「全部」。`
-              )
+              !(await confirmDialog(`删除分组「${groupMenu.name}」？分组内书籍将回到「全部」。`))
             ) {
               return
             }
@@ -524,13 +509,20 @@ function GroupManageDialog(props: {
   onDelete(): Promise<void>
 }): JSX.Element {
   const [name, setName] = useState(props.group.name)
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="分组管理" onClick={props.onClose}>
-      <div
-        className="glass overlay-card"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div
+      className="overlay"
+      ref={modalRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-label="分组管理"
+      onClick={props.onClose}
+    >
+      <div className="glass overlay-card" onClick={(event) => event.stopPropagation()}>
         <div className="overlay-head-row">
           <h3 className="panel-title">分组管理</h3>
         </div>
@@ -581,6 +573,8 @@ function MoveToGroupSheet(props: {
 }): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
 
   return (
@@ -588,7 +582,10 @@ function MoveToGroupSheet(props: {
       <div
         className="sheet-panel move-sheet"
         onClick={(event) => event.stopPropagation()}
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
+        aria-modal="true"
         aria-label="移动至分组"
       >
         <div className="sheet-tabs">

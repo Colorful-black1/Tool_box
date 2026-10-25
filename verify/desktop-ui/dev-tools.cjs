@@ -1,3 +1,4 @@
+const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
 
@@ -17,7 +18,7 @@ async function verifyDevTools({ page, app, check, capture }) {
   }
   const menuFits = async (label) => {
     await page.getByRole('button', { name: label, exact: true }).click()
-    const fits = await page.locator('.ui-dropdown-menu').evaluate((element) => {
+    const fits = await page.locator('.dropdown-popover').evaluate((element) => {
       const box = element.getBoundingClientRect()
       return (
         box.left >= 0 &&
@@ -145,8 +146,9 @@ async function verifyDevTools({ page, app, check, capture }) {
     await page.getByRole('textbox', { name: '输入消息', exact: true }).fill('保留这份合成草稿')
     await tool('JSON 工具箱')
     await page.getByRole('textbox', { name: 'JSON 输入', exact: true }).fill('{"value":1}')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await page.getByRole('button', { name: '放入对话草稿', exact: true }).click()
+    await withDialog(page, false, async () => {
+      await page.getByRole('button', { name: '放入对话草稿', exact: true }).click()
+    })
     assert.equal(await page.locator('.tool-panel-title').textContent(), 'JSON 工具箱')
     await page.getByRole('button', { name: '对话', exact: true }).click()
     assert.equal(
@@ -193,8 +195,9 @@ async function verifyDevTools({ page, app, check, capture }) {
     await page
       .getByRole('textbox', { name: '模板正文', exact: true })
       .fill('未保存正文 {{context}}')
-    page.once('dialog', (dialog) => dialog.dismiss())
-    await page.getByRole('button', { name: '差异比较', exact: true }).click()
+    await withDialog(page, false, async () => {
+      await page.getByRole('button', { name: '差异比较', exact: true }).click()
+    })
     assert.equal(await page.locator('.tool-panel-title').textContent(), 'Prompt 模板库')
     assert.equal(
       await page.getByRole('textbox', { name: '模板正文', exact: true }).inputValue(),

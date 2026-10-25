@@ -1,9 +1,11 @@
+import { confirmDialog } from '../../stores/dialog-store'
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { TodoFilter, TodoInput, TodoView } from '@shared/types'
 import { zonedDateTimeToMs } from '@shared/timezone-tools'
 import { useTodoStore } from '../../stores/todo-store'
 import { Dropdown } from '../dropdown'
+import { DatePicker } from '../date-picker'
 
 const FILTERS = [
   { value: 'all', label: '未完成' },
@@ -55,6 +57,8 @@ export function TodosPage(): JSX.Element {
   const [notificationMessage, setNotificationMessage] = useState('')
   const [testing, setTesting] = useState(false)
   const [dateError, setDateError] = useState('')
+  const [invalidDates, setInvalidDates] = useState({ start: false, due: false })
+  const [dateRevision, setDateRevision] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     void load()
@@ -67,10 +71,16 @@ export function TodosPage(): JSX.Element {
     element?.scrollIntoView({ block: 'nearest' })
     element?.focus()
   }, [focusId, items])
-  const edit = (item?: TodoView): void => {
-    if (dirty && !window.confirm('有尚未保存的待办输入，是否放弃并继续？')) return
+  const edit = async (item?: TodoView): Promise<void> => {
+    if (
+      (dirty || invalidDates.start || invalidDates.due) &&
+      !(await confirmDialog('有尚未保存的待办输入，是否放弃并继续？'))
+    )
+      return
     useTodoStore.getState().edit(item)
     setDateError('')
+    setInvalidDates({ start: false, due: false })
+    setDateRevision((revision) => revision + 1)
   }
   const date = (key: 'startAtMs' | 'dueAtMs', value: string): void => {
     try {
@@ -171,32 +181,36 @@ export function TodosPage(): JSX.Element {
             disabled={busy}
             onChange={(priority) => setDraft({ priority: priority as TodoInput['priority'] })}
           />
-          <label className="field-label">
+          <div className="field-label">
             开始时间
-            <input
-              className="field-input"
-              aria-label="待办开始时间"
-              type="datetime-local"
+            <DatePicker
+              key={`start-${dateRevision}-${draft.id ?? 'new'}`}
+              label="待办开始时间"
+              withTime
               min="1970-01-01T00:00"
               max="9999-12-31T23:59"
               value={localInput(draft.startAtMs)}
               disabled={busy}
-              onChange={(event) => date('startAtMs', event.target.value)}
+              onValidityChange={(valid) =>
+                setInvalidDates((state) => ({ ...state, start: !valid }))
+              }
+              onChange={(value) => date('startAtMs', value)}
             />
-          </label>
-          <label className="field-label">
+          </div>
+          <div className="field-label">
             截止时间
-            <input
-              className="field-input"
-              aria-label="待办截止时间"
-              type="datetime-local"
+            <DatePicker
+              key={`due-${dateRevision}-${draft.id ?? 'new'}`}
+              label="待办截止时间"
+              withTime
               min="1970-01-01T00:00"
               max="9999-12-31T23:59"
               value={localInput(draft.dueAtMs)}
               disabled={busy}
-              onChange={(event) => date('dueAtMs', event.target.value)}
+              onValidityChange={(valid) => setInvalidDates((state) => ({ ...state, due: !valid }))}
+              onChange={(value) => date('dueAtMs', value)}
             />
-          </label>
+          </div>
           <label className="tool-check">
             <input
               type="checkbox"
@@ -213,7 +227,9 @@ export function TodosPage(): JSX.Element {
             <button
               type="submit"
               className="btn-gold"
-              disabled={busy || !draft.title.trim() || !!dateError}
+              disabled={
+                busy || !draft.title.trim() || !!dateError || invalidDates.start || invalidDates.due
+              }
             >
               {busy ? '保存中…' : draft.id ? '保存修改' : '添加待办'}
             </button>
@@ -319,12 +335,12 @@ export function TodosPage(): JSX.Element {
                       type="button"
                       className="btn-ghost btn-mini"
                       disabled={busy}
-                      onClick={() => {
+                      onClick={async () => {
                         if (
                           item.archivedAtMs === null &&
-                          !window.confirm(
+                          !(await confirmDialog(
                             `归档「${item.title}」？归档后停止提醒，可在已归档中恢复。`
-                          )
+                          ))
                         )
                           return
                         void useTodoStore.getState().archive(item.id, item.archivedAtMs === null)

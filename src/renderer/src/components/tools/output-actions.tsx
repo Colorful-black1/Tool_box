@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../stores/dialog-store'
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { useAppStore } from '../../stores/app-store'
@@ -25,9 +26,9 @@ export function ToolOutputActions({
   const [savedText, setSavedText] = useState<string | null>(null)
   const transfer = useToolTransferStore((state) => state.send)
   if (!text) return null
-  const canLeave = (): boolean =>
+  const canLeave = async (): Promise<boolean> =>
     !useAppStore.getState().hasUnsavedChanges ||
-    window.confirm('当前模板有未保存的修改，是否放弃模板修改并继续？')
+    (await confirmDialog('当前模板有未保存的修改，是否放弃模板修改并继续？'))
   const saveNote = async (): Promise<void> => {
     if (busy || !window.toolbox) {
       if (!window.toolbox) setStatus('桌面桥接未就绪，暂时无法保存笔记')
@@ -46,14 +47,21 @@ export function ToolOutputActions({
     }
   }
   const fillChat = async (): Promise<void> => {
-    if (busy || !canLeave()) return
+    if (busy || !(await canLeave())) return
     const state = useAppStore.getState()
     if (
       state.chatDraft.trim() &&
       state.chatDraft !== text &&
-      !window.confirm('对话中已有未发送草稿，是否替换？')
+      !(await confirmDialog('对话中已有未发送草稿，是否替换？'))
     )
       return
+    if (
+      useAppStore.getState().chatDraft !== state.chatDraft ||
+      useAppStore.getState().activeConversationId !== state.activeConversationId
+    ) {
+      setStatus('对话或草稿已变化，请重新操作')
+      return
+    }
     if (!window.toolbox) {
       setStatus('桌面桥接未就绪，暂时无法打开对话')
       return
@@ -62,6 +70,10 @@ export function ToolOutputActions({
     setStatus('')
     try {
       if (!state.activeConversationId) await state.createConversation()
+      if (useAppStore.getState().chatDraft !== state.chatDraft) {
+        setStatus('草稿已变化，请重新操作')
+        return
+      }
       useAppStore.getState().setChatDraft(text)
       useAppStore.getState().setView('chat')
     } catch {
@@ -78,8 +90,8 @@ export function ToolOutputActions({
             type="button"
             className="btn-ghost"
             disabled={busy}
-            onClick={() => {
-              if (canLeave()) transfer('redact', text)
+            onClick={async () => {
+              if (await canLeave()) transfer('redact', text)
             }}
           >
             用于脱敏
@@ -90,8 +102,8 @@ export function ToolOutputActions({
             type="button"
             className="btn-ghost"
             disabled={busy}
-            onClick={() => {
-              if (canLeave()) transfer('prompt', text)
+            onClick={async () => {
+              if (await canLeave()) transfer('prompt', text)
             }}
           >
             填入 Prompt
@@ -112,16 +124,26 @@ export function ToolOutputActions({
           type="button"
           className="btn-ghost"
           disabled={busy}
-          onClick={() => {
-            if (!canLeave()) return
-            const draft = useOpenCodeStore.getState().draft
+          onClick={async () => {
+            if (!(await canLeave())) return
+            const before = useOpenCodeStore.getState()
+            const draft = before.draft
             if (
               draft.trim() &&
               draft !== text &&
-              !window.confirm('编程 Agent 中已有未发送草稿，是否替换？')
+              !(await confirmDialog('编程 Agent 中已有未发送草稿，是否替换？'))
             )
               return
-            useOpenCodeStore.getState().setDraft(text)
+            const current = useOpenCodeStore.getState()
+            if (
+              current.runtimeId !== before.runtimeId ||
+              current.selection !== before.selection ||
+              current.draft !== draft
+            ) {
+              setStatus('目标 Agent 或草稿已变化，请重新操作')
+              return
+            }
+            current.setDraft(text)
             useAppStore.getState().setView('opencode')
           }}
         >

@@ -182,7 +182,14 @@ module.exports = function createFixture() {
         }),
         flush: async () => undefined
       },
-      groups: { list: async () => copy(groups) },
+      groups: {
+        list: async () => copy(groups),
+        create: async (name) => {
+          const group = { id: `group-${groups.length + 1}`, name }
+          groups.unshift(group)
+          return copy(group)
+        }
+      },
       passwords: {
         list: async () => copy(passwords),
         importAi: async (requestId) => (holdAi ? waitForAi('password-import', requestId) : []),
