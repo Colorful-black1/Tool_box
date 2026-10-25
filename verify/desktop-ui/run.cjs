@@ -9,6 +9,7 @@ const path = require('node:path')
 const { _electron } = require('playwright')
 const verifyThemes = require('./themes.cjs')
 const verifyUiControls = require('./ui-controls.cjs')
+const verifyChatTools = require('./chat-tools.cjs')
 const verifyOpenCode = require('./opencode.cjs')
 const verifyCodingAgents = require('./coding-agents.cjs')
 const verifyAgentUsage = require('./agent-usage.cjs')
@@ -26,6 +27,10 @@ async function main() {
   const profile = await fs.mkdtemp(path.join(tempRoot, 'toolbox-ui-'))
   const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
   if (process.argv.includes('--agent-usage-only')) env.TOOLBOX_USAGE_VERIFY = '1'
+  if (process.argv.includes('--chat-tools-only')) {
+    env.TOOLBOX_CHAT_TOOLS_VERIFY = '1'
+    env.TOOLBOX_USAGE_VERIFY = '1'
+  }
   if (process.argv.includes('--coding-agents-only')) env.TOOLBOX_CODING_AGENT_VERIFY = '1'
   if (process.argv.includes('--convenience-only')) env.TOOLBOX_CONVENIENCE_VERIFY = '1'
   delete env.ELECTRON_RUN_AS_NODE
@@ -66,6 +71,12 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--chat-tools-only')) {
+      await verifyChatTools({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`对话五项能力验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--ui-controls-only')) {
       await verifyUiControls({ page, app, check, capture })
       assert.deepEqual(errors, [])

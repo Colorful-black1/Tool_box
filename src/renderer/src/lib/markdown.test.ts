@@ -60,4 +60,14 @@ describe('renderMarkdown', () => {
   it('非 http 协议的链接不会变成 a 标签', () => {
     expect(renderMarkdown('[x](javascript:alert(1))')).not.toContain('<a href')
   })
+
+  it('只有对话显式启用的合法应用入口会变成按钮', () => {
+    const source = '[打开笔记](toolbox://open/note/n1)'
+    expect(renderMarkdown(source)).not.toContain('data-app-target')
+    expect(renderMarkdown(source, true)).toContain('type="button"')
+    expect(renderMarkdown(source, true)).toContain('data-app-target="toolbox://open/note/n1"')
+    expect(renderMarkdown('[危险](toolbox://open/delete/n1)', true)).not.toContain('data-app-target')
+    expect(renderMarkdown('[外部](https://example.com)', true)).toContain('target="_blank"')
+    expect(renderMarkdown('```\n' + source + '\n```', true)).not.toContain('data-app-target')
+  })
 })

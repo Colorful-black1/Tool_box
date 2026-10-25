@@ -16,6 +16,8 @@ import { AgentDraftService } from './services/coding-agents/agent-draft-service'
 import { AgentDraftQuitFlush, registerAgentDraftsIpc } from './ipc/agent-drafts-ipc'
 import { ShortcutManager } from './shortcuts'
 import { createTray, showMainWindow } from './tray'
+import { TodoService } from './services/todo-service'
+import { createAgentUsageService } from './services/agent-usage/create-service'
 
 const safeStorageAdapter = safeStorage as SafeStorageAdapter
 
@@ -77,7 +79,12 @@ function initializeServices(): void {
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
   registerAgentDraftsIpc(new AgentDraftService(store, secretBox), draftQuitFlush)
   const importService = new ImportService()
-  const aiGateway = new AiGateway(settings, store, importService, promptDir)
+  const todos = new TodoService(store)
+  const usage = createAgentUsageService(userDataDir)
+  const aiGateway = new AiGateway(settings, store, importService, promptDir, {
+    todos,
+    usage: { query: async (query) => (await usage).query(query) }
+  })
   const passwordAi = new PasswordAiService(promptDir, (system, user, options) =>
     aiGateway.complete(system, user, options)
   )
@@ -85,7 +92,7 @@ function initializeServices(): void {
   shortcuts = new ShortcutManager(store, () => showMainWindow(mainWindow))
 
   const opencode = new OpenCodeService(store)
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode })
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage })
 
   app.on('quit', () => {
     store.close()

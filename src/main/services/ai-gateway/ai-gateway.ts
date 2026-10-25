@@ -31,6 +31,8 @@ import { DEFAULT_AGENT_PERMISSION, isAgentPermission } from '../../../shared/typ
 import { ApprovalGate } from '../agent/approval-gate'
 import { runAgent } from '../agent/agent-runner'
 import { createAgentToolSet } from '../agent/tools'
+import type { AgentDeps } from '../agent/tools'
+import { referenceMarkdown } from '../../../shared/app-reference'
 import type { ImportService } from '../library/import-service'
 import { validateChatInput } from './errors'
 import { AiGatewayError, describeAiError, normalizeOpenAiBaseUrl } from './errors'
@@ -70,7 +72,8 @@ export class AiGateway {
     private readonly settings: SettingsService,
     private readonly chatStore: ToolboxStore,
     private readonly importService: ImportService,
-    private readonly promptDir: string
+    private readonly promptDir: string,
+    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage'> = {}
   ) {}
 
   async send(
@@ -199,7 +202,8 @@ export class AiGateway {
 
       const tools = createAgentToolSet({
         store: this.chatStore,
-        importService: this.importService
+        importService: this.importService,
+        ...this.toolServices
       })
 
       const result = await runAgent({
@@ -220,14 +224,17 @@ export class AiGateway {
         signal: controller.signal
       })
 
-      const content = result.content.trim()
+      const text = result.content.trim()
         ? result.content
         : result.usedTools
           ? '已完成操作。'
           : ''
-      if (!content.trim()) {
+      if (!text.trim()) {
         throw new AiGatewayError('AI 未返回内容')
       }
+      const content = result.references.length
+        ? `${text}\n\n相关入口：\n${result.references.map((item) => `- ${referenceMarkdown(item)}`).join('\n')}`
+        : text
 
       const assistantMessage = this.chatStore.appendMessage({
         conversationId,
@@ -269,9 +276,8 @@ export class AiGateway {
           '你是「私人百宝箱」的内置 AI 助手，可调用工具管理用户的书架、密码箱与记事本。'
       }
     }
-    return dropped > 0
-      ? `${this.agentPromptCache}\n\n${trimmedHistoryNotice(dropped)}`
-      : this.agentPromptCache
+    const prompt = `${this.agentPromptCache}\n\n当前本机时间：${new Date().toLocaleString('sv-SE')}；时区：${Intl.DateTimeFormat().resolvedOptions().timeZone}。相对日期以此为准。`
+    return dropped > 0 ? `${prompt}\n\n${trimmedHistoryNotice(dropped)}` : prompt
   }
 
   private autoTitle(

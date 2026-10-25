@@ -6,17 +6,18 @@
  * 因此手机端可以用同一份 AST 渲染成 RN 组件，语法表现不会分叉。
  *
  * 安全策略不变：先对全部文本做 HTML 转义，再插入受控标签，
- * 因此用户笔记里的原始 HTML 不会被执行；链接只允许 http / https。
+ * 因此原始 HTML 不会执行；HTTP(S) 外链正常渲染，对话专用的内部引用只生成本地按钮。
  */
 import { escapeHtml, parseMarkdown } from '../../../shared/markdown'
 import type { MdBlock, MdInline } from '../../../shared/markdown'
+import { parseAppTarget } from '../../../shared/app-reference'
 
 export { escapeHtml }
 
 /** 渲染整篇 Markdown；空内容给出占位提示 */
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, appLinks = false): string {
   if (!source.trim()) return '<p class="md-empty">（空笔记）</p>'
-  return parseMarkdown(source).map(renderBlock).join('\n')
+  return parseMarkdown(source, appLinks).map(renderBlock).join('\n')
 }
 
 function renderBlock(block: MdBlock): string {
@@ -54,6 +55,10 @@ function renderInline(node: MdInline): string {
     case 'code':
       return `<code>${escapeHtml(node.text)}</code>`
     case 'link':
+      if (node.href.startsWith('toolbox:')) {
+        if (!parseAppTarget(node.href)) return renderInlines(node.children)
+        return `<button type="button" class="btn-ghost app-reference" data-app-target="${escapeHtml(node.href)}">${renderInlines(node.children)}</button>`
+      }
       return `<a href="${escapeHtml(node.href)}" rel="noreferrer noopener" target="_blank">${renderInlines(
         node.children
       )}</a>`

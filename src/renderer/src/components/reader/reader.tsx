@@ -16,6 +16,7 @@ import { TocSheet } from './toc-sheet'
 export interface ReaderProps {
   bookId: string
   bookTitle: string
+  initialChapterIdx?: number
   onBack: () => void
 }
 
@@ -23,7 +24,7 @@ export interface ReaderProps {
  * 阅读器：对应旧项目 reader_page.dart + reader_menu.dart。
  * 布局 = 顶部浮层菜单 + 正文区分页/滚动 + 目录抽屉 + 书内搜索 + 阅读设置面板。
  */
-export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element {
+export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderProps): JSX.Element {
   // 只订阅需要的字段：整店订阅会在每次 setState 时返回新对象，
   // 导致依赖 store 的 useCallback / useEffect 反复重建并触发渲染循环。
   const chapters = useReaderStore((state) => state.chapters)
@@ -57,7 +58,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
 
     void (async () => {
       try {
-        await useReaderStore.getState().loadBook(bookId)
+        await useReaderStore.getState().loadBook(bookId, initialChapterIdx)
         if (!cancelled) setLoading(false)
       } catch (loadError) {
         if (!cancelled) {
@@ -72,7 +73,7 @@ export function Reader({ bookId, bookTitle, onBack }: ReaderProps): JSX.Element 
     return () => {
       cancelled = true
     }
-  }, [bookId])
+  }, [bookId, initialChapterIdx])
 
   // 分页测量：整章渲染一次，测 scrollHeight，按可视高度切页
   const measure = useCallback(() => {

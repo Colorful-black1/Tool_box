@@ -33,6 +33,8 @@ import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
 import { registerTodosIpc } from './todos-ipc'
+import type { TodoService } from '../services/todo-service'
+import type { AgentUsageService } from '../services/agent-usage/usage-service'
 import {
   assertObject,
   optionalString,
@@ -53,11 +55,13 @@ export interface IpcDependencies {
   passwordAi: PasswordAiService
   shortcuts: ShortcutManager
   opencode: OpenCodeService
+  todos?: TodoService
+  usage?: Promise<AgentUsageService>
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
-  registerTodosIpc(dependencies.store)
-  registerAgentUsageIpc()
+  registerTodosIpc(dependencies.store, dependencies.todos)
+  registerAgentUsageIpc(dependencies.usage)
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService([
     new OpenCodeAdapter(dependencies.opencode),

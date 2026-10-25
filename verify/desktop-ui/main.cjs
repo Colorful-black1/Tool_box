@@ -16,6 +16,11 @@ const bundle = buildSync({
   export { AgentDraftService } from './src/main/services/coding-agents/agent-draft-service'
   export { AgentDraftQuitFlush, registerAgentDraftsIpc } from './src/main/ipc/agent-drafts-ipc'
   export { registerTodosIpc } from './src/main/ipc/todos-ipc'
+  export { TodoService } from './src/main/services/todo-service'
+  export { createAgentToolSet } from './src/main/services/agent/tools'
+  export { buildLangChainTools } from './src/main/services/agent/tool-registry'
+  export { referenceMarkdown } from './src/shared/app-reference'
+  export { usageReport } from './src/main/services/agent-usage/report'
 `,
     resolveDir: path.resolve(__dirname, '../..'),
     loader: 'ts'
@@ -85,7 +90,10 @@ app.whenReady().then(() => {
     return save(input)
   }
   registerAgentDraftsIpc(drafts, quitFlush)
-  compiled.exports.registerTodosIpc(store)
+  const todos = new compiled.exports.TodoService(store)
+  compiled.exports.registerTodosIpc(store, todos)
+  if (process.env.TOOLBOX_CHAT_TOOLS_VERIFY === '1')
+    require('./chat-tools-fixture.cjs')(compiled.exports, store, todos)
   ipcMain.handle('verify:todo:open', (event, id) => event.sender.send('todos:event', { type: 'open', id }))
   ipcMain.handle('verify:draft:flush', (event) => quitFlush.request(event.sender))
   ipcMain.handle('verify:draft:fail-read', () => {

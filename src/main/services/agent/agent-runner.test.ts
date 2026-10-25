@@ -128,6 +128,7 @@ describe('runAgent', () => {
     const { sink, deltas, calls } = collect()
     const tool: AgentToolDefinition = {
       ...echoTool,
+      references: () => [{ label: '合成笔记', target: { kind: 'note', id: 'n1' } }],
       handler: async (input) => {
         executed.push(String(input.text ?? ''))
         return { echoed: String(input.text ?? '') }
@@ -148,6 +149,7 @@ describe('runAgent', () => {
     })
 
     expect(result.usedTools).toBe(true)
+    expect(result.references).toEqual([{ label: '合成笔记', target: { kind: 'note', id: 'n1' } }])
     expect(executed).toEqual(['hi'])
     expect(calls).toEqual(['echo'])
     expect(deltas.join('')).toContain('已完成')

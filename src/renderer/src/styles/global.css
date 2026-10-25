@@ -4634,6 +4634,21 @@ textarea,
   gap: 10px;
 }
 
+.tool-approval .tool-call-args {
+  max-height: min(32vh, 280px);
+  overflow: auto;
+}
+
+.app-reference {
+  max-width: 100%;
+  padding: 4px 9px;
+  margin: 2px 0;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
 .message-thread {
   position: relative;
   display: flex;

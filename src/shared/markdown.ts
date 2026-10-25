@@ -7,8 +7,8 @@
  * - 现在这里输出**结构化 AST**，桌面端把 AST 渲染成 HTML，
  *   手机端把同一份 AST 渲染成 RN 组件，语法子集因此天然一致。
  *
- * 语法子集与原桌面端实现**逐条对齐**（不要在此基础上偷偷加语法，
- * 两端渲染结果会分叉）：标题、段落、无序/有序列表、围栏代码块、
+ * 默认语法保持兼容；桌面对话可显式启用应用内引用，其余调用不变。
+ * 标题、段落、无序/有序列表、围栏代码块、
  * 引用、分割线，行内支持粗体 / 斜体 / 行内代码 / 链接。
  *
  * 块级行为沿用桌面端原实现：每个非空行各自成段（不合并成多行段落），
@@ -47,8 +47,9 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => ESCAPE_MAP[char])
 }
 
-/** 链接只允许 http / https，避免 `javascript:` 之类的协议混进 href */
+/** 默认只接受 HTTP(S)；内部引用由桌面对话显式启用并在渲染前做页面白名单校验。 */
 const LINK_PATTERN = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/
+const APP_LINK_PATTERN = /^\[([^\]]+)\]\((toolbox:\/\/[^)\s]+)\)/
 
 /**
  * 解析行内语法。
@@ -56,7 +57,7 @@ const LINK_PATTERN = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/
  * 扫描式实现：每一步找当前最靠左的语法标记（行内代码 / 粗体 / 斜体 / 链接），
  * 命中就递归解析其内部内容，因此 `**里面带 `code`**` 这类嵌套也能正确还原。
  */
-export function parseInline(text: string): MdInline[] {
+export function parseInline(text: string, appLinks = false): MdInline[] {
   const nodes: MdInline[] = []
   let buffer = ''
   let index = 0
@@ -86,7 +87,7 @@ export function parseInline(text: string): MdInline[] {
       const end = text.indexOf('**', index + 2)
       if (end > index + 2) {
         flush()
-        nodes.push({ kind: 'strong', children: parseInline(text.slice(index + 2, end)) })
+        nodes.push({ kind: 'strong', children: parseInline(text.slice(index + 2, end), appLinks) })
         index = end + 2
         continue
       }
@@ -97,7 +98,7 @@ export function parseInline(text: string): MdInline[] {
       const end = text.indexOf('*', index + 1)
       if (end > index + 1) {
         flush()
-        nodes.push({ kind: 'em', children: parseInline(text.slice(index + 1, end)) })
+        nodes.push({ kind: 'em', children: parseInline(text.slice(index + 1, end), appLinks) })
         index = end + 1
         continue
       }
@@ -105,13 +106,13 @@ export function parseInline(text: string): MdInline[] {
 
     // 链接
     if (char === '[') {
-      const match = LINK_PATTERN.exec(text.slice(index))
+      const match = LINK_PATTERN.exec(text.slice(index)) ?? (appLinks ? APP_LINK_PATTERN.exec(text.slice(index)) : null)
       if (match) {
         flush()
         nodes.push({
           kind: 'link',
           href: match[2],
-          children: parseInline(match[1])
+          children: parseInline(match[1], appLinks)
         })
         index += match[0].length
         continue
@@ -127,7 +128,7 @@ export function parseInline(text: string): MdInline[] {
 }
 
 /** 解析整篇 Markdown，返回块级 AST */
-export function parseMarkdown(source: string): MdBlock[] {
+export function parseMarkdown(source: string, appLinks = false): MdBlock[] {
   const blocks: MdBlock[] = []
   const lines = source.split('\n')
 
@@ -167,7 +168,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       blocks.push({
         kind: 'heading',
         level: heading[1].length,
-        children: parseInline(heading[2])
+        children: parseInline(heading[2], appLinks)
       })
       continue
     }
@@ -176,7 +177,7 @@ export function parseMarkdown(source: string): MdBlock[] {
     const quote = raw.match(/^>\s?(.*)$/)
     if (quote) {
       closeList()
-      blocks.push({ kind: 'quote', children: parseInline(quote[1]) })
+      blocks.push({ kind: 'quote', children: parseInline(quote[1], appLinks) })
       continue
     }
 
@@ -194,7 +195,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         closeList()
         list = { ordered: false, items: [] }
       }
-      list.items.push(parseInline(unordered[1]))
+      list.items.push(parseInline(unordered[1], appLinks))
       continue
     }
 
@@ -205,7 +206,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         closeList()
         list = { ordered: true, items: [] }
       }
-      list.items.push(parseInline(ordered[1]))
+      list.items.push(parseInline(ordered[1], appLinks))
       continue
     }
 
@@ -216,7 +217,7 @@ export function parseMarkdown(source: string): MdBlock[] {
     }
 
     closeList()
-    blocks.push({ kind: 'paragraph', children: parseInline(raw) })
+    blocks.push({ kind: 'paragraph', children: parseInline(raw, appLinks) })
   }
 
   closeList()

@@ -20,7 +20,7 @@ interface ReaderState {
   bookmarks: Bookmark[]
   bookPercent: number
 
-  loadBook(bookId: string): Promise<void>
+  loadBook(bookId: string, initialChapterIdx?: number): Promise<void>
   goChapter(idx: number, options?: { toLast?: boolean }): Promise<void>
   setPageIdx(idx: number): void
   setScrollRatio(ratio: number): void
@@ -58,7 +58,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   bookPercent: 0,
   // config 由阅读器直接订阅 config-store，这里不再复制一份
 
-  loadBook: async (bookId) => {
+  loadBook: async (bookId, initialChapterIdx) => {
     const bridge = window.toolbox
     if (!bridge) throw new Error('本地桥接未就绪')
 
@@ -71,7 +71,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const book = books.find((item) => item.id === bookId)
     if (!book) throw new Error('书籍不存在')
 
-    const startIdx = Math.min(progress?.chapterIdx ?? 0, Math.max(chapters.length - 1, 0))
+    const startIdx = Math.min(initialChapterIdx ?? progress?.chapterIdx ?? 0, Math.max(chapters.length - 1, 0))
     const target = chapters[startIdx]
     const chapter = target ? await bridge.books.chapterContent(target.id) : null
 

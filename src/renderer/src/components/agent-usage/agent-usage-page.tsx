@@ -26,6 +26,7 @@ import {
   saveUsagePrefs
 } from '../../lib/usage-prefs'
 import type { UsagePeriod, UsagePrefs } from '../../lib/usage-prefs'
+import { useAppStore } from '../../stores/app-store'
 
 const EXPORT_LIMIT = 50_000
 
@@ -35,9 +36,11 @@ function option(values: string[], label: string): { value: string; label: string
 
 /** 本地用量视图独立于 Agent 连接，离开或隐藏页面后停止周期刷新。 */
 export function AgentUsagePage(): JSX.Element {
+  const usageTarget = useAppStore((state) => state.usageTarget)
   const [initial] = useState<UsagePrefs | null>(() => loadUsagePrefs())
   const [period, setPeriod] = useState<UsagePeriod>(initial?.period ?? 'today')
   const [query, setQuery] = useState<UsageQuery>(() => {
+    if (usageTarget) return usageTarget
     const base: UsageQuery =
       initial?.period === 'custom' && initial.from && initial.to
         ? { from: initial.from, to: initial.to }
@@ -64,6 +67,13 @@ export function AgentUsagePage(): JSX.Element {
   const configuring = useRef(false)
   const queryRef = useRef(query)
   const loadRef = useRef<(refresh: boolean) => Promise<void>>(async () => undefined)
+
+  useEffect(() => {
+    if (!usageTarget) return
+    setPeriod(usageTarget.from || usageTarget.to ? 'custom' : 'all')
+    setQuery(usageTarget)
+    useAppStore.setState({ usageTarget: null })
+  }, [usageTarget])
 
   const load = useCallback(async (refresh = false): Promise<void> => {
     const bridge = window.toolbox?.agentUsage

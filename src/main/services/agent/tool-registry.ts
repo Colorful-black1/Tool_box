@@ -5,6 +5,7 @@ import type { StructuredToolInterface } from '@langchain/core/tools'
 import { z } from 'zod'
 
 import type { AgentPermission, AgentToolRisk } from '../../../shared/types'
+import type { AppReference } from '../../../shared/app-reference'
 
 /** 工具调用摘要的最大长度，避免大对象把事件撑爆 */
 const ARGS_PREVIEW_CHARS = 400
@@ -15,6 +16,8 @@ const ARGS_PREVIEW_CHARS = 400
  */
 export interface AgentToolContext {
   conversationId: string
+  signal?: AbortSignal
+  addReferences?(references: AppReference[]): void
   notifyToolCall(event: { callId: string; name: string; args: string }): void
   notifyToolResult(event: { callId: string; ok: boolean; summary: string }): void
   requestApproval(event: {
@@ -25,6 +28,13 @@ export interface AgentToolContext {
   }): Promise<boolean>
 }
 
+/** 审批前生成不可变预览；execute 在批准后重新核对数据版本。 */
+export interface PreparedAgentTool {
+  args: string
+  requireApproval?: boolean
+  execute(): Promise<unknown>
+}
+
 /** 一个可被 AI 接管的工具声明（新增能力只需注册一条） */
 export interface AgentToolDefinition {
   name: string
@@ -32,6 +42,8 @@ export interface AgentToolDefinition {
   schema: z.ZodObject<z.ZodRawShape>
   risk: AgentToolRisk
   handler: (input: Record<string, unknown>, ctx: AgentToolContext) => Promise<unknown>
+  prepare?: (input: Record<string, unknown>, ctx: AgentToolContext) => Promise<PreparedAgentTool>
+  references?: (input: Record<string, unknown>, result: unknown) => AppReference[]
   /**
    * 结果的人类可读摘要，用于界面展示。
    * 禁止暴露数据库内部字段（id、时间戳等原始对象）——缺省时只显示「完成」。
@@ -80,24 +92,28 @@ export function buildLangChainTools(
         const args = summarise(input, ARGS_PREVIEW_CHARS)
         ctx.notifyToolCall({ callId, name: definition.name, args })
 
-        if (permission === 'confirm' && definition.risk !== 'read') {
-          const approved = await ctx.requestApproval({
-            callId,
-            name: definition.name,
-            args,
-            risk: definition.risk
-          })
-          if (!approved) {
-            ctx.notifyToolResult({ callId, ok: false, summary: '用户已拒绝该操作' })
-            return '用户拒绝了该操作，请不要重试，改用其他方式或向用户说明。'
-          }
-        }
-
         try {
-          const result = await definition.handler(input, ctx)
-          const summary = definition.summarize
-            ? definition.summarize(input, result)
-            : '完成'
+          if (ctx.signal?.aborted) throw new Error('操作已停止')
+          const prepared = await definition.prepare?.(input, ctx)
+          if (
+            (permission === 'confirm' && definition.risk !== 'read') ||
+            prepared?.requireApproval
+          ) {
+            const approved = await ctx.requestApproval({
+              callId,
+              name: definition.name,
+              args: prepared?.args ?? args,
+              risk: definition.risk
+            })
+            if (!approved) {
+              ctx.notifyToolResult({ callId, ok: false, summary: '用户已拒绝该操作' })
+              return '用户拒绝了该操作，请不要重试，改用其他方式或向用户说明。'
+            }
+          }
+          if (ctx.signal?.aborted) throw new Error('操作已停止')
+          const result = prepared ? await prepared.execute() : await definition.handler(input, ctx)
+          if (definition.references) ctx.addReferences?.(definition.references(input, result))
+          const summary = definition.summarize ? definition.summarize(input, result) : '完成'
           ctx.notifyToolResult({ callId, ok: true, summary })
           return stringify(result)
         } catch (error) {

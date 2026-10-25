@@ -6,6 +6,7 @@ import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
 import type { PendingApprovalView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
+import { openAppReference } from '../lib/open-app-reference'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
 import { SendIcon, StopIcon } from './icons'
@@ -149,7 +150,7 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
               <div>
                 <p className="empty-title">开始新的星轨对话</p>
                 <p className="empty-text">
-                  先在设置页配置 AI 接口，即可让 AI 帮你管理书架、密码箱与记事本。
+                  先在设置页配置 AI 接口，即可管理书架、笔记和待办，查询 Token 用量。
                 </p>
               </div>
             </div>
@@ -181,6 +182,9 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
 
 function ApprovalCard({ approval }: { approval: PendingApprovalView }): JSX.Element {
   const respondToolApproval = useAppStore((state) => state.respondToolApproval)
+  const labels: Record<string, string> = {
+    notes_edit: '核对笔记修改', todos_save: '保存待办', todos_set_state: '更新待办状态'
+  }
 
   return (
     <div className="tool-approval" role="alertdialog" aria-label="需要确认的操作">
@@ -190,8 +194,8 @@ function ApprovalCard({ approval }: { approval: PendingApprovalView }): JSX.Elem
           {approval.risk === 'destructive' ? '破坏性' : '写入'}
         </span>
       </div>
-      <div className="tool-approval-name">{approval.name}</div>
-      {approval.args ? <div className="tool-call-args">{approval.args}</div> : null}
+      <div className="tool-approval-name">{labels[approval.name] ?? approval.name}</div>
+      {approval.args ? <div className="tool-call-args" tabIndex={0} aria-label="操作预览">{approval.args}</div> : null}
       <div className="tool-approval-actions">
         <button
           type="button"
@@ -227,6 +231,7 @@ function MessageBubble({
 }: MessageBubbleProps): JSX.Element {
   const copyText = useAppStore((state) => state.copyText)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [openError, setOpenError] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -256,7 +261,18 @@ function MessageBubble({
             content.trim() ? (
               <div
                 className="message-md markdown-body md-chat"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+                onClick={(event) => {
+                  const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[data-app-target]') : null
+                  const href = button?.dataset.appTarget
+                  if (!href) return
+                  event.preventDefault()
+                  setOpenError('')
+                  button.disabled = true
+                  void openAppReference(href).catch((error: unknown) => {
+                    setOpenError(error instanceof Error ? error.message : '无法打开结果，请重新查询')
+                  }).finally(() => { button.disabled = false })
+                }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(content, true) }}
               />
             ) : (
               streaming && '正在连接模型…'
@@ -272,6 +288,7 @@ function MessageBubble({
             </span>
           ) : null}
         </div>
+        {openError ? <p className="status-banner" role="alert">{openError}</p> : null}
         {createdAtMs !== undefined ? (
           <div className="message-foot">
             <span className="message-time">{formatTime(createdAtMs)}</span>

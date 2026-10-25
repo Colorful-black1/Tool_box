@@ -7,6 +7,11 @@ import { noteTools } from './notes'
 import { passwordTools } from './passwords'
 import { statsTools } from './stats'
 import type { AgentDeps, ToolFactory } from './deps'
+import { todoTools } from './todos'
+import { usageTools } from './usage'
+import { noteEditTools } from './note-edit'
+import { workspaceTools } from './workspace'
+import { resultReferences } from './result-references'
 
 /** 全部工具工厂：新增一个工具域只需把工厂加进这里 */
 const TOOL_FACTORIES: ToolFactory[] = [
@@ -15,11 +20,21 @@ const TOOL_FACTORIES: ToolFactory[] = [
   bookmarkTools,
   noteTools,
   passwordTools,
-  statsTools
+  statsTools,
+  todoTools,
+  usageTools,
+  noteEditTools,
+  workspaceTools
 ]
 
 export function createAgentToolSet(deps: AgentDeps): AgentToolDefinition[] {
-  return collectAgentTools(TOOL_FACTORIES.flatMap((factory) => factory(deps)))
+  return collectAgentTools(TOOL_FACTORIES.flatMap((factory) => factory(deps))).map(
+    (definition) => ({
+      ...definition,
+      references:
+        definition.references ?? ((_input, result) => resultReferences(definition.name, result))
+    })
+  )
 }
 
 export type { AgentDeps }

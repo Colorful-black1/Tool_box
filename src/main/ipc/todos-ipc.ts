@@ -4,6 +4,7 @@ import { IPC, WINDOW_EVENT } from '../../shared/ipc-contract'
 import type { TodoEvent } from '../../shared/types'
 import type { ToolboxStore } from '../services/chat-store/chat-store'
 import { TodoReminderService } from '../services/todo-reminder-service'
+import { TodoService } from '../services/todo-service'
 import { showMainWindow } from '../tray'
 import {
   requireString,
@@ -13,7 +14,7 @@ import {
 } from './validation'
 
 /** 新能力只向受管窗口主 frame 开放，所有业务输入统一校验。 */
-export function registerTodosIpc(store: ToolboxStore): void {
+export function registerTodosIpc(store: ToolboxStore, service = new TodoService(store)): void {
   const broadcast = (event: TodoEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send(WINDOW_EVENT.todo, event)
@@ -53,14 +54,12 @@ export function registerTodosIpc(store: ToolboxStore): void {
     broadcast({ type: 'changed' })
     reminders.check()
   }
+  service.setNotifications(changed, () => reminders.status())
   ipcMain.handle(IPC.todosList, (event, query: unknown) => {
     owner(event)
     const valid = validateTodoQuery(query)
     try {
-      return {
-        ...store.listTodos(valid),
-        notificationStatus: reminders.status()
-      }
+      return service.list(valid)
     } catch {
       throw new Error('无法读取待办，请刷新重试')
     }
@@ -69,9 +68,7 @@ export function registerTodosIpc(store: ToolboxStore): void {
     owner(event)
     const valid = validateTodoInput(input)
     try {
-      const saved = store.saveTodo(valid)
-      changed()
-      return saved
+      return service.save(valid)
     } catch {
       throw new Error('待办保存失败，请刷新确认或重试')
     }
@@ -81,8 +78,7 @@ export function registerTodosIpc(store: ToolboxStore): void {
     const validId = requireString(id, '待办 ID', { maxLength: 64 })
     const validState = requireTodoBoolean(completed)
     try {
-      store.completeTodo(validId, validState)
-      changed()
+      service.complete(validId, validState)
     } catch {
       throw new Error('无法更新完成状态，请刷新重试')
     }
@@ -92,8 +88,7 @@ export function registerTodosIpc(store: ToolboxStore): void {
     const validId = requireString(id, '待办 ID', { maxLength: 64 })
     const validState = requireTodoBoolean(archived)
     try {
-      store.archiveTodo(validId, validState)
-      changed()
+      service.archive(validId, validState)
     } catch {
       throw new Error('无法更新归档状态，请刷新重试')
     }

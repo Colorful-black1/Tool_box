@@ -94,6 +94,7 @@ export default function App(): JSX.Element {
   const loading = useAppStore((state) => state.loading)
   const error = useAppStore((state) => state.error)
   const activeBookId = useAppStore((state) => state.activeBookId)
+  const readerStartChapter = useAppStore((state) => state.readerStartChapter)
   const books = useAppStore((state) => state.books)
   const closeReader = useAppStore((state) => state.closeReader)
   const openReader = useAppStore((state) => state.openReader)
@@ -202,6 +203,7 @@ export default function App(): JSX.Element {
             ) : view === 'reading' && activeBookId ? (
               <Reader
                 bookId={activeBookId}
+                initialChapterIdx={readerStartChapter ?? undefined}
                 bookTitle={activeBook?.title ?? '阅读'}
                 onBack={closeReader}
               />

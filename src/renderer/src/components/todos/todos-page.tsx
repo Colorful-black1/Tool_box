@@ -249,7 +249,7 @@ export function TodosPage(): JSX.Element {
         <section className="todo-list-section" aria-label="待办列表" aria-busy={loading}>
           {focusId ? (
             <div className="status-banner" role="status">
-              正在查看通知对应的待办
+              正在查看指定待办
               <button
                 type="button"
                 className="btn-ghost"

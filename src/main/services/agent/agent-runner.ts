@@ -4,6 +4,8 @@ import type { ChatOpenAI } from '@langchain/openai'
 import { createAgent } from 'langchain'
 
 import type { AgentPermission, AgentToolRisk, ChatMessage } from '../../../shared/types'
+import { appTargetUrl, parseAppTarget } from '../../../shared/app-reference'
+import type { AppReference } from '../../../shared/app-reference'
 import type { ApprovalGate } from './approval-gate'
 import { buildLangChainTools, filterToolsByPermission } from './tool-registry'
 import type { AgentToolContext, AgentToolDefinition } from './tool-registry'
@@ -38,6 +40,7 @@ export interface RunAgentInput {
 export interface RunAgentResult {
   content: string
   usedTools: boolean
+  references: AppReference[]
 }
 
 /**
@@ -52,16 +55,35 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
   const { conversationId, history, model, systemPrompt, tools, permission, gate, sink } = input
 
   let usedTools = false
+  const references = new Map<string, AppReference>()
+  let approvalQueue: Promise<boolean> = Promise.resolve(false)
   const context: AgentToolContext = {
     conversationId,
+    signal: input.signal,
+    addReferences: (items) => {
+      for (const item of items) {
+        const key = appTargetUrl(item.target)
+        if (!parseAppTarget(key)) continue
+        references.delete(key)
+        if (references.size >= 40) references.delete(references.keys().next().value!)
+        references.set(key, item)
+      }
+    },
     notifyToolCall: (event) => {
       usedTools = true
       sink.onToolCall(event)
     },
     notifyToolResult: (event) => sink.onToolResult(event),
     requestApproval: (event) => {
-      sink.onToolApprovalRequest(event)
-      return gate.request(event.callId, conversationId)
+      // 模型可并行请求工具，但用户一次只核对一张审批卡。
+      const request = approvalQueue.then(async () => {
+        if (input.signal.aborted) return false
+        const pending = gate.request(event.callId, conversationId)
+        sink.onToolApprovalRequest(event)
+        return pending
+      })
+      approvalQueue = request.catch(() => false)
+      return request
     }
   }
 
@@ -87,7 +109,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     input.onDelta(delta)
   }
 
-  return { content, usedTools }
+  return { content, usedTools, references: [...references.values()] }
 }
 
 function toAgentMessages(messages: ChatMessage[]): BaseMessage[] {

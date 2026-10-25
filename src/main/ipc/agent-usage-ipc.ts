@@ -1,48 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { readFile, rename, writeFile } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
 import { IPC } from '../../shared/ipc-contract'
 import { USAGE_CLIENTS } from '../../shared/agent-usage'
-import type { UsageClient } from '../../shared/agent-usage'
-import { AgentUsageService } from '../services/agent-usage/usage-service'
-import { readUsageCache, writeUsageCache } from '../services/agent-usage/cache'
-import { object } from '../services/agent-usage/normalize'
+import type { AgentUsageService } from '../services/agent-usage/usage-service'
+import { createAgentUsageService } from '../services/agent-usage/create-service'
 import { validateUsageClient, validateUsageQuery } from './validation'
 
-/** 仅持久化用户选择的来源路径，Token 缓存仅在内存中，不改变业务数据库。 */
-export function registerAgentUsageIpc(): void {
-  const settingsFile = join(app.getPath('userData'), 'agent-usage-sources.json')
-  const cacheFile = join(app.getPath('userData'), 'agent-usage-cache.json')
-  const service = (async () => {
-    const roots: Partial<Record<UsageClient, string>> = {}
-    try {
-      const data = object(JSON.parse(await readFile(settingsFile, 'utf8')) as unknown)
-      for (const id of Object.keys(USAGE_CLIENTS) as UsageClient[]) {
-        const path = data[id]
-        if (typeof path === 'string' && path.length <= 4096 && isAbsolute(path)) roots[id] = path
-      }
-    } catch (error) {
-      // 缺失是首次使用；损坏设置保留原文件，仅本次回退自动发现，不回显内容。
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-        console.warn('[AgentUsage] 来源设置不可读，使用自动发现')
-    }
-    return new AgentUsageService(
-      roots,
-      async (value) => {
-        await writeFile(settingsFile + '.tmp', JSON.stringify(value), {
-          encoding: 'utf8',
-          mode: 0o600
-        })
-        await rename(settingsFile + '.tmp', settingsFile)
-      },
-      {
-        load: () => readUsageCache(cacheFile),
-        save: async (value) => {
-          await writeUsageCache(cacheFile, value)
-        }
-      }
-    )
-  })()
+/** 来源路径与元数据缓存由共用服务管理，不改变业务数据库。 */
+export function registerAgentUsageIpc(
+  service: Promise<AgentUsageService> = createAgentUsageService(app.getPath('userData'))
+): void {
   const handle = (channel: string, action: (value: unknown) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, value: unknown) => {
       if (

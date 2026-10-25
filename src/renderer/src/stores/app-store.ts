@@ -29,6 +29,7 @@ import type {
 } from '../../../shared/types'
 import { DEFAULT_AGENT_PERMISSION, findAiProvider } from '../../../shared/types'
 import { resolveChatModels } from '../../../shared/model-list'
+import type { UsageQuery } from '../../../shared/agent-usage'
 
 export type AppView =
   | 'agent-usage'
@@ -79,6 +80,8 @@ interface AppState {
   /** 工具页当前选中的工具 id */
   toolsActiveId: string | null
   searchTarget: SearchTarget | null
+  usageTarget: UsageQuery | null
+  readerStartChapter: number | null
   hasUnsavedChanges: boolean
   error: string | null
   appInfo: AppInfo | null
@@ -146,7 +149,7 @@ interface AppState {
   refreshBooks(): Promise<void>
   refreshGroups(): Promise<void>
   importBook(): Promise<void>
-  openReader(bookId: string): void
+  openReader(bookId: string, chapterIdx?: number): void
   closeReader(): void
   deleteBook(bookId: string): Promise<void>
   reorderBooks(ids: string[]): Promise<void>
@@ -195,6 +198,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   view: 'chat',
   toolsActiveId: null,
   searchTarget: null,
+  usageTarget: null,
+  readerStartChapter: null,
   hasUnsavedChanges: false,
   error: null,
   appInfo: null,
@@ -267,7 +272,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setView: (view) => set({ view, searchTarget: null }),
+  setView: (view) => set({ view, searchTarget: null, usageTarget: null }),
   setToolsActive: (toolId) => set({ toolsActiveId: toolId }),
   openSearchTarget: (target) =>
     set({
@@ -491,7 +496,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (book) set((state) => ({ books: [book, ...state.books] }))
   },
 
-  openReader: (bookId) => set({ view: 'reading', activeBookId: bookId, searchTarget: null }),
+  openReader: (bookId, chapterIdx) => set({ view: 'reading', activeBookId: bookId, readerStartChapter: chapterIdx ?? null, searchTarget: null }),
   closeReader: () => set({ view: 'shelf', activeBookId: null }),
 
   deleteBook: async (bookId) => {
