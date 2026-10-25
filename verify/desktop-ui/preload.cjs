@@ -35,5 +35,19 @@ fixture.controls.failNextDraftRead = () => ipcRenderer.invoke('verify:draft:fail
 fixture.controls.failNextDraftSave = () => ipcRenderer.invoke('verify:draft:fail-save')
 fixture.controls.draftStorageEncrypted = () => ipcRenderer.invoke('verify:draft:encrypted')
 
+fixture.toolbox.todos = {
+  list: (query) => ipcRenderer.invoke('todos:list', query),
+  save: (input) => ipcRenderer.invoke('todos:save', input),
+  complete: (id, completed) => ipcRenderer.invoke('todos:complete', id, completed),
+  archive: (id, archived) => ipcRenderer.invoke('todos:archive', id, archived),
+  testNotification: () => ipcRenderer.invoke('todos:notification:test'),
+  onEvent: (listener) => {
+    const wrapped = (_event, payload) => listener(payload)
+    ipcRenderer.on('todos:event', wrapped)
+    return () => ipcRenderer.removeListener('todos:event', wrapped)
+  }
+}
+fixture.controls.openTodo = (id) => ipcRenderer.invoke('verify:todo:open', id)
+
 contextBridge.exposeInMainWorld('toolbox', fixture.toolbox)
 contextBridge.exposeInMainWorld('uiVerification', fixture.controls)

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
-import { CaretIcon, ChevronIcon, CodeIcon } from './icons'
+import { CaretIcon, ChevronIcon, CodeIcon, TodoIcon } from './icons'
 
 /** 叶子保留原来的页面标识和导航动作。 */
 interface RailItem {
@@ -38,6 +38,8 @@ function RailIcon({ name }: { name: string }): JSX.Element {
   } as const
 
   switch (name) {
+    case 'todo':
+      return <TodoIcon />
     case 'code':
       return <CodeIcon />
     case 'book':

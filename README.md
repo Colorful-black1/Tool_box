@@ -15,6 +15,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 | 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计（今日 / 累计 / **任意区间**） |
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入，AI 流式展示脱敏预览、支持停止，完整校验后才可导入；重复检测、拼音分组、字母索引；**随机密码生成器**（密码学安全随机数 + 拒绝采样，可调长度，带强度评估） |
 | 记事本 | Markdown 编辑与预览、导入导出 `.md`；**支持按标题与正文搜索** |
+| 待办清单 | 个人管理中的独立入口；开始／截止时间、优先级、搜索、完成／重开、归档／恢复；应用运行或驻留托盘时通知，重启／唤醒合并补提醒 |
 | 开发者工具 | 树形目录下的 **JSON 工具箱、文本 / JSON 差异比较、数据脱敏、Java 日志整理、Prompt 模板库、我的 IP、提示词美化**，以及正则、Base64 / URL、时间戳、哈希、文本清洗、UUID；提示词美化仅手动调用 AI，其余工具本机处理。结果可脱敏、填入 Prompt、保存笔记或放入对话草稿；输入输出框自适应高度并支持换行 |
 | 编程 Agent | **OpenCode / Codex / Claude Code / DeepSeek Harness 统一工作台**：首次发送按需连接与创建会话，历史列表直接恢复；单次审批、停止、消息转用与加密草稿恢复；DSH 回复提交后更新，续接上下文但不回放旧消息 |
 | Token 统计 | 独立读取 Codex、OpenCode、Claude Code、Kimi Code、Pi、WorkBuddy、DeepSeek Harness、ZCode 等 14 类本机来源，无需连接 Agent；支持周期 / Agent / 项目 / 模型筛选、趋势与排行、可排序明细和 CSV 导出；仅显示 OpenCode 原生上报花费，不做价格估算 |
@@ -64,6 +65,10 @@ Ctrl+K 空输入优先显示收藏与最近工具；输入后继续全局搜索�
 | Java 日志整理 | 清理 ANSI 颜色、折叠连续重复行、显示异常链；可显式展开转义、按首行 traceId 筛选并保留对应堆栈续行。不使用模型猜测异常原因 |
 | Prompt 模板库 | 内置异常分析、代码审查、保行为重构、SQL 优化、单测生成模板；支持 `{{变量名}}`，同名变量只填一次；历史版本只读，可比较或采用后保存为新版本 |
 | 我的 IP | 查看非回环网卡 IPv4 / IPv6 与子网掩码；手动获取 Windows TCP / UDP 端口、PID、进程名快照，支持筛选、分页与复制，不终止进程；不查询公网 IP |
+| MyBatis SQL 还原 | Preparing／Parameters 日志批量还原；支持 MySQL 默认转义、PostgreSQL 标准字符串、SQLite；缺行、未知类型、歧义及数量不符明确提示，不执行 SQL |
+| 颜色工具 | 不透明 HEX／RGB／HSL 换算、两色预览与 WCAG 2.x 对比度，结果可复制 |
+| 单位与进制换算 | 长度、质量、温度、时间、十进制／二进制字节；2–36 进制大整数与负数；不做汇率或浮点进制 |
+| 时区换算 | 在时间戳工具顶部，按源／目标 IANA 时区换算；夏令时缺口拒绝，重复时间明确选较早／较晚时刻 |
 | Cron 计算器 | 区分 Spring / Quartz / Unix，支持范围、步长及 L / W / # 等日期条件；列出起点后十次执行时间，最多搜索八年，首版提供 UTC / 北京时间 |
 | Spring 配置工具 | YAML / Properties 转换与字段比较，保留长整数和占位符；支持常用缩进映射、块列表、Properties 续行/转义，拒绝重复键、冲突与不支持的 YAML 语法；转换去除注释并统一为字符串，不模拟 Spring 环境合并 |
 | JWT／证书查看器 | JWT 本地解码、时间声明提示，不验证签名；查看 PEM 链 / DER 文件的 X.509 元数据和有效期，不验证信任链；拒绝私钥，不保存或发送 AI |
@@ -92,6 +97,16 @@ JSON、差异、脱敏和日志工具输入最多 20 万字符，JSON 嵌套最�
 
 验证：`npm run build` 后运行 `node verify/desktop-ui/run.cjs --ip-prompt-only --screenshots`，
 使用合成地址和模型返回，不读取真实网卡、不调用真实 AI。规格见 `docs/SPEC-ip-prompt-tools.md`。
+
+### 待办与提醒
+
+打开「个人管理 → 待办清单」，只填标题即可添加。需要提醒时设置开始／截止的日期和具体时间，并勾选通知；开始与截止各提醒一次，完成或归档后停止提醒。筛选支持未完成、今日、待开始、逾期、已完成和归档。
+
+提醒由主进程每 30 秒检查，关闭窗口到托盘后仍工作；从托盘退出应用后不提醒，重新打开或系统唤醒时合并补发未提醒事项。点击通知打开对应待办；Windows 免打扰可能把提醒收进通知中心，可用页面的「测试通知」确认。正式安装版的开始菜单快捷方式用于 Windows 通知识别，开发／便携运行需实机确认。
+
+待办按本机时区输入，保存的是具体时刻；更换系统时区后显示会随之变化。日期不填则不提醒。编辑草稿仅在本次运行保留，退出前请保存。待办与普通笔记一样是本地普通数据，不用于保存密码，首版不自动暴露给 AI。
+
+桌面数据库升级到 v5，旧库升级前自动生成 `backups/toolbox-before-v5-*.db` 一致备份；备份失败停止启动并提示。回滚需退出所有使用数据库的应用，由用户手动从备份恢复 `toolbox.db`（升级后新增内容会丢失）；不要在运行时覆盖数据库或把旧 WAL 文件与备份混用。旧程序能读取原表但看不到待办。规格与验证见 [首批工具扩展](docs/tool-expansion-first-batch-verification.md)。
 
 ### AI 流式输出
 
@@ -277,7 +292,7 @@ Gemini CLI、GitHub Copilot CLI、Grok CLI、MiMoCode、MCode 和 Cline CLI 的�
 - React 19 + TypeScript strict + Tailwind CSS
 - Zustand
 - LangChain.js（`@langchain/core` + `@langchain/openai`）
-- better-sqlite3（SQLite，schema v4）
+- better-sqlite3（SQLite，桌面 schema v5）
 - Electron `safeStorage`（Windows DPAPI）保管 AI Key 与密码箱主密钥
 - Vitest
 
@@ -391,7 +406,7 @@ src/
 │   └── services/
 │       ├── agent/        工具注册表 + Agent 循环 + 审批门
 │       ├── ai-gateway/   LangChain Agent 编排、流式事件与错误映射
-│       ├── chat-store/   统一 SQLite 数据层（v4）
+│       ├── chat-store/   统一 SQLite 数据层（桌面 v5）
 │       ├── crypto/       safeStorage 主密钥 + AES-GCM
 │       ├── library/      编码探测、章节解析、密码文本解析、拼音
 │       ├── password/     密码箱 AI 识别
@@ -483,9 +498,9 @@ npm run android:apk --prefix mobile   # → mobile/android/app/build/outputs/apk
 
 **iOS 说明**：只能在 macOS 上构建，且上架 App Store 需要付费的 Apple 开发者账号。纯自用可走 TestFlight 或 Ad Hoc 侧载。
 
-## 数据表（schema v4）
+## 数据表（桌面 schema v5）
 
-`conversations`、`messages`、`books`、`chapters`、`reading_progress`、`bookmarks`、`book_groups`、`reading_stats`、`password_entries`、`notes`、`kv`
+`conversations`、`messages`、`books`、`chapters`、`reading_progress`、`bookmarks`、`book_groups`、`reading_stats`、`password_entries`、`notes`、`kv`、`todos`
 
 封面与背景图片只在库里存 `covers/`、`backgrounds/` 下的**文件名**，绝对路径在运行期按 userData 目录还原 —— 换机或目录搬迁后不会失效。
 

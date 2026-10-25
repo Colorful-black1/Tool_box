@@ -647,6 +647,47 @@ export interface PasswordImportOutcome {
   skipped: number
 }
 
+// ============ 待办清单 ============
+
+/** 普通本地待办，不用于保存密码或其他秘密。 */
+export interface TodoInput {
+  id?: string
+  title: string
+  details: string
+  priority: 'low' | 'normal' | 'high'
+  startAtMs: number | null
+  dueAtMs: number | null
+  remind: boolean
+}
+
+export interface TodoView extends TodoInput {
+  id: string
+  completedAtMs: number | null
+  archivedAtMs: number | null
+  createdAtMs: number
+  updatedAtMs: number
+}
+
+export type TodoFilter = 'all' | 'today' | 'upcoming' | 'overdue' | 'completed' | 'archived'
+
+/** 分页查询不接收 SQL 排序或动态条件。 */
+export interface TodoQuery {
+  focusId?: string
+  filter: TodoFilter
+  search: string
+  offset: number
+  limit: number
+}
+
+export interface TodoSnapshot {
+  items: TodoView[]
+  total: number
+  notificationStatus: string | null
+}
+
+/** changed 只通知刷新；open 由用户点击系统通知触发。 */
+export type TodoEvent = { type: 'changed' } | { type: 'open'; id: string | null }
+
 // ============ 记事本 ============
 
 export interface NoteSaveInput {

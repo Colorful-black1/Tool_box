@@ -39,7 +39,12 @@ import type {
   ReadingProgressInput,
   ShortcutConfig,
   ShortcutSetResult,
-  StatsSummary
+  StatsSummary,
+  TodoInput,
+  TodoView,
+  TodoQuery,
+  TodoSnapshot,
+  TodoEvent
 } from './types'
 import type {
   CodingAgentId,
@@ -53,6 +58,14 @@ import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
 
 export interface ToolboxBridge {
+  todos: {
+    list(query: TodoQuery): Promise<TodoSnapshot>
+    save(input: TodoInput): Promise<TodoView>
+    complete(id: string, completed: boolean): Promise<void>
+    archive(id: string, archived: boolean): Promise<void>
+    testNotification(): Promise<void>
+    onEvent(listener: (event: TodoEvent) => void): () => void
+  }
   agentDrafts: {
     read(): Promise<AgentDraftSnapshot>
     save(input: AgentDraftSaveInput): Promise<AgentDraftSnapshot>

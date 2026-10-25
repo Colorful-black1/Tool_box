@@ -22,6 +22,9 @@ import { UuidPanel } from './panels/uuid-panel'
 import { CronPanel } from './panels/cron-panel'
 import { SpringConfigPanel } from './panels/spring-config-panel'
 import { JwtCertificatePanel } from './panels/jwt-certificate-panel'
+import { MyBatisPanel } from './panels/mybatis-panel'
+import { ColorPanel } from './panels/color-panel'
+import { ConverterPanel } from './panels/converter-panel'
 
 /** 一个工具 */
 export interface ToolDefinition {
@@ -97,7 +100,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         id: 'timestamp',
         name: '时间戳换算',
-        description: '时间戳 ↔ 本地日期时间（10 位秒 / 13 位毫秒都认）',
+        description: '时间戳与本地日期时间、IANA 时区转换，处理夏令时重复时间',
         render: () => <TimestampPanel />
       },
       {
@@ -147,6 +150,24 @@ export const TOOL_GROUPS: ToolGroup[] = [
         name: 'JWT／证书查看器',
         description: '本机解码 JWT 与时间声明、查看 PEM / DER 证书及有效期',
         render: () => <JwtCertificatePanel />
+      },
+      {
+        id: 'mybatis-sql',
+        name: 'MyBatis SQL 还原',
+        description: 'Preparing / Parameters 日志批量还原 SQL，不执行查询',
+        render: () => <MyBatisPanel />
+      },
+      {
+        id: 'color',
+        name: '颜色工具',
+        description: 'HEX / RGB / HSL 转换、配色预览与 WCAG 对比度',
+        render: () => <ColorPanel />
+      },
+      {
+        id: 'converter',
+        name: '单位与进制换算',
+        description: '长度、质量、温度、字节单位与 2–36 进制大整数转换',
+        render: () => <ConverterPanel />
       }
     ]
   }

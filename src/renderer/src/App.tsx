@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import type { JSX } from 'react'
+import { TodosPage } from './components/todos/todos-page'
+import { useTodoStore } from './stores/todo-store'
 
 import { BookshelfPage } from './components/bookshelf/bookshelf-page'
 import { ChatPanel } from './components/chat-panel'
@@ -37,6 +39,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   stats: { title: '阅读统计', subtitle: 'STATS · 旅程的刻度' },
   passwords: { title: '密码宝匣', subtitle: 'PASSWORD VAULT · 秘语封存于此' },
   notes: { title: '星笺手记', subtitle: 'NOTES · 星语落笔成笺' },
+  todos: { title: '待办清单', subtitle: 'TODO · 安排下一件事' },
   tools: { title: '开发者工具', subtitle: 'DEV TOOLS · 本机离线小工具' },
   settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
 }
@@ -65,7 +68,8 @@ const RAIL_ITEMS: RailNode[] = [
     label: '个人管理',
     children: [
       { view: 'passwords', label: '密码箱', icon: 'lock' },
-      { view: 'notes', label: '记事本', icon: 'note' }
+      { view: 'notes', label: '记事本', icon: 'note' },
+      { view: 'todos', label: '待办清单', icon: 'todo' }
     ]
   },
   {
@@ -76,6 +80,14 @@ const RAIL_ITEMS: RailNode[] = [
 ]
 
 export default function App(): JSX.Element {
+  useEffect(() => window.toolbox?.todos?.onEvent((event) => {
+    if (event.type === 'open') {
+      useTodoStore.getState().open(event.id)
+      useAppStore.getState().setView('todos')
+    } else {
+      void useTodoStore.getState().load()
+    }
+  }), [])
   const view = useAppStore((state) => state.view)
   const setView = useAppStore((state) => state.setView)
   const loading = useAppStore((state) => state.loading)
@@ -218,6 +230,7 @@ export default function App(): JSX.Element {
                 ) : null}
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
+                {view === 'todos' ? <TodosPage /> : null}
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}
                 {view === 'agent-usage' ? <AgentUsagePage /> : null}

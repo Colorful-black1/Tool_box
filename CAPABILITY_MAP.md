@@ -1,5 +1,14 @@
 # Capability Map: Tool_box
 
+## 2026-10-25 首批工具与待办提醒
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| mybatis-sql | MyBatis 日志配对、类型化参数与 SQL 还原预览 | renderer-ui, shared | [首批规格](docs/SPEC-tool-expansion-first-batch.md) |
+| local-converters | 颜色、单位、大整数进制、IANA 时区与 DST 换算 | renderer-ui, shared | 同上 |
+| todo-list | 桌面 v5 待办、分页、完成／归档、受校验 IPC | persistence, shared, renderer-ui | 同上 |
+| todo-reminders | 开始／截止系统通知、补检去重、通知点击定位 | todo-list | 同上 |
+
 AI 优先的个人工具箱。当前版本只承诺 Windows 桌面端与 AI 对话 MVP。
 
 | Module id | Responsibility | Depends on |

@@ -2,6 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 首批离线换算与待办沿用工具工作台的面板和颜色令牌。 */
+.converter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.converter-result,
+.todo-heading,
+.todo-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.converter-result code,
+.converter-result output {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.converter-result .btn-ghost {
+  flex-shrink: 0;
+}
+.timezone-output {
+  white-space: pre-wrap;
+}
+.color-preview {
+  padding: 28px 20px;
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+  font-family: var(--sans);
+  font-size: 22px;
+}
+.todo-page {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 2px 24px;
+}
+.todo-heading {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.todo-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.5fr);
+  align-items: start;
+  gap: 20px;
+}
+.todo-editor,
+.todo-list-section,
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.todo-editor .field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.todo-editor .field-textarea {
+  min-height: 80px;
+  max-height: 200px;
+  resize: vertical;
+}
+.todo-search {
+  flex: 1;
+  min-width: 150px;
+}
+.todo-card {
+  padding: 16px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  min-width: 0;
+}
+.todo-card.highlighted,
+.todo-card:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+.todo-card.completed strong {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.todo-card-title {
+  flex-wrap: wrap;
+}
+.todo-card-title .tool-check {
+  min-width: 0;
+}
+.todo-card-title strong {
+  overflow-wrap: anywhere;
+  color: var(--text-hi);
+}
+.todo-details {
+  color: var(--text-mid);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.todo-editor input[type='datetime-local'] {
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .converter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .todo-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Agent 用量：复用星轨面板、按钮和下拉，明细在窄窗内独立滚动。 */
 .agent-usage-page {
   display: flex;

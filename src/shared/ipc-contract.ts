@@ -1,4 +1,9 @@
 export const IPC = {
+  todosList: 'todos:list',
+  todosSave: 'todos:save',
+  todosComplete: 'todos:complete',
+  todosArchive: 'todos:archive',
+  todosNotificationTest: 'todos:notification:test',
   agentUsageQuery: 'agent-usage:query',
   agentUsageChooseSource: 'agent-usage:source:choose',
   agentUsageResetSource: 'agent-usage:source:reset',
@@ -116,6 +121,7 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  todo: 'todos:event',
   agentDraftFlush: 'agent-draft:event:flush',
   codingAgent: 'coding-agent:event:state',
   aiOutput: 'tools:event:ai-output',

@@ -22,14 +22,50 @@ import type {
   ReadingProgressInput,
   ReadingStat,
   StatsRange,
-  StatsSummary
+  StatsSummary,
+  TodoInput,
+  TodoView,
+  TodoQuery
 } from '../../../shared/types'
 import { buildStatsRange, todayKey } from '../../../shared/reading-stats'
 import type { SecretBox } from '../crypto/secret-box'
 import { pinyinFirstLetter } from '../library/pinyin-util'
+import { dueTodoReminder } from '../../../shared/todo-reminders'
+import type { TodoReminder, TodoReminderCandidate } from '../../../shared/todo-reminders'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
+
+/** SQLite 的 snake_case 行只在数据层映射。 */
+interface TodoRow {
+  id: string
+  title: string
+  details: string
+  priority: TodoInput['priority']
+  start_at_ms: number | null
+  due_at_ms: number | null
+  remind: number
+  completed_at_ms: number | null
+  archived_at_ms: number | null
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+function toTodo(row: TodoRow): TodoView {
+  return {
+    id: row.id,
+    title: row.title,
+    details: row.details,
+    priority: row.priority,
+    startAtMs: row.start_at_ms,
+    dueAtMs: row.due_at_ms,
+    remind: row.remind === 1,
+    completedAtMs: row.completed_at_ms,
+    archivedAtMs: row.archived_at_ms,
+    createdAtMs: row.created_at_ms,
+    updatedAtMs: row.updated_at_ms
+  }
+}
 
 interface ConversationRow {
   id: string
@@ -91,7 +127,7 @@ export class ToolboxStore {
   private readonly coversDir: string
 
   constructor(
-    dbPath: string,
+    private readonly dbPath: string,
     private readonly secretBox: SecretBox
   ) {
     mkdirSync(dirname(dbPath), { recursive: true })
@@ -99,7 +135,12 @@ export class ToolboxStore {
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('foreign_keys = ON')
-    this.migrate()
+    try {
+      this.migrate()
+    } catch (error) {
+      this.db.close()
+      throw error
+    }
   }
 
   // ==================== kv 配置 ====================
@@ -835,6 +876,137 @@ export class ToolboxStore {
     if (result.changes === 0) throw new Error('笔记不存在')
   }
 
+  // ==================== 待办 ====================
+
+  listTodos(query: TodoQuery): { items: TodoView[]; total: number } {
+    const now = Date.now()
+    const today = new Date(now)
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const params = {
+      ...query,
+      focusId: query.focusId ?? null,
+      now,
+      dayStart: today.getTime(),
+      dayEnd: tomorrow.getTime()
+    }
+    const rows = this.db
+      .prepare(
+        `
+      SELECT *, COUNT(*) OVER() AS total FROM todos
+      WHERE (@search = '' OR instr(lower(title || ' ' || details), lower(@search)) > 0)
+        AND (@focusId IS NULL OR id = @focusId)
+        AND (@focusId IS NOT NULL OR (@filter = 'archived' AND archived_at_ms IS NOT NULL)
+          OR (archived_at_ms IS NULL AND (
+            (@filter = 'all' AND completed_at_ms IS NULL)
+            OR (@filter = 'completed' AND completed_at_ms IS NOT NULL)
+            OR (completed_at_ms IS NULL AND (
+              (@filter = 'today' AND ((start_at_ms >= @dayStart AND start_at_ms < @dayEnd)
+                OR (due_at_ms >= @dayStart AND due_at_ms < @dayEnd)))
+              OR (@filter = 'upcoming' AND start_at_ms > @now)
+              OR (@filter = 'overdue' AND due_at_ms < @now))))))
+      ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+        COALESCE(due_at_ms, start_at_ms, 253402300799999), created_at_ms DESC, id
+      LIMIT @limit OFFSET @offset
+    `
+      )
+      .all(params) as Array<TodoRow & { total: number }>
+    // 删除／归档后当前页可能已不存在，回到第一页获取真实总数。
+    if (!rows.length && query.offset > 0)
+      return { items: [], total: this.listTodos({ ...query, offset: 0, limit: 1 }).total }
+    return { items: rows.map(toTodo), total: rows[0]?.total ?? 0 }
+  }
+
+  saveTodo(input: TodoInput): TodoView {
+    const now = Date.now()
+    const id = input.id ?? randomUUID()
+    if (input.id) {
+      const result = this.db
+        .prepare(
+          `UPDATE todos SET title = ?, details = ?, priority = ?,
+        start_at_ms = ?, due_at_ms = ?, remind = ?, updated_at_ms = ? WHERE id = ?`
+        )
+        .run(
+          input.title,
+          input.details,
+          input.priority,
+          input.startAtMs,
+          input.dueAtMs,
+          input.remind ? 1 : 0,
+          now,
+          id
+        )
+      if (!result.changes) throw new Error('待办不存在，请刷新列表')
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO todos (id, title, details, priority, start_at_ms, due_at_ms, remind, created_at_ms, updated_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          input.title,
+          input.details,
+          input.priority,
+          input.startAtMs,
+          input.dueAtMs,
+          input.remind ? 1 : 0,
+          now,
+          now
+        )
+    }
+    const row = this.db.prepare('SELECT * FROM todos WHERE id = ?').get(id) as TodoRow
+    return toTodo(row)
+  }
+
+  completeTodo(id: string, completed: boolean): void {
+    const now = Date.now()
+    const result = this.db
+      .prepare('UPDATE todos SET completed_at_ms = ?, updated_at_ms = ? WHERE id = ?')
+      .run(completed ? now : null, now, id)
+    if (!result.changes) throw new Error('待办不存在，请刷新列表')
+  }
+
+  archiveTodo(id: string, archived: boolean): void {
+    const now = Date.now()
+    const result = this.db
+      .prepare('UPDATE todos SET archived_at_ms = ?, updated_at_ms = ? WHERE id = ?')
+      .run(archived ? now : null, now, id)
+    if (!result.changes) throw new Error('待办不存在，请刷新列表')
+  }
+
+  pendingTodoReminders(now: number): TodoReminder[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, title, start_at_ms AS startAtMs, due_at_ms AS dueAtMs,
+      start_notified_for_ms AS startNotifiedForMs, due_notified_for_ms AS dueNotifiedForMs
+      FROM todos WHERE remind = 1 AND completed_at_ms IS NULL AND archived_at_ms IS NULL
+        AND ((due_at_ms <= ? AND due_notified_for_ms IS NOT due_at_ms)
+          OR (start_at_ms <= ? AND start_notified_for_ms IS NOT start_at_ms AND (due_at_ms IS NULL OR due_at_ms > ?)))
+      ORDER BY COALESCE(due_at_ms, start_at_ms), id LIMIT 200`
+      )
+      .all(now, now, now) as TodoReminderCandidate[]
+    return rows.flatMap((row) => {
+      const reminder = dueTodoReminder(row, now)
+      return reminder ? [reminder] : []
+    })
+  }
+
+  markTodoReminders(reminders: TodoReminder[]): void {
+    this.db.transaction(() => {
+      const start = this.db.prepare(`UPDATE todos SET start_notified_for_ms = ?
+        WHERE id = ? AND start_at_ms = ? AND remind = 1 AND completed_at_ms IS NULL AND archived_at_ms IS NULL`)
+      const due = this.db
+        .prepare(`UPDATE todos SET due_notified_for_ms = ?, start_notified_for_ms = start_at_ms
+        WHERE id = ? AND due_at_ms = ? AND remind = 1 AND completed_at_ms IS NULL AND archived_at_ms IS NULL`)
+      for (const item of reminders) {
+        if (item.kind === 'start') start.run(item.atMs, item.id, item.atMs)
+        else due.run(item.atMs, item.id, item.atMs)
+      }
+    })()
+  }
+
   // ==================== 生命周期 ====================
 
   close(): void {
@@ -847,6 +1019,20 @@ export class ToolboxStore {
     const current = this.db.pragma('user_version', { simple: true }) as number
     if (current >= SCHEMA_VERSION) return
 
+    if (current > 0 && current < 5 && this.dbPath !== ':memory:') {
+      const backupDir = join(dirname(this.dbPath), 'backups')
+      // VACUUM INTO 生成含 WAL 已提交内容的一致快照，不覆盖已有备份。
+      try {
+        mkdirSync(backupDir, { recursive: true })
+        this.db.prepare('VACUUM INTO ?').run(join(backupDir, `toolbox-before-v5-${Date.now()}-${randomUUID()}.db`))
+      } catch {
+        throw new Error('升级前数据库备份失败，请检查磁盘空间和数据目录权限')
+      }
+    }
+    this.db.transaction(() => this.applyMigrations(current))()
+  }
+
+  private applyMigrations(current: number): void {
     if (current < 1) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS conversations (
@@ -1018,6 +1204,19 @@ export class ToolboxStore {
       })()
     }
 
+    if (current < 5) {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS todos (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '',
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low', 'normal', 'high')),
+        start_at_ms INTEGER, due_at_ms INTEGER, remind INTEGER NOT NULL DEFAULT 1 CHECK(remind IN (0, 1)),
+        completed_at_ms INTEGER, archived_at_ms INTEGER,
+        start_notified_for_ms INTEGER, due_notified_for_ms INTEGER,
+        created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL,
+        CHECK(start_at_ms IS NULL OR due_at_ms IS NULL OR start_at_ms <= due_at_ms)
+      );
+      CREATE INDEX IF NOT EXISTS idx_todos_reminders ON todos(remind, completed_at_ms, archived_at_ms, due_at_ms, start_at_ms);
+      CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(archived_at_ms, completed_at_ms, priority);`)
+    }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
   }
 

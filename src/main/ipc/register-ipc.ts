@@ -32,6 +32,7 @@ import { DshAdapter } from '../services/coding-agents/dsh-adapter'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
+import { registerTodosIpc } from './todos-ipc'
 import {
   assertObject,
   optionalString,
@@ -55,6 +56,7 @@ export interface IpcDependencies {
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerTodosIpc(dependencies.store)
   registerAgentUsageIpc()
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService([

@@ -14,6 +14,7 @@ const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
 const verifyDeveloperUtilities = require('./developer-utilities.cjs')
+const { verifyToolExpansion, verifyTodoRestart } = require('./tool-expansion.cjs')
 const { verifyConvenience, verifyConvenienceAfterRestart } = require('./desktop-convenience.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
 const { verifyDevTools, verifyTemplatesAfterRestart } = require('./dev-tools.cjs')
@@ -63,6 +64,19 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--tool-expansion-only')) {
+      await verifyToolExpansion({ page, app, check, capture })
+      await check('待办完整退出重启后仍保留，编辑完成和提醒开关持久化', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyTodoRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`首批工具与待办验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--convenience-only')) {
       await verifyConvenience({ page, app, check, capture })
       await check('完整退出并重启后收藏与草稿恢复，不创建连接或任务', async () => {

@@ -20,7 +20,8 @@ import type {
   PasswordDraft,
   PasswordInput,
   ReadingProgressInput,
-  ShortcutConfig
+  ShortcutConfig,
+  TodoEvent
 } from '../shared/types'
 import type { ToolboxBridge } from '../shared/bridge'
 import type { CodingAgentEvent } from '../shared/coding-agents'
@@ -36,6 +37,14 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  todos: {
+    list: (query) => ipcRenderer.invoke(IPC.todosList, query),
+    save: (input) => ipcRenderer.invoke(IPC.todosSave, input),
+    complete: (id, completed) => ipcRenderer.invoke(IPC.todosComplete, id, completed),
+    archive: (id, archived) => ipcRenderer.invoke(IPC.todosArchive, id, archived),
+    testNotification: () => ipcRenderer.invoke(IPC.todosNotificationTest),
+    onEvent: (listener) => subscribe<TodoEvent>(WINDOW_EVENT.todo, listener)
+  },
   agentDrafts: {
     read: () => ipcRenderer.invoke(IPC.agentDraftRead),
     save: (input) => ipcRenderer.invoke(IPC.agentDraftSave, input),

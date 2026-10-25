@@ -40,6 +40,7 @@ const VIEW_COMMANDS: Array<{ view: AppView; title: string }> = [
   { view: 'stats', title: '切换到统计' },
   { view: 'passwords', title: '切换到密码箱' },
   { view: 'notes', title: '切换到记事本' },
+  { view: 'todos', title: '切换到待办清单' },
   { view: 'tools', title: '切换到工具' },
   { view: 'settings', title: '切换到设置' }
 ]

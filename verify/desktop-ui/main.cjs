@@ -15,6 +15,7 @@ const bundle = buildSync({
   export { SafeStorageSecretBox } from './src/main/services/crypto/safe-storage-secret-box'
   export { AgentDraftService } from './src/main/services/coding-agents/agent-draft-service'
   export { AgentDraftQuitFlush, registerAgentDraftsIpc } from './src/main/ipc/agent-drafts-ipc'
+  export { registerTodosIpc } from './src/main/ipc/todos-ipc'
 `,
     resolveDir: path.resolve(__dirname, '../..'),
     loader: 'ts'
@@ -84,6 +85,8 @@ app.whenReady().then(() => {
     return save(input)
   }
   registerAgentDraftsIpc(drafts, quitFlush)
+  compiled.exports.registerTodosIpc(store)
+  ipcMain.handle('verify:todo:open', (event, id) => event.sender.send('todos:event', { type: 'open', id }))
   ipcMain.handle('verify:draft:flush', (event) => quitFlush.request(event.sender))
   ipcMain.handle('verify:draft:fail-read', () => {
     failRead = true

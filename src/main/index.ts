@@ -93,8 +93,16 @@ function initializeServices(): void {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.toolbox.app')
   Menu.setApplicationMenu(null)
-  initializeServices()
+  try {
+    initializeServices()
+  } catch {
+    console.error('本地数据初始化失败，应用停止启动')
+    dialog.showErrorBox('无法打开本地数据', '请检查磁盘空间、数据目录权限和数据库占用情况后重试。如已生成升级备份，可在数据目录的 backups 文件夹查找。')
+    app.exit(1)
+    return
+  }
   mainWindow = createMainWindow()
 
   try {

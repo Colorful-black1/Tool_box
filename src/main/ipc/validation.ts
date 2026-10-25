@@ -1,4 +1,6 @@
 import { APP_THEMES } from '../../shared/appearance'
+import type { TodoInput, TodoQuery } from '../../shared/types'
+
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../shared/coding-agents'
 import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
@@ -344,5 +346,60 @@ export function validateOpenCodeApproval(value: unknown): {
     sessionId: requireString(input.sessionId, '编程会话', { maxLength: 200 }),
     approvalId: requireString(input.approvalId, '审批标识', { maxLength: 100 }),
     approved: input.approved
+  }
+}
+
+/** 待办写入与分页均在主进程校验，不依赖日期输入控件。 */
+export function validateTodoInput(value: unknown): TodoInput {
+  const body = assertObject(value, '待办内容')
+  const date = (input: unknown): number | null => {
+    if (input === null) return null
+    if (
+      typeof input !== 'number' ||
+      !Number.isSafeInteger(input) ||
+      input < 0 ||
+      input > 253402300799999
+    )
+      throw new Error('待办日期时间无效')
+    return input
+  }
+  const startAtMs = date(body.startAtMs)
+  const dueAtMs = date(body.dueAtMs)
+  if (startAtMs !== null && dueAtMs !== null && startAtMs > dueAtMs)
+    throw new Error('开始时间不能晚于截止时间')
+  return {
+    id: optionalString(body.id, '待办 ID', { maxLength: 64 }),
+    title: requireString(body.title, '待办标题', { maxLength: 120 }).trim(),
+    details: requireString(body.details, '待办备注', { allowEmpty: true, maxLength: 4000 }),
+    priority: requireEnum(body.priority, '优先级', ['low', 'normal', 'high'] as const),
+    startAtMs,
+    dueAtMs,
+    remind: requireTodoBoolean(body.remind)
+  }
+}
+
+export function requireTodoBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new Error('待办状态无效')
+  return value
+}
+
+export function validateTodoQuery(value: unknown): TodoQuery {
+  const body = assertObject(value, '待办筛选')
+  const offset = requireNonNegativeInt(body.offset, '分页位置')
+  const limit = requireNonNegativeInt(body.limit, '分页数量')
+  if (offset > 1000000 || limit < 1 || limit > 100) throw new Error('待办分页范围无效')
+  return {
+    filter: requireEnum(body.filter, '待办筛选', [
+      'all',
+      'today',
+      'upcoming',
+      'overdue',
+      'completed',
+      'archived'
+    ] as const),
+    focusId: optionalString(body.focusId, '待办 ID', { maxLength: 64 }),
+    search: requireString(body.search, '搜索内容', { allowEmpty: true, maxLength: 120 }).trim(),
+    offset,
+    limit
   }
 }

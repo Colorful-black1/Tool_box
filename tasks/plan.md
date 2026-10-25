@@ -1,5 +1,9 @@
 # 多 Agent 工作台执行计划
 
+## 当前交付：首批工具与待办提醒（2026-10-25）
+
+按用户选择实施 MyBatis SQL 还原、颜色／单位／进制／时区、待办清单；用户已单独同意 schema v5、新增 IPC／通知事件和应用驻留期间提醒的边界。不新增依赖、不改加密、不扩展手机、不提交。顺序：离线工具 → 待办迁移／契约 → 页面／提醒 → 隔离 SQLite／通知调度／三主题验收。见 [规格](../docs/SPEC-tool-expansion-first-batch.md) 与 [交付记录](../docs/tool-expansion-first-batch-verification.md)。下方历史计划保留。
+
 ## 当前交付：桌面便捷功能与常用 Agent 扩展（2026-10-25）
 
 已按 [执行方案](../docs/PLAN-desktop-convenience-agent-expansion.md) 完成收藏／最近使用、加密草稿恢复、Claude SDK、DSH ACP 接入。用户已明确同意草稿 IPC／加密扩展、固定 SDK 及必需依赖、DSH 输出限制；不改 schema、不处理手机或 Kimi、不新增自动团队、不提交。真实生成／权限验收与代码／合成验证分开记录，见 [交付记录](../docs/desktop-convenience-agent-verification.md)。

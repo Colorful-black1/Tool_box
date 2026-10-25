@@ -1,5 +1,13 @@
 import type { JSX } from 'react'
 
+export function TodoIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path d="m3 6 2 2 3-4m3 2h10M3 13h3m5 0h10M3 20h3m5 0h10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function FavoriteIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">

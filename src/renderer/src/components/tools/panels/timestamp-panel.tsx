@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import { formatTimestamp, parseDateTime, parseTimestamp } from '@shared/dev-tools'
+import { TimezonePanel } from './timezone-panel'
 
 export function TimestampPanel(): JSX.Element {
   const [stamp, setStamp] = useState('')
@@ -27,6 +28,7 @@ export function TimestampPanel(): JSX.Element {
 
   return (
     <div className="tool-stack">
+      <TimezonePanel />
       <section className="tool-io">
         <header className="tool-io-head">
           <span className="tool-io-label">时间戳 → 日期时间</span>
