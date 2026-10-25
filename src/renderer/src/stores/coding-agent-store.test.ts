@@ -115,6 +115,33 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('Code 与 Desktop 分别保留草稿，Desktop 首次发送只连接自己的入口', async () => {
+    store.getState().switchRuntime('claude')
+    store.getState().setDraft('Code 待发送')
+    store.getState().switchRuntime('claude-desktop')
+    expect(store.getState().draft).toBe('')
+    store.getState().setDraft('Desktop 待发送')
+    const document = store.getState().draftDocument()
+    expect(document.drafts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runtimeId: 'claude', content: 'Code 待发送' }),
+        expect.objectContaining({ runtimeId: 'claude-desktop', content: 'Desktop 待发送' })
+      ])
+    )
+    await store.getState().send()
+    expect(api.connect).toHaveBeenCalledExactlyOnceWith({
+      runtimeId: 'claude-desktop',
+      directory: '/fixture/project'
+    })
+    expect(api.createSession).toHaveBeenCalledExactlyOnceWith('claude-desktop')
+    expect(api.send).toHaveBeenCalledExactlyOnceWith({
+      runtimeId: 'claude-desktop',
+      sessionId: 'claude-desktop-ref',
+      content: 'Desktop 待发送'
+    })
+    store.getState().switchRuntime('claude')
+    expect(store.getState().draft).toBe('Code 待发送')
+  })
   it('切换不连接、不建会话；首次发送一次完成连接、新建和发送', async () => {
     store.getState().switchRuntime('codex')
     expect(store.getState().directory).toBe('/fixture/project')

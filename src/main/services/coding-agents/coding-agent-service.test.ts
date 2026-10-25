@@ -52,6 +52,23 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('Claude Code 与 Desktop 独立连接和会话归属，共享顶层任务互斥', async () => {
+    const code = fixture('claude')
+    const desktop = fixture('claude-desktop')
+    const service = new CodingAgentService([code.adapter, desktop.adapter])
+    await service.connect('claude', 1, '/fixture/project')
+    await service.connect('claude-desktop', 1, '/fixture/project')
+    const a = await service.openSession('claude', 1)
+    const b = await service.openSession('claude-desktop', 1)
+    expect(a.id).not.toBe(b.id)
+    await expect(service.send('claude-desktop', 1, a.id, '跨入口')).rejects.toThrow('会话已失效')
+    await service.send('claude-desktop', 1, b.id, '合成任务')
+    await expect(service.send('claude', 1, a.id, '并发任务')).rejects.toThrow('停止正在运行')
+    expect(code.adapter.send).not.toHaveBeenCalled()
+    await service.stop('claude-desktop', 1, b.id)
+    service.disconnect('claude-desktop', 1)
+    expect((await service.inspect('claude', 1)).connected).toBe(true)
+  })
   it('停止请求被拒绝时保持运行状态，可再次停止，不释放顶层槽位', async () => {
     const a = fixture('opencode'),
       b = fixture('codex')

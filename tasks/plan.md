@@ -496,3 +496,7 @@ UI 验收需要新构建产物，旧产物只能作为历史基线，不可证�
 - [Paperclip](https://github.com/paperclipai/paperclip)、[适配器文档](https://docs.paperclip.ing/reference/adapters/overview/)、[部署](https://docs.paperclip.ing/guides/getting-started/installation/)、[实例 API](https://docs.paperclip.ing/reference/api/overview/)、[数据库](https://docs.paperclip.ing/reference/deploy/database/)、[官网](https://paperclip.ing/)
 
 本轮计划文档的验收：检查阶段依赖、文件路径、已知能力限制、授权门槛和回退是否一致；确认只有计划及路线图文档改动。本次修改影响范围有限，未执行编译验证。
+
+## Claude Desktop 独立供应商入口（2026-10-25）
+
+按 [专项规格](../docs/SPEC-claude-desktop-provider.md) 依次完成 profile 只读解析、独立运行时和历史来源、工作台入口及合成回归。既有 Claude Code 保留；本轮不读取 Desktop 官方登录，不控制其窗口，也不修改外部应用配置。验证门槛只计算本任务相对开始时的增量。

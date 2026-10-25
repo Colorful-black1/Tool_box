@@ -50,6 +50,22 @@ beforeEach(() => {
 })
 
 describe('统一编程 IPC 安全边界', () => {
+  it('Desktop 作为独立运行时复用既有校验通道，不接受任意 profile 或路由参数', async () => {
+    const f = fixture()
+    await f.invoke(IPC.codingAgentConnect, {
+      runtimeId: 'claude-desktop',
+      directory: '/fixture/project',
+      profile: '../private',
+      token: 'fixture-ignored-token'
+    })
+    expect(f.service.connect).toHaveBeenCalledWith('claude-desktop', 1, '/fixture/project')
+    await f.invoke(IPC.codingAgentSend, {
+      runtimeId: 'claude-desktop',
+      sessionId: 'desktop-ref',
+      content: '合成任务'
+    })
+    expect(f.service.send).toHaveBeenCalledWith('claude-desktop', 1, 'desktop-ref', '合成任务')
+  })
   it('拒绝外部窗口、子 frame、无效运行时、空任务和超长原始输入', async () => {
     const f = fixture()
     await expect(

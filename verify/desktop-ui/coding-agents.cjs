@@ -11,7 +11,7 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
   await check('主流程只有已接入 Agent，进入页面不连接、建会话或发送', async () => {
     assert.equal(
       await page.getByRole('group', { name: '选择编程 Agent' }).getByRole('button').count(),
-      4
+      5
     )
     assert.equal(await page.getByRole('button', { name: '交接给其他 Agent' }).count(), 0)
     assert.equal(await page.getByRole('textbox', { name: 'OpenCode 程序路径' }).count(), 0)
@@ -216,5 +216,33 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
     assert.equal(await draft().inputValue(), expected)
     assert.deepEqual(await calls(), [])
     assert.equal(await page.getByRole('button', { name: '交接给其他 Agent' }).count(), 0)
+  })
+  await check('Claude 两入口草稿独立，Desktop 明示来源并只发送到所选入口', async () => {
+    await agent('Claude Code')
+    await draft().fill('Code 保留草稿')
+    await agent('Claude Desktop')
+    assert.equal(await draft().inputValue(), '')
+    await page.getByText('沿用 Desktop 的第三方供应商配置', { exact: false }).waitFor()
+    await draft().fill('Desktop 合成任务')
+    await agent('开始对话 · Claude Desktop')
+    await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
+    assert.equal((await calls()).findLast((item) => item.action === 'send').id, 'claude-desktop')
+    await page.evaluate(() => {
+      window.uiVerification.agentDelta('Desktop 入口合成回复')
+      window.uiVerification.agentFinish()
+    })
+    await page.getByRole('button', { name: '发送给 Claude Desktop', exact: true }).waitFor()
+    await agent('Claude Code')
+    assert.equal(await draft().inputValue(), 'Code 保留草稿')
+    await agent('Claude Desktop')
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
+    )
+    await page.waitForFunction(() => innerWidth === 1280)
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+      false
+    )
+    await capture('claude-desktop-paper-1280')
   })
 }

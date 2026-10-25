@@ -22,6 +22,8 @@ import {
   type NativeCodingSession
 } from './adapter'
 import { bundledClaudeExecutable, inspectClaudeExecutable } from './claude-runtime'
+import { readClaudeProviderSettings } from './claude-provider-settings'
+import type { ClaudeProviderSettings } from './claude-provider-settings'
 
 export type ClaudeSdk = Pick<
   typeof import('@anthropic-ai/claude-agent-sdk'),
@@ -34,6 +36,7 @@ const object = (value: unknown): Record<string, unknown> | null =>
 const text = (value: unknown, limit = 200): string =>
   typeof value === 'string' ? value.slice(0, limit) : ''
 const DEFAULT_MODEL = 'native-default'
+const DEFAULT_MODEL_LABEL = '沿用 Claude / CC Switch 配置'
 
 /** 保持 stdin 打开，空输入只做初始化；只有显式发送才 yield 用户消息。 */
 function inputFeed(content?: string): { input: AsyncIterable<SDKUserMessage>; close(): void } {
@@ -71,9 +74,8 @@ interface ClaudeRun {
   messageId: string
 }
 
-/** 官方 SDK 独立运行时；不复制凭据，也不把订阅额度可用性当作连接保证。 */
+/** 官方 SDK 独立运行时；供应商凭据只用于子进程，不把初始化成功当作推理可用保证。 */
 export class ClaudeAdapter implements CodingAgentAdapter {
-  readonly id = 'claude' as const
   private generation = 0
   private sdk: ClaudeSdk | null = null
   private models: ModelInfo[] = []
@@ -82,6 +84,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   private listeners = new Set<(event: NativeCodingEvent) => void>()
   private approvals = new Map<string, { run: ClaudeRun; settle(allowed: boolean): void }>()
   private run: ClaudeRun | null = null
+  private preparing: { sessionId: string; controller: AbortController } | null = null
   private updateTimer: NodeJS.Timeout | null = null
   private probes = new Set<() => void>()
   private info: Omit<CodingAgentRuntimeView, 'connectionId'> = {
@@ -95,7 +98,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     canLoadSession: true,
     visibleModelIds: [DEFAULT_MODEL],
     detail:
-      '官方 SDK；认证由官方程序处理，不保证订阅额度可用。默认计划模式；不加载用户/项目 settings（hooks、MCP），不改原生配置。',
+      '官方 SDK；沿用 Claude / CC Switch 的用户供应商路由与模型配置。默认计划模式；不加载用户/项目 hooks、MCP 或权限规则，不改原生配置。',
     capabilities: {
       history: 'supported',
       resume: 'supported',
@@ -109,8 +112,58 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   constructor(
     private readonly store: Pick<ToolboxStore, 'configGet' | 'configSet'>,
     private readonly loadSdk: () => Promise<ClaudeSdk> = () =>
-      import('@anthropic-ai/claude-agent-sdk')
-  ) {}
+      import('@anthropic-ai/claude-agent-sdk'),
+    private readonly readProvider: () => Promise<ClaudeProviderSettings> =
+      readClaudeProviderSettings,
+    readonly id: 'claude' | 'claude-desktop' = 'claude'
+  ) {
+    if (id === 'claude-desktop') {
+      this.info.runtimeId = id
+      this.info.name = 'Claude Desktop'
+      this.info.detail =
+        '沿用 Desktop 第三方网关与模型列表，由官方 SDK 执行；无需打开 Desktop 窗口。仅显示本入口创建的 SDK 会话，不读取 Desktop 原有聊天或官方登录。'
+      this.info.capabilities.desktopHistory = 'unsupported'
+    }
+  }
+
+  private get configKey(): string {
+    return this.id === 'claude' ? 'claude' : 'claudeDesktop'
+  }
+
+  private get defaultModelLabel(): string {
+    return this.id === 'claude' ? DEFAULT_MODEL_LABEL : 'Desktop 配置首个模型'
+  }
+
+  private savePreferences(patch: Record<string, unknown>): void {
+    this.store.configSet({
+      [this.configKey]: { ...object(this.store.configGet()?.[this.configKey]), ...patch }
+    })
+  }
+
+  /** 只记录本入口的原生 ID，不保存正文或认证；损坏时拒绝混合两个来源的历史。 */
+  private desktopSessionIds(): string[] {
+    const value = object(this.store.configGet()?.claudeDesktop)?.sessionIds
+    if (value === undefined) return []
+    if (
+      !Array.isArray(value) ||
+      value.length > 10000 ||
+      !value.every(
+        (id): id is string =>
+          typeof id === 'string' && id.length > 0 && id.length <= 200 && !/[\0\r\n]/.test(id)
+      )
+    )
+      throw new CodingAgentError('Claude Desktop 历史来源索引无效，原有记录已保留')
+    return value
+  }
+
+  private rememberDesktopSession(id: string): void {
+    if (this.id !== 'claude-desktop') return
+    const ids = this.desktopSessionIds()
+    if (ids.includes(id)) return
+    if (ids.length >= 10000)
+      throw new CodingAgentError('Claude Desktop 会话来源记录已达上限，未发送任务')
+    this.savePreferences({ sessionIds: [...ids, id] })
+  }
 
   subscribe(listener: (event: NativeCodingEvent) => void): () => void {
     this.listeners.add(listener)
@@ -134,12 +187,12 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   async inspect(): Promise<Omit<CodingAgentRuntimeView, 'connectionId'>> {
     if (!this.info.connected) {
       const generation = this.generation
-      const config = object(this.store.configGet()?.claude)
+      const config = object(this.store.configGet()?.[this.configKey])
       const executablePath = text(config?.executablePath, 4096) || (await bundledClaudeExecutable())
       if (generation !== this.generation) throw new CodingAgentError('Claude 检测已失效，请重试')
       this.info.executablePath = executablePath
       this.info.directory = text(config?.directory, 4096)
-    } else if (this.sdk && !this.run) {
+    } else if (this.sdk && !this.run && !this.preparing) {
       const generation = this.generation
       const models = await this.probeModels(this.sdk, this.info.directory)
       if (generation !== this.generation) throw new CodingAgentError('Claude 连接已结束')
@@ -149,7 +202,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
         const option = session.options.find((option) => option.id === 'model')
         if (option)
           option.options = [
-            { value: DEFAULT_MODEL, label: '原生默认' },
+            { value: DEFAULT_MODEL, label: this.defaultModelLabel },
             ...models.map((model) => ({ value: model.value, label: model.displayName }))
           ]
         this.emit(session)
@@ -160,18 +213,30 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   async selectExecutable(path: string): Promise<Omit<CodingAgentRuntimeView, 'connectionId'>> {
     const result = await inspectClaudeExecutable(path)
-    this.store.configSet({
-      claude: { ...object(this.store.configGet()?.claude), executablePath: result.path }
-    })
+    this.savePreferences({ executablePath: result.path })
     this.info.executablePath = result.path
     this.info.version = result.version
     return structuredClone(this.info)
   }
 
-  private options(directory: string, controller: AbortController): Options {
+  private async options(
+    directory: string,
+    controller: AbortController
+  ): Promise<{ options: Options; models?: ModelInfo[] }> {
+    const provider = await this.readProvider()
     const env: Record<string, string | undefined> = {
       ...process.env,
+      ...provider.env,
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+    }
+    if (this.id === 'claude-desktop') {
+      for (const key of Object.keys(env))
+        if (
+          /^(?:ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN)/.test(key) ||
+          /^CLAUDE_CODE_USE_(?:BEDROCK|VERTEX|FOUNDRY)$/.test(key)
+        )
+          delete env[key]
+      Object.assign(env, provider.env)
     }
     delete env.ELECTRON_RUN_AS_NODE
     for (const key of Object.keys(env))
@@ -180,16 +245,24 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       if (/^(OPENAI|OPENCODE|KIMI|MOONSHOT|DEEPSEEK)_/i.test(key) && /KEY|TOKEN|SECRET/i.test(key))
         delete env[key]
     return {
-      cwd: directory,
-      env,
-      abortController: controller,
-      pathToClaudeCodeExecutable: this.info.executablePath!,
-      settingSources: [],
-      permissionMode: 'plan',
-      includePartialMessages: true,
-      systemPrompt: { type: 'preset', preset: 'claude_code' },
-      canUseTool: async () => ({ behavior: 'deny', message: '连接初始化不执行工具' }),
-      onUserDialog: async () => ({ behavior: 'cancelled' })
+      options: {
+        cwd: directory,
+        env,
+        model: env.ANTHROPIC_MODEL || provider.model,
+        abortController: controller,
+        pathToClaudeCodeExecutable: this.info.executablePath!,
+        settingSources: [],
+        permissionMode: 'plan',
+        includePartialMessages: true,
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        canUseTool: async () => ({ behavior: 'deny', message: '连接初始化不执行工具' }),
+        onUserDialog: async () => ({ behavior: 'cancelled' })
+      },
+      models: provider.models?.map((model) => ({
+        value: model.value,
+        displayName: model.label,
+        description: ''
+      }))
     }
   }
 
@@ -217,14 +290,17 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       connected: true,
       visibleModelIds: [DEFAULT_MODEL, ...this.models.map((model) => model.value)]
     }
-    this.store.configSet({ claude: { ...object(this.store.configGet()?.claude), directory: cwd } })
+    this.savePreferences({ directory: cwd })
     return structuredClone(this.info)
   }
 
   private async probeModels(sdk: ClaudeSdk, directory: string): Promise<ModelInfo[]> {
+    const generation = this.generation
     const controller = new AbortController()
     const feed = inputFeed()
-    const query = sdk.query({ prompt: feed.input, options: this.options(directory, controller) })
+    const { options, models: configured } = await this.options(directory, controller)
+    if (generation !== this.generation) throw new CodingAgentError('Claude 连接已结束')
+    const query = sdk.query({ prompt: feed.input, options })
     const dispose = (): void => {
       controller.abort()
       query.close()
@@ -234,7 +310,11 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     const timeout = setTimeout(dispose, 20_000)
     try {
       // 公开初始化/模型接口，不 yield 用户消息，不触发模型生成。
-      const models = await query.supportedModels()
+      let models: ModelInfo[]
+      if (configured) {
+        await query.initializationResult()
+        models = configured
+      } else models = await query.supportedModels()
       return models
         .slice(0, 200)
         .filter(
@@ -262,6 +342,8 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   disconnect(): void {
     this.generation++
+    this.preparing?.controller.abort()
+    this.preparing = null
     for (const dispose of this.probes) dispose()
     this.probes.clear()
     if (this.updateTimer) clearTimeout(this.updateTimer)
@@ -286,17 +368,22 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     if (!this.sdk || !this.info.connected) throw new CodingAgentError('Claude 尚未连接')
     const generation = this.generation
     const directory = this.info.directory
+    const desktopIds = new Set(this.desktopSessionIds())
     const items = await this.sdk.listSessions({
       dir: directory,
-      limit: 200,
+      limit: 2000,
       includeWorktrees: false
     })
     if (generation !== this.generation) throw new CodingAgentError('Claude 连接已结束')
     return items
       .filter(
         (item) =>
-          !item.cwd || normalizeDraftDirectory(item.cwd) === normalizeDraftDirectory(directory)
+          (!item.cwd || normalizeDraftDirectory(item.cwd) === normalizeDraftDirectory(directory)) &&
+          (this.id === 'claude-desktop'
+            ? desktopIds.has(item.sessionId)
+            : !desktopIds.has(item.sessionId))
       )
+      .slice(0, 200)
       .map((item) => ({
         id: item.sessionId,
         title: text(item.customTitle || item.summary || item.firstPrompt, 100) || 'Claude 会话'
@@ -308,7 +395,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     const sdk = this.sdk
     const generation = this.generation
     const directory = this.info.directory
-    let title = 'Claude 新会话'
+    let title = `${this.info.name} 新会话`
     const nativeId = id ?? randomUUID()
     let messages: NativeCodingSession['messages'] = []
     let historyLimited = false
@@ -353,7 +440,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
           name: '模型',
           currentValue: DEFAULT_MODEL,
           options: [
-            { value: DEFAULT_MODEL, label: '原生默认' },
+            { value: DEFAULT_MODEL, label: this.defaultModelLabel },
             ...this.models.map((model) => ({
               value: model.value,
               label: model.displayName || model.value
@@ -410,7 +497,8 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   async send(id: string, content: string): Promise<void> {
     const session = this.session(id)
-    if (this.run || !this.sdk) throw new CodingAgentError('Claude 正在执行任务或已断开')
+    if (this.run || this.preparing || !this.sdk)
+      throw new CodingAgentError('Claude 正在执行任务或已断开')
     if (
       session.messages.length >= 200 ||
       session.messages.reduce((total, message) => total + message.content.length, 0) +
@@ -419,12 +507,29 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     )
       throw new CodingAgentError('会话达到显示上限，请开始新对话或在原生客户端继续')
     const controller = new AbortController()
-    const feed = inputFeed(content)
-    const options = this.options(session.directory, controller)
+    const generation = this.generation
+    const preparing = { sessionId: id, controller }
+    this.preparing = preparing
+    let options: Options
+    let currentModels: ModelInfo[] | undefined
+    try {
+      const prepared = await this.options(session.directory, controller)
+      options = prepared.options
+      currentModels = prepared.models
+    } finally {
+      if (this.preparing === preparing) this.preparing = null
+    }
+    if (controller.signal.aborted) throw new CodingAgentError('已停止准备，草稿已保留')
+    if (generation !== this.generation || !this.sdk || this.run)
+      throw new CodingAgentError('Claude 连接或任务状态已变化，草稿已保留')
     const selected = (key: string): string | undefined =>
       session.options.find((item) => item.id === key)?.currentValue
     options.permissionMode = selected('permission') === 'default' ? 'default' : 'plan'
-    if (selected('model') !== DEFAULT_MODEL) options.model = selected('model')
+    if (selected('model') !== DEFAULT_MODEL) {
+      if (currentModels && !currentModels.some((model) => model.value === selected('model')))
+        throw new CodingAgentError('当前 Desktop 模型已不可用，请在更多菜单同步模型后重新选择')
+      options.model = selected('model')
+    }
     const effort = selected('effort')
     if (effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(effort))
       options.effort = effort as Options['effort']
@@ -435,6 +540,8 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       this.unsupportedQuestion(run)
       return { behavior: 'cancelled' }
     }
+    this.rememberDesktopSession(id)
+    const feed = inputFeed(content)
     const query = this.sdk.query({ prompt: feed.input, options })
     const run: ClaudeRun = {
       session,
@@ -495,6 +602,10 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   }
 
   stop(id: string): void {
+    if (this.preparing?.sessionId === id) {
+      this.preparing.controller.abort()
+      this.preparing = null
+    }
     const run = this.run
     if (!run || run.session.id !== id) return
     run.stopped = true
@@ -643,7 +754,8 @@ export class ClaudeAdapter implements CodingAgentAdapter {
             message.subtype === 'success' && message.is_error !== true ? 'ready' : 'error'
           session.outcome = session.status === 'ready' ? 'completed' : 'failed'
           if (session.status === 'error')
-            session.error = 'Claude 任务失败，请在官方客户端检查认证、模型或执行限制'
+            session.error =
+              'Claude 任务失败，请检查当前 Claude / CC Switch 的路由、认证、模型或执行限制；未自动重发'
           break
         }
         if (

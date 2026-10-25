@@ -28,6 +28,7 @@ import { CodingAgentService } from '../services/coding-agents/coding-agent-servi
 import { OpenCodeAdapter } from '../services/coding-agents/opencode-adapter'
 import { CodexAdapter } from '../services/coding-agents/codex-adapter'
 import { ClaudeAdapter } from '../services/coding-agents/claude-adapter'
+import { readClaudeDesktopProviderSettings } from '../services/coding-agents/claude-desktop-settings'
 import { DshAdapter } from '../services/coding-agents/dsh-adapter'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
@@ -67,6 +68,12 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     new OpenCodeAdapter(dependencies.opencode),
     new CodexAdapter(dependencies.store),
     new ClaudeAdapter(dependencies.store),
+    new ClaudeAdapter(
+      dependencies.store,
+      undefined,
+      readClaudeDesktopProviderSettings,
+      'claude-desktop'
+    ),
     new DshAdapter(dependencies.store)
   ])
   registerCodingAgentsIpc(codingAgents)

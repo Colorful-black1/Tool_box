@@ -75,14 +75,19 @@ export function OpenCodeConnection(): JSX.Element {
           <div className="opencode-path-field">
             <label className="tool-io">
               <span className="field-label">
-                {name} 程序 · {info?.version ?? '待检测'}
+                {runtimeId === 'claude-desktop' ? 'Claude SDK 运行程序' : `${name} 程序`} ·{' '}
+                {info?.version ?? '待检测'}
               </span>
               <input
                 className="field-input"
                 aria-label={`${name} 程序路径`}
                 value={info?.executablePath ?? ''}
                 readOnly
-                placeholder="选择已安装的原生 CLI"
+                placeholder={
+                  runtimeId === 'claude-desktop'
+                    ? '使用自带运行程序，也可选择官方 Claude Code CLI'
+                    : '选择已安装的原生 CLI'
+                }
               />
             </label>
             <button

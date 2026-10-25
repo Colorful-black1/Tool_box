@@ -3298,6 +3298,12 @@ textarea,
   color: var(--cyan);
 }
 
+.opencode-desktop-hint {
+  border-color: var(--gold-line);
+  background: var(--bg-panel);
+  color: var(--text-mid);
+}
+
 .confirm-row {
   display: flex;
   align-items: center;

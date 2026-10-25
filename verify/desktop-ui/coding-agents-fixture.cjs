@@ -12,6 +12,7 @@ module.exports = function codingAgentsFixture() {
     codex: 'Codex',
     kimi: 'Kimi Code',
     claude: 'Claude Code',
+    'claude-desktop': 'Claude Desktop',
     dsh: 'DeepSeek Harness'
   }
   const copy = (value) => JSON.parse(JSON.stringify(value))

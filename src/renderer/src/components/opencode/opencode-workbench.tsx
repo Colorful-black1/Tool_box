@@ -217,7 +217,7 @@ export function OpenCodeWorkbench(): JSX.Element {
               首次发送会连接并新建会话。
               {runtimeId === 'opencode'
                 ? '新会话使用 Plan 模式。'
-                : runtimeId === 'claude'
+                : runtimeId === 'claude' || runtimeId === 'claude-desktop'
                   ? '新会话使用计划模式；标准模式中的操作遵循原生规则与审批。'
                   : runtimeId === 'dsh'
                     ? '操作权限沿用 DSH 原生规则，需要审批时在此确认。'
@@ -229,6 +229,12 @@ export function OpenCodeWorkbench(): JSX.Element {
             <p className="status-banner">
               回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。历史属于独立 acp
               profile。
+            </p>
+          ) : null}
+          {runtimeId === 'claude-desktop' ? (
+            <p className="status-banner opencode-desktop-hint">
+              沿用 Desktop 的第三方供应商配置，不同步 Desktop 原有聊天；历史仅包含此入口创建的编程会话。
+              使用本地网关时需保持 CC Switch 运行，无需打开 Desktop 窗口。
             </p>
           ) : null}
           {session || !transferred ? (

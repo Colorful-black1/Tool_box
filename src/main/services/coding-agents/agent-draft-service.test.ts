@@ -18,6 +18,36 @@ describe('加密草稿服务', () => {
     }
     return { repository, box, service: new AgentDraftService(repository, box) }
   }
+  it('Code 与 Desktop 的同项目同名会话草稿独立保存并恢复', () => {
+    const f = fixture()
+    const input = {
+      revision: 0,
+      document: {
+        version: 1,
+        selection: { runtimeId: 'claude-desktop', directory: 'C:/Work' },
+        drafts: [
+          {
+            runtimeId: 'claude',
+            directory: 'C:/Work',
+            nativeSessionId: 'same',
+            content: 'Code 草稿'
+          },
+          {
+            runtimeId: 'claude-desktop',
+            directory: 'C:/Work',
+            nativeSessionId: 'same',
+            content: 'Desktop 草稿'
+          }
+        ]
+      }
+    }
+    const saved = f.service.save(validateAgentDraftSave(input))
+    expect(new AgentDraftService(f.repository, f.box).read()).toEqual(saved)
+    expect(saved.document.drafts.map((draft) => draft.content)).toEqual([
+      'Code 草稿',
+      'Desktop 草稿'
+    ])
+  })
   it('独立记录、修订号冲突和重启读取', () => {
     const { repository, box, service } = fixture()
     const document = {

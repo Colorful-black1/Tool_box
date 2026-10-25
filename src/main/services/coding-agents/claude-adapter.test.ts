@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Options, Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeAdapter, type ClaudeSdk } from './claude-adapter'
 import type { NativeCodingEvent } from './adapter'
+import type { ClaudeProviderSettings } from './claude-provider-settings'
 
 vi.mock('./claude-runtime', () => ({
   bundledClaudeExecutable: vi.fn(async () => '/fixture/claude.exe'),
@@ -11,6 +12,7 @@ vi.mock('./claude-runtime', () => ({
 const adapters: ClaudeAdapter[] = []
 afterEach(() => {
   for (const adapter of adapters.splice(0)) adapter.disconnect()
+  vi.unstubAllEnvs()
 })
 
 function channel() {
@@ -50,7 +52,11 @@ function channel() {
   }
 }
 
-async function fixture() {
+async function fixture(
+  provider: ClaudeProviderSettings = { env: {} },
+  id: 'claude' | 'claude-desktop' = 'claude',
+  initialConfig: Record<string, unknown> = {}
+) {
   const queries: ReturnType<typeof channel>[] = []
   const options: Options[] = []
   const sdk: ClaudeSdk = {
@@ -75,17 +81,196 @@ async function fixture() {
       }
     ])
   }
-  const store = { configGet: () => ({}), configSet: vi.fn(() => ({})) }
-  const adapter = new ClaudeAdapter(store, async () => sdk)
+  let config = structuredClone(initialConfig)
+  const store = {
+    configGet: () => config,
+    configSet: vi.fn((patch: Record<string, unknown>) => {
+      config = { ...config, ...patch }
+      return structuredClone(config)
+    })
+  }
+  const readProvider = vi.fn(async () => structuredClone(provider))
+  const adapter = new ClaudeAdapter(store, async () => sdk, readProvider, id)
   adapters.push(adapter)
   const events: NativeCodingEvent[] = []
   adapter.subscribe((event) => events.push(event))
   await adapter.connect(process.cwd())
   const session = await adapter.openSession()
-  return { adapter, sdk, store, queries, options, events, session }
+  return { adapter, sdk, store, queries, options, events, session, readProvider }
 }
 
 describe('Claude 官方 SDK 适配器', () => {
+  it('Desktop 独立读取网关模型和偏好，清理继承的 Code 路由、认证与云端模式', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'fixture-code-key')
+    vi.stubEnv('ANTHROPIC_MODEL', 'code-model')
+    vi.stubEnv('ANTHROPIC_DEFAULT_SONNET_MODEL', 'code-sonnet')
+    vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', 'Authorization: fixture-code-key')
+    vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', 'fixture-oauth-token')
+    vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '1')
+    const provider = {
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210/claude-desktop',
+        ANTHROPIC_AUTH_TOKEN: 'fixture-desktop-key'
+      },
+      model: 'desktop-model',
+      models: [{ value: 'desktop-model', label: 'Desktop 供应商模型' }]
+    }
+    const f = await fixture(provider, 'claude-desktop', {
+      claude: { executablePath: '/fixture/code/claude.exe', directory: '/fixture/code' }
+    })
+    expect(f.options[0].env).toMatchObject(provider.env)
+    for (const key of [
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_MODEL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+      'ANTHROPIC_CUSTOM_HEADERS',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'CLAUDE_CODE_USE_BEDROCK'
+    ])
+      expect(f.options[0].env).not.toHaveProperty(key)
+    expect(f.options[0].model).toBe('desktop-model')
+    const info = await f.adapter.inspect()
+    expect(info.runtimeId).toBe('claude-desktop')
+    expect(info.capabilities.desktopHistory).toBe('unsupported')
+    expect(info.visibleModelIds).toEqual(['native-default', 'desktop-model'])
+    expect(f.queries[0].query.supportedModels).not.toHaveBeenCalled()
+    expect(f.session.options[0].options).toContainEqual({
+      value: 'desktop-model',
+      label: 'Desktop 供应商模型'
+    })
+    await f.adapter.selectExecutable('/fixture/desktop/claude.exe')
+    expect(f.store.configGet().claude).toEqual({
+      executablePath: '/fixture/code/claude.exe',
+      directory: '/fixture/code'
+    })
+    expect(f.store.configGet().claudeDesktop).toMatchObject({
+      executablePath: '/fixture/desktop/claude.exe',
+      directory: process.cwd()
+    })
+    expect(JSON.stringify(f.store.configGet())).not.toContain('fixture-desktop-key')
+    expect(JSON.stringify(f.events)).not.toContain('fixture-desktop-key')
+  })
+
+  it('Desktop 下次发送重读路由；显式模型移除后不发送，也不自动改用其他模型', async () => {
+    const provider = {
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210/claude-desktop',
+        ANTHROPIC_AUTH_TOKEN: 'fixture-desktop-key'
+      },
+      model: 'first-model',
+      models: [{ value: 'first-model', label: '第一个模型' }]
+    }
+    const f = await fixture(provider, 'claude-desktop')
+    await f.adapter.setOption(f.session.id, 'model', 'first-model')
+    provider.model = 'second-model'
+    provider.models = [{ value: 'second-model', label: '第二个模型' }]
+    await expect(f.adapter.send(f.session.id, '合成请求')).rejects.toThrow('同步模型')
+    expect(f.queries).toHaveLength(1)
+    await f.adapter.setOption(f.session.id, 'model', 'native-default')
+    provider.env.ANTHROPIC_BASE_URL = 'https://new-gateway.example.test'
+    await f.adapter.send(f.session.id, '显式采用新配置')
+    expect(f.options[1].model).toBe('second-model')
+    expect(f.options[1].env?.ANTHROPIC_BASE_URL).toBe('https://new-gateway.example.test')
+  })
+
+  it('Code 和 Desktop 按 SDK 会话来源隔离历史；不能跨入口恢复原生 ID', async () => {
+    const f = await fixture({ env: {} }, 'claude-desktop')
+    await f.adapter.send(f.session.id, '合成 Desktop 任务')
+    f.adapter.stop(f.session.id)
+    expect(f.store.configGet().claudeDesktop).toMatchObject({ sessionIds: [f.session.id] })
+    vi.mocked(f.sdk.listSessions).mockResolvedValue([
+      { sessionId: 'native-one', summary: 'Code 历史', lastModified: 1, cwd: process.cwd() },
+      { sessionId: f.session.id, summary: 'Desktop 入口历史', lastModified: 2, cwd: process.cwd() }
+    ])
+    const code = new ClaudeAdapter(f.store, async () => f.sdk, async () => ({ env: {} }))
+    adapters.push(code)
+    await code.connect(process.cwd())
+    expect(await code.listSessions()).toEqual([{ id: 'native-one', title: 'Code 历史' }])
+    expect(await f.adapter.listSessions()).toEqual([{ id: f.session.id, title: 'Desktop 入口历史' }])
+    await expect(code.openSession(f.session.id)).rejects.toThrow('不属于当前项目')
+    await expect(f.adapter.openSession('native-one')).rejects.toThrow('不属于当前项目')
+    expect(f.sdk.getSessionMessages).not.toHaveBeenCalled()
+    const restarted = new ClaudeAdapter(
+      f.store,
+      async () => f.sdk,
+      async () => ({ env: {} }),
+      'claude-desktop'
+    )
+    adapters.push(restarted)
+    await restarted.connect(process.cwd())
+    expect(await restarted.listSessions()).toEqual(await f.adapter.listSessions())
+  })
+
+  it('来源索引损坏或持久化失败时不混合历史、不启动无归属任务', async () => {
+    const f = await fixture({ env: {} }, 'claude-desktop', {
+      claudeDesktop: { sessionIds: 'broken' }
+    })
+    await expect(f.adapter.listSessions()).rejects.toThrow('原有记录已保留')
+    await expect(f.adapter.send(f.session.id, '合成任务')).rejects.toThrow('原有记录已保留')
+    expect(f.queries).toHaveLength(1)
+    f.store.configSet({ claudeDesktop: {} })
+    f.store.configSet.mockImplementationOnce(() => {
+      throw new Error('fixture-index-write-failed')
+    })
+    await expect(f.adapter.send(f.session.id, '合成任务')).rejects.toThrow(
+      'fixture-index-write-failed'
+    )
+    expect(f.queries).toHaveLength(1)
+  })
+
+  it('连接与发送沿用用户路由，切换供应商后重读；显式模型优先且凭据不落库', async () => {
+    const provider = {
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210',
+        ANTHROPIC_AUTH_TOKEN: 'fixture-private-provider-token',
+        ANTHROPIC_MODEL: 'route-model'
+      },
+      model: 'user-model'
+    }
+    const f = await fixture(provider)
+    expect(f.options[0].env).toMatchObject(provider.env)
+    expect(f.options[0].settingSources).toEqual([])
+    expect(f.options[0].model).toBe('route-model')
+    provider.env.ANTHROPIC_MODEL = 'next-model'
+    await f.adapter.send(f.session.id, '合成请求')
+    expect(f.options[1].model).toBe('next-model')
+    f.adapter.stop(f.session.id)
+    await f.adapter.setOption(f.session.id, 'model', 'fixture-model')
+    await f.adapter.send(f.session.id, '第二条合成请求')
+    expect(f.options[2].model).toBe('fixture-model')
+    expect(f.readProvider).toHaveBeenCalledTimes(3)
+    expect(JSON.stringify(f.store.configSet.mock.calls)).not.toContain(
+      'fixture-private-provider-token'
+    )
+    expect(JSON.stringify(f.events)).not.toContain('fixture-private-provider-token')
+  })
+  it('读取路由期间停止或断开不会迟到启动任务，重复发送不并发', async () => {
+    const f = await fixture()
+    let finish!: (value: ClaudeProviderSettings) => void
+    f.readProvider.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const pending = f.adapter.send(f.session.id, '合成请求')
+    await expect(f.adapter.send(f.session.id, '重复请求')).rejects.toThrow('正在执行')
+    f.adapter.stop(f.session.id)
+    finish({ env: {} })
+    await expect(pending).rejects.toThrow('停止准备')
+    expect(f.queries).toHaveLength(1)
+    f.readProvider.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const disconnected = f.adapter.send(f.session.id, '准备断开')
+    f.adapter.disconnect()
+    finish({ env: {} })
+    await expect(disconnected).rejects.toThrow('草稿已保留')
+    expect(f.queries).toHaveLength(1)
+  })
   it('迟到初始化不能覆盖新连接的模型；启动失败作为发送失败返回', async () => {
     const f = await fixture()
     const pending = channel()

@@ -17,7 +17,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 | 记事本 | Markdown 编辑与预览、导入导出 `.md`；**支持按标题与正文搜索** |
 | 待办清单 | 个人管理中的独立入口；开始／截止时间、优先级、搜索、完成／重开、归档／恢复；应用运行或驻留托盘时通知，重启／唤醒合并补提醒 |
 | 开发者工具 | 树形目录下的 **JSON 工具箱、文本 / JSON 差异比较、数据脱敏、Java 日志整理、Prompt 模板库、我的 IP、提示词美化**，以及正则、Base64 / URL、时间戳、哈希、文本清洗、UUID；提示词美化仅手动调用 AI，其余工具本机处理。结果可脱敏、填入 Prompt、保存笔记或放入对话草稿；输入输出框自适应高度并支持换行 |
-| 编程 Agent | **OpenCode / Codex / Claude Code / DeepSeek Harness 统一工作台**：首次发送按需连接与创建会话，历史列表直接恢复；单次审批、停止、消息转用与加密草稿恢复；DSH 回复提交后更新，续接上下文但不回放旧消息 |
+| 编程 Agent | **OpenCode / Codex / Claude Code / Claude Desktop / DeepSeek Harness 统一工作台**：首次发送按需连接与创建会话，历史列表直接恢复；Claude 两入口分别沿用 Code 与 Desktop 供应商配置；单次审批、停止、消息转用与加密草稿恢复；DSH 回复提交后更新，续接上下文但不回放旧消息 |
 | Token 统计 | 独立读取 Codex、OpenCode、Claude Code、Kimi Code、Pi、WorkBuddy、DeepSeek Harness、ZCode 等 14 类本机来源，无需连接 Agent；支持周期 / Agent / 项目 / 模型筛选、趋势与排行、可排序明细和 CSV 导出；仅显示 OpenCode 原生上报花费，不做价格估算 |
 | 全局搜索 | **⌘K / Ctrl+K** 唤起命令面板：搜书架、记事本（正文也搜）、密码箱、分组、会话，并直接执行命令（切模块、开工具、新建对话）；数据全在内存，输入即出结果 |
 
@@ -143,7 +143,7 @@ AI 助手、OpenCode、提示词美化以及桌面 / 手机密码识别均使用
 
 ### 多 Agent 统一工作台
 
-顶部直接切换 OpenCode / Codex / Claude Code / DeepSeek Harness，同项目无需重复选择目录；会话和草稿按 Agent / 项目 / 原生会话隔离。
+顶部直接切换 OpenCode / Codex / Claude Code / Claude Desktop / DeepSeek Harness，同项目无需重复选择目录；会话和草稿按 Agent / 项目 / 原生会话隔离。
 输入任务后点击「开始对话」，按需连接、新建并发送；「新对话」先准备草稿，首次发送才创建原生记录。
 连接、切换、读取历史和转用消息不发送任务；历史列表点选后恢复，恢复失败不补建。
 一次只执行一个 Tool_box 顶层编程任务；切换后可直接「查看运行任务」或「停止任务」。
@@ -163,12 +163,25 @@ Kimi 尚未接入，不占用日常选择器，不会自动安装。原生内部
 #### Claude Code
 
 使用固定版本 `@anthropic-ai/claude-agent-sdk@0.3.310`，Windows x64 原生组件随应用解包，
-也可在连接设置选择官方 `claude.exe`。认证交给官方程序，不读取、复制或代理登录，不保证订阅额度可用。
+也可在连接设置选择官方 `claude.exe`。登录与订阅认证交给官方程序，不读取或复制 OAuth 登录文件，不保证订阅额度可用。
 连接只初始化并读取原生模型目录，发送时才启动任务；支持真实增量、单次审批、停止及官方会话 API 的历史读取与续接。
 默认计划模式，可改为标准模式；原生规则已允许的操作不一定触发审批，项目目录不等于操作系统沙箱。
 SDK 使用 `settingSources: []`，不自动加载用户／项目／local settings 中的 hooks、MCP，不改写原生配置；
+连接与每次发送会单独读取 Claude 用户 `settings.json` 的供应商环境白名单（`ANTHROPIC_BASE_URL`、API Key／Auth Token、模型映射）及顶层默认模型，兼容 CC Switch 写入的第三方路由。支持 `CLAUDE_CONFIG_DIR` 绝对路径；凭据仅用于当前 Claude 子进程环境，不写入工具箱配置、日志、IPC 或命令行参数，也不导入用户 hooks、权限和 `apiKeyHelper`。默认模型选择「沿用 Claude / CC Switch 配置」，手动选择模型则覆盖默认。切换供应商后下次发送重读；已运行的任务不切路由。使用本地代理路由时需保持 CC Switch 运行，Claude Desktop 无需打开。
+这里沿用的是 CC Switch 的 **Claude Code** 配置与路由，Claude Desktop 使用独立的供应商和路由。
+若提示 `Claude Provider 缺少 base_url 配置`，请在 CC Switch 的 Claude Code 页面检查实际「路由中」的供应商是否配置了上游地址；只配置 Desktop 不会同步给 Code。使用第三方供应商时，应在 Claude Code 页面添加对应预设并路由到它，不能把 Desktop 的本地网关地址当成供应商上游。
 官方认证及组织策略仍由官方程序处理。结构化问答和计划确认暂不支持，会明确结束任务，需在原生客户端继续。
 模型及思考强度来自原生目录，历史显示前 200 条、最多 200,000 字符；不承诺与 Desktop 实时同步。
+
+#### Claude Desktop
+
+独立入口沿用 **CC Switch 的 Claude Desktop 第三方配置**，不要求再在 Claude Code 页面添加同一供应商。
+主进程只读 `Claude-3p/configLibrary/_meta.json` 当前 `appliedId` 对应的 profile，读取网关地址、Bearer 认证与模型列表；不修改 Desktop 或 CC Switch 配置。Windows 使用 `%LOCALAPPDATA%/Claude-3p`；其他平台仅按标准路径尝试，尚未真机验证。
+任务由与 Code 相同的官方 SDK 执行；无需打开 Desktop 窗口，本地网关模式需要 CC Switch 保持运行。没有可用第三方 profile 时明确停止，不借用 Desktop 官方登录，也不回退 Code 路由。
+
+在 CC Switch 的 **Claude Desktop** 页面启用第三方供应商后，回工具箱选择 **Claude Desktop**，选择项目并发送即可。
+模型菜单沿用 profile 的模型 ID 和显示名；未配置列表时只读查询同一网关的 `/v1/models`，不发送模型任务。默认使用列表首个模型，也可手动选择。切换供应商后下次发送重读；显式模型已移除时需同步模型并重新选择，不自动换模型。
+程序／项目偏好、连接、草稿与 Code 分开；凭据只用于子进程环境，不保存到工具箱。Desktop 入口历史仅含在此入口发起的 SDK 会话，按既有 kv 中的原生 ID 来源索引恢复，Code 历史排除这些会话；两入口各显示近期最多 200 条（在最近 2000 项原生目录中筛选）。不读取或同步 Desktop 原有聊天、Cowork 或运行中的桌面任务。详情见 [规格](docs/SPEC-claude-desktop-provider.md) 与 [验证记录](docs/claude-desktop-provider-verification.md)。
 
 #### DeepSeek Harness
 
