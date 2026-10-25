@@ -35,6 +35,10 @@
     "appId": "com.toolbox.app",
     "productName": "私人百宝箱",
     "npmRebuild": false,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
     "directories": {
       "output": "release"
     },
@@ -42,6 +46,9 @@
       "out/**",
       "assets/**",
       "package.json",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.{d.ts,d.mts,d.cts}",
+      "!node_modules/**/src/**/*.{ts,tsx,mts,cts}",
       "!node_modules/better-sqlite3/prebuilds/darwin-*.node",
       "!node_modules/better-sqlite3/prebuilds/linux-*.node",
       "!node_modules/better-sqlite3/prebuilds/linuxmusl-*.node",

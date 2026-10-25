@@ -373,6 +373,10 @@ npm run dist          # → release/私人百宝箱 Setup x.x.x.exe
 
 打包配置在 `package.json` 的 `build` 字段。
 
+桌面安装包保留全部功能与内置 Claude Code，仅保留 Electron 的简体中文／英语语言文件；打包时排除依赖的 source map、TypeScript 声明和 `src/` 下的 TypeScript 开发源码，不删除本地 `node_modules`。JavaScript 运行文件、CommonJS／ESM 两种入口、分词数据、原生模块、许可证和 SDK 资源继续保留。
+
+按 2026-10-25 的既有产物静态估算，可减少约 82 MiB 安装占用；安装程序本身已经压缩，不能直接减去这个数值。配置修改后需重新执行 `npm run dist` 测量安装包大小，旧 `release/` 产物不会自动变化。测量基线、兼容边界及人工验收见 [安装包精简记录](docs/packaging-size-reduction.md)。
+
 要点：
 
 - **`npmRebuild: false`** —— 跳过 `@electron/rebuild`。
