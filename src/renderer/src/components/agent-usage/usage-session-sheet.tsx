@@ -2,6 +2,7 @@ import { useModalFocus } from '../../lib/use-modal-focus'
 import { useRef } from 'react'
 import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
+import { AgentIdentity } from '../agent-identity'
 import type { UsageSessionView } from '@shared/agent-usage'
 import { formatCost, formatDateTime, formatTokens } from '@shared/usage-format'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
@@ -48,7 +49,9 @@ export function UsageSessionSheet({
       >
         <header className="usage-sheet-head">
           <div>
-            <span className="field-label">{USAGE_CLIENTS[row.client]}</span>
+            <span className="field-label">
+              <AgentIdentity agent={row.client} label={USAGE_CLIENTS[row.client]} />
+            </span>
             <h2>{row.model || '模型未知'}</h2>
             <p title={row.project}>{row.project || '项目未知'}</p>
           </div>

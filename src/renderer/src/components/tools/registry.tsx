@@ -124,7 +124,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         id: 'my-ip',
         name: '我的 IP',
-        description: '查看本机 IPv4 / IPv6、子网掩码，以及 Windows 端口占用、PID 和进程名',
+        description: '查看本机 IP、子网掩码、Windows 端口占用与进程，支持确认后停止进程',
         render: () => <IpPanel />
       },
       {

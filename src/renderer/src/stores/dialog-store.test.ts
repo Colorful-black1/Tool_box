@@ -20,4 +20,10 @@ describe('业务确认生命周期', () => {
     useDialogStore.getState().answer('开发')
     expect(await first).toBe('开发')
   })
+  it('停止进程沿用危险操作确认，取消不会同意执行', async () => {
+    const pending = confirmDialog('停止进程「node」？未保存数据可能丢失。')
+    expect(useDialogStore.getState().request?.danger).toBe(true)
+    useDialogStore.getState().answer(null)
+    expect(await pending).toBe(false)
+  })
 })

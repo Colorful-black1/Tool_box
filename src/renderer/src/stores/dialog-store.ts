@@ -31,7 +31,7 @@ function requestDialog(request: DialogRequest): Promise<string | null> {
   })
 }
 export function confirmDialog(message: string): Promise<boolean> {
-  const danger = /删除|清除|移除/.test(message)
+  const danger = /删除|清除|移除|停止进程/.test(message)
   return requestDialog({ message, title: danger ? '确认操作' : '请确认', danger }).then(
     (result) => result !== null
   )

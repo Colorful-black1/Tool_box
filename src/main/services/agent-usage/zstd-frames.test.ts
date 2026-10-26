@@ -5,9 +5,10 @@ import { decodeZstdFrames, zstdFrameSize } from './zstd-frames'
 async function* chunks(buffer: Buffer, size: number): AsyncGenerator<Buffer> {
   for (let i = 0; i < buffer.length; i += size) yield buffer.subarray(i, i + size)
 }
-async function decode(buffer: Buffer, size = 7): Promise<string> {
+async function decode(buffer: Buffer, size = 7, allowIncompleteTail = false): Promise<string> {
   const values: Buffer[] = []
-  for await (const chunk of decodeZstdFrames(chunks(buffer, size))) values.push(chunk)
+  for await (const chunk of decodeZstdFrames(chunks(buffer, size), allowIncompleteTail))
+    values.push(chunk)
   return Buffer.concat(values).toString('utf8')
 }
 describe('追加式 Zstandard 日志', () => {
@@ -26,5 +27,14 @@ describe('追加式 Zstandard 日志', () => {
     expect(await decode(Buffer.concat([skip, frame]))).toBe('usage\n')
     await expect(decode(frame.subarray(0, frame.length - 1))).rejects.toThrow()
     expect(() => zstdFrameSize(Buffer.from('invalid'))).toThrow()
+  })
+  it('活动日志只读完整帧，半帧补完后再计入，非法帧仍失败', async () => {
+    const first = zstdCompressSync(Buffer.from('usage-a\n'))
+    const second = zstdCompressSync(Buffer.from('usage-b\n'))
+    const pending = Buffer.concat([first, second.subarray(0, second.length - 1)])
+    for (const size of [1, 7, 1000])
+      expect(await decode(pending, size, true)).toBe('usage-a\n')
+    expect(await decode(Buffer.concat([first, second]), 7, true)).toBe('usage-a\nusage-b\n')
+    await expect(decode(Buffer.concat([first, Buffer.from('invalid')]), 7, true)).rejects.toThrow()
   })
 })

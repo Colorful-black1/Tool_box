@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
+import { AgentIdentity } from '../agent-identity'
 import type { UsageClient, UsageSourceView } from '@shared/agent-usage'
 import { formatTokens } from '@shared/usage-format'
 
@@ -53,7 +54,9 @@ export function UsageSources({
   const row = (source: UsageSourceView): JSX.Element => (
     <div className="agent-usage-source" key={source.client} data-status={source.status}>
       <div>
-        <strong>{USAGE_CLIENTS[source.client]}</strong>
+        <strong>
+          <AgentIdentity agent={source.client} label={USAGE_CLIENTS[source.client]} />
+        </strong>
         <span className="agent-usage-source-state" data-status={source.status}>
           {STATUS_LABEL[source.status]}
         </span>

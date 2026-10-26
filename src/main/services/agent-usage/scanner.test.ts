@@ -2,8 +2,12 @@ import { mkdtemp, mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/pro
 import { basename, dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { zstdCompressSync } from 'node:zlib'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UsageScanner } from './scanner'
+import { normalizeTokens, usageRecord } from './normalize'
+import { readUsageDatabase } from './sqlite-source'
+
+vi.mock('./sqlite-source', () => ({ readUsageDatabase: vi.fn() }))
 
 const roots: string[] = []
 async function root(): Promise<string> {
@@ -12,6 +16,7 @@ async function root(): Promise<string> {
   return path
 }
 afterEach(async () => {
+  vi.resetAllMocks()
   for (const path of roots.splice(0)) {
     const target = resolve(path)
     if (
@@ -45,16 +50,108 @@ describe('来源文件生命周期', () => {
     await rm(file)
     expect((await scanner.scan('claude', [path])).records).toHaveLength(0)
   })
-  it('半行不计数，补完换行后刷新可读取', async () => {
+  it('半行不计数也不告警，补完换行后刷新可读取且不重复计数', async () => {
     const path = await root()
     const file = join(path, 'session.jsonl')
     await writeFile(file, assistant('a') + '\n' + assistant('b'))
     const scanner = new UsageScanner()
     const first = await scanner.scan('claude', [path])
     expect(first.records).toHaveLength(1)
-    expect(first.source.status).toBe('partial')
+    expect(first.source.status).toBe('ready')
+    expect((await scanner.scan('claude', [path])).records).toEqual(first.records)
     await appendFile(file, '\n')
-    expect((await scanner.scan('claude', [path])).records).toHaveLength(2)
+    const completed = await scanner.scan('claude', [path])
+    expect(completed.records).toHaveLength(2)
+    expect(completed.source.status).toBe('ready')
+    expect((await scanner.scan('claude', [path])).records).toEqual(completed.records)
+  })
+  it('首次扫描只有半行时保持零记录，补完之后才计入', async () => {
+    const path = await root()
+    const file = join(path, 'session.jsonl')
+    const row = assistant('a')
+    await writeFile(file, row.slice(0, -1))
+    const scanner = new UsageScanner()
+    const pending = await scanner.scan('claude', [path])
+    expect(pending.records).toEqual([])
+    expect(pending.source.status).toBe('empty')
+    await appendFile(file, '}\n')
+    const completed = await scanner.scan('claude', [path])
+    expect(completed.records.map((r) => r.id)).toEqual(['a'])
+    expect(completed.source.status).toBe('ready')
+  })
+  it.each([false, true])('扫描期间写入时保留确认值，解析抛错=%s', async (throws) => {
+    const path = await root()
+    const file = join(path, 'usage.db')
+    await writeFile(file, 'fixture')
+    const scanner = new UsageScanner()
+    const first = usageRecord(
+      'opencode',
+      's',
+      'a',
+      normalizeTokens({ input: 10, output: 5, cacheRead: 0, total: 15 }, 'included')
+    )
+    const second = { ...first, id: 'b' }
+    const read = vi.mocked(readUsageDatabase)
+    read.mockResolvedValueOnce([first])
+    const confirmed = await scanner.scan('opencode', [path])
+    await appendFile(file, '-changed')
+    read.mockImplementationOnce(async () => {
+      await appendFile(file, '-writing')
+      if (throws) throw new Error('fixture read failed during write')
+      return [first, second]
+    })
+    const pending = await scanner.scan('opencode', [path])
+    expect(pending.records).toEqual(confirmed.records)
+    expect(pending.source.status).toBe('ready')
+    expect(scanner.snapshot()[0].records).toEqual([first])
+    read.mockResolvedValueOnce([first, second])
+    const completed = await scanner.scan('opencode', [path])
+    expect(completed.records).toEqual([first, second])
+    expect(completed.source.status).toBe('ready')
+    // 指纹未变化时复用刚确认的快照，不重复解析或累加。
+    expect((await scanner.scan('opencode', [path])).records).toEqual(completed.records)
+    expect(read).toHaveBeenCalledTimes(3)
+  })
+  it('文件稳定时的真实读取失败仍显示不完整并保留旧值', async () => {
+    const path = await root()
+    const file = join(path, 'usage.db')
+    await writeFile(file, 'fixture')
+    const scanner = new UsageScanner()
+    const record = usageRecord(
+      'opencode',
+      's',
+      'a',
+      normalizeTokens({ input: 10, output: 5, cacheRead: 0, total: 15 }, 'included')
+    )
+    vi.mocked(readUsageDatabase).mockResolvedValueOnce([record])
+    await scanner.scan('opencode', [path])
+    await appendFile(file, '-changed')
+    vi.mocked(readUsageDatabase).mockRejectedValueOnce(new Error('fixture read failed'))
+    const failed = await scanner.scan('opencode', [path])
+    expect(failed.source.status).toBe('partial')
+    expect(failed.records).toEqual([{ ...record, partial: true }])
+  })
+  it('首次读取期间文件变化时不计入，下一次稳定后才提交', async () => {
+    const path = await root()
+    const file = join(path, 'usage.db')
+    await writeFile(file, 'fixture')
+    const scanner = new UsageScanner()
+    const record = usageRecord(
+      'opencode',
+      's',
+      'a',
+      normalizeTokens({ input: 10, output: 5, cacheRead: 0, total: 15 }, 'included')
+    )
+    vi.mocked(readUsageDatabase).mockImplementationOnce(async () => {
+      await appendFile(file, '-writing')
+      return [record]
+    })
+    const pending = await scanner.scan('opencode', [path])
+    expect(pending.records).toEqual([])
+    expect(pending.source.status).toBe('empty')
+    expect(scanner.snapshot()).toEqual([])
+    vi.mocked(readUsageDatabase).mockResolvedValueOnce([record])
+    expect((await scanner.scan('opencode', [path])).records).toEqual([record])
   })
   it('损坏记录和缺失路径分别显示，不泄露正文', async () => {
     const path = await root()

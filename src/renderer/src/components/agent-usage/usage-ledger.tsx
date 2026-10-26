@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
+import { AgentIdentity } from '../agent-identity'
 import type { UsageReport, UsageSessionView, UsageSortKey } from '@shared/agent-usage'
 import { formatCost, formatDateTime, formatTokens } from '@shared/usage-format'
 
@@ -130,7 +131,7 @@ export function UsageLedger({
               {rows.map((row) => (
                 <tr key={JSON.stringify([row.client, row.sessionId, row.project, row.model])}>
                   <td>
-                    {USAGE_CLIENTS[row.client]}
+                    <AgentIdentity agent={row.client} label={USAGE_CLIENTS[row.client]} />
                     <small>{formatDateTime(row.time)}</small>
                   </td>
                   <td title={row.project}>

@@ -19,6 +19,7 @@ export const IPC = {
   toolsCertificateInspect: 'tools:certificate:inspect',
   systemNetworkAddresses: 'system:network:addresses',
   systemNetworkPorts: 'system:network:ports',
+  systemNetworkProcessStop: 'system:network:process:stop',
   opencodeInspect: 'opencode:inspect',
   opencodeExecutable: 'opencode:executable:choose',
   opencodeDirectory: 'opencode:directory:choose',

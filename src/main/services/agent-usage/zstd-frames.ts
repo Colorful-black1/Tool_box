@@ -40,7 +40,10 @@ export function zstdFrameSize(buffer: Buffer): number | null {
 }
 
 /** 只缓冲一个有上限的压缩帧；异步原生解压不会把多帧日志静默截成首帧。 */
-export async function* decodeZstdFrames(source: AsyncIterable<Buffer>): AsyncGenerator<Buffer> {
+export async function* decodeZstdFrames(
+  source: AsyncIterable<Buffer>,
+  allowIncompleteTail = false
+): AsyncGenerator<Buffer> {
   let buffer = Buffer.alloc(0)
   for await (const chunk of source) {
     buffer = Buffer.concat([buffer, chunk])
@@ -54,5 +57,6 @@ export async function* decodeZstdFrames(source: AsyncIterable<Buffer>): AsyncGen
       yield await decompress(frame, { maxOutputLength: MAX_FRAME })
     }
   }
-  if (buffer.length) throw new Error('incomplete compressed frame')
+  // 活动日志允许末帧仍在追加；只输出完整帧，非法帧和解压错误仍照常抛出。
+  if (buffer.length && !allowIncompleteTail) throw new Error('incomplete compressed frame')
 }

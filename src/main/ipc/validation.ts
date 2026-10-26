@@ -167,6 +167,15 @@ export function validateCodingAgentApproval(
   }
 }
 
+/** 停止引用只能来自端口快照，禁止任意 PID、脚本或命令进入执行服务。 */
+export function validatePortStopToken(value: unknown): string {
+  if (typeof value !== 'string' || value.length !== 36) throw new Error('进程引用无效，请重新查询端口')
+  const token = requireString(value, '进程引用', { maxLength: 36 })
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token))
+    throw new Error('进程引用无效，请重新查询端口')
+  return token
+}
+
 /** 在 trim 前限制原始 IPC 长度，避免无效空白或大文件拖慢主进程。 */
 export function validateCertificateInput(value: unknown): string {
   if (typeof value !== 'string' || value.length > 131072)

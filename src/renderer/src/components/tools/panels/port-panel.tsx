@@ -1,28 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { PortSnapshot } from '@shared/types'
+import type { PortSnapshot, PortProcessView } from '@shared/types'
 import { Dropdown } from '../../dropdown'
 import { CopyButton } from '../workbench'
+import { confirmDialog } from '../../../stores/dialog-store'
 
 export function PortPanel(): JSX.Element {
   const [snapshot, setSnapshot] = useState<PortSnapshot | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [stoppingPid, setStoppingPid] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [protocol, setProtocol] = useState('all')
   const [listening, setListening] = useState(true)
   const [page, setPage] = useState(0)
-  const request = useRef({ sequence: 0 })
+  const request = useRef({ sequence: 0, stopping: false, mounted: true })
   useEffect(() => {
     const state = request.current
+    state.mounted = true
     return () => {
+      state.mounted = false
       state.sequence++
     }
   }, [])
-  const refresh = async (): Promise<void> => {
+  const refresh = async (afterStop = false): Promise<void> => {
+    if (request.current.stopping && !afterStop) return
     const sequence = ++request.current.sequence
     setSnapshot(null)
     setError('')
+    setNotice('')
     setPage(0)
     if (!window.toolbox?.system?.portProcesses) {
       setError('端口接口未就绪，请使用最新桌面应用')
@@ -41,6 +48,36 @@ export function PortPanel(): JSX.Element {
         )
     } finally {
       if (sequence === request.current.sequence) setBusy(false)
+    }
+  }
+  const stopProcess = async (row: PortProcessView): Promise<void> => {
+    if (busy || request.current.stopping || !row.stopToken) return
+    const bridge = window.toolbox?.system
+    if (!bridge?.stopPortProcess) {
+      setError('停止进程接口未就绪，请更新并重启桌面应用')
+      return
+    }
+    const sequence = request.current.sequence
+    request.current.stopping = true
+    setStoppingPid(row.pid)
+    setError('')
+    setNotice('')
+    try {
+      const confirmed = await confirmDialog(
+        `停止进程「${row.processName}」（PID ${row.pid}）？当前占用 ${row.protocol} ${row.address}:${row.port}。这会结束整个进程并关闭其全部端口，未保存的数据可能丢失。`
+      )
+      if (!confirmed || sequence !== request.current.sequence || !request.current.mounted) return
+      const result = await bridge.stopPortProcess(row.stopToken)
+      if (!request.current.mounted) return
+      await refresh(true)
+      if (!request.current.mounted) return
+      if (result.status === 'stopped' || result.status === 'gone') setNotice(result.message)
+      else setError(result.message)
+    } catch {
+      if (request.current.mounted) setError('无法确认停止结果，请重新查询端口后再操作')
+    } finally {
+      request.current.stopping = false
+      if (request.current.mounted) setStoppingPid(null)
     }
   }
   const keyword = query.trim().toLowerCase()
@@ -63,13 +100,18 @@ export function PortPanel(): JSX.Element {
     <section className="tool-stack tool-port-section" aria-label="端口与进程诊断">
       <header className="tool-io-head">
         <span className="tool-io-label">端口占用与进程</span>
-        <button type="button" className="btn-ghost" disabled={busy} onClick={() => void refresh()}>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy || stoppingPid !== null}
+          onClick={() => void refresh()}
+        >
           {busy ? '查询中…' : '查询端口占用'}
         </button>
       </header>
       <p className="field-hint">
-        Windows 只读快照，可查看 TCP / UDP、PID
-        与进程名。进程可能在查询后退出；本工具不结束进程。首次使用请手动查询。
+        查看 Windows TCP / UDP、PID 与进程名。停止操作会结束整个进程，不仅是当前端口；
+        系统关键进程及工具箱自身进程不可停止。首次使用请手动查询。
       </p>
       <div className="tool-controls">
         <input
@@ -114,6 +156,11 @@ export function PortPanel(): JSX.Element {
           {error}
         </div>
       ) : null}
+      {notice ? (
+        <div className="status-banner success-banner" role="status">
+          {notice}
+        </div>
+      ) : null}
       {snapshot ? (
         <>
           <p className="field-hint" role="status">
@@ -134,6 +181,7 @@ export function PortPanel(): JSX.Element {
                   <th>PID</th>
                   <th>进程</th>
                   <th>远端</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,6 +206,18 @@ export function PortPanel(): JSX.Element {
                     <td>{row.processName}</td>
                     <td>
                       <code>{row.remote || '—'}</code>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-danger"
+                        disabled={busy || stoppingPid !== null || !row.stopToken}
+                        title={row.stopBlockedReason ?? '结束整个进程，不自动提权'}
+                        aria-label={`停止进程 ${row.processName}，PID ${row.pid}，${row.stopBlockedReason ?? '需确认'}`}
+                        onClick={() => void stopProcess(row)}
+                      >
+                        {stoppingPid === row.pid ? '处理中…' : '停止进程'}
+                      </button>
                     </td>
                   </tr>
                 ))}

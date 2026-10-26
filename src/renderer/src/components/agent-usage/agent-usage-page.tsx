@@ -11,6 +11,7 @@ import type {
 } from '@shared/agent-usage'
 import { usageCsv } from '@shared/usage-format'
 import { Dropdown } from '../dropdown'
+import { AgentMark } from '../agent-identity'
 import { RefreshIcon } from '../icons'
 import { UsageKpis } from './usage-kpis'
 import { UsageLedger } from './usage-ledger'
@@ -427,10 +428,11 @@ export function AgentUsagePage(): JSX.Element {
           ariaLabel="统计 Agent"
           value={query.client ?? ''}
           options={[
-            { value: '', label: '全部 Agent' },
+            { value: '', label: '全部 Agent', icon: <AgentMark agent="all" /> },
             ...(Object.keys(USAGE_CLIENTS) as UsageClient[]).map((client) => ({
               value: client,
-              label: USAGE_CLIENTS[client]
+              label: USAGE_CLIENTS[client],
+              icon: <AgentMark agent={client} />
             }))
           ]}
           onChange={(value) =>

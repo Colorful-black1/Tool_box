@@ -26,6 +26,7 @@ import type {
   ImportResult,
   LocalIpAddressView,
   PortSnapshot,
+  PortProcessStopResult,
   CertificateView,
   NoteSaveInput,
   NoteView,
@@ -229,6 +230,8 @@ export interface ToolboxBridge {
     /** 本机非回环网卡地址，不发起公网请求。 */
     networkAddresses(): Promise<LocalIpAddressView[]>
     portProcesses(): Promise<PortSnapshot>
+    /** 只接受本次端口快照签发的停止引用，不接受 PID 或命令。 */
+    stopPortProcess(token: string): Promise<PortProcessStopResult>
     copyText(text: string): Promise<void>
     /** 读取全局快捷键配置 */
     getShortcut(): Promise<ShortcutConfig>

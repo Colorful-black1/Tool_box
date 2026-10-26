@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { USAGE_CLIENTS } from '@shared/agent-usage'
+import { AgentIdentity } from '../agent-identity'
 import type { UsageDaily } from '@shared/agent-usage'
 import { formatCompact, formatTokens } from '@shared/usage-format'
 import { rollingRange } from '../../lib/usage-prefs'
@@ -99,7 +100,7 @@ export function UsageTrendChart({ trend, onPick }: UsageTrendChartProps): JSX.El
                     background: CLIENT_COLORS[clients.indexOf(client) % CLIENT_COLORS.length]
                   }}
                 />
-                {USAGE_CLIENTS[client]}
+                <AgentIdentity agent={client} label={USAGE_CLIENTS[client]} />
               </span>
             ))}
           </div>

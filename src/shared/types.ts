@@ -21,7 +21,7 @@ export interface LocalIpAddressView {
   netmask: string
 }
 
-/** 只读端口快照，不包含可执行文件路径、命令行或环境变量。 */
+/** 端口快照不包含路径或命令行；停止引用仅在主进程短期有效。 */
 export interface PortProcessView {
   protocol: 'TCP' | 'UDP'
   address: string
@@ -30,6 +30,23 @@ export interface PortProcessView {
   state: string
   pid: number
   processName: string
+  stopToken?: string
+  stopBlockedReason?: string
+}
+
+/** 停止指定进程的结果，不跨进程传递系统错误或异常栈。 */
+export interface PortProcessStopResult {
+  status:
+    | 'stopped'
+    | 'gone'
+    | 'changed'
+    | 'protected'
+    | 'denied'
+    | 'failed'
+    | 'timeout'
+    | 'expired'
+    | 'busy'
+  message: string
 }
 
 /** 大量连接时仅返回前 1000 项，并显式报告截断及进程名称降级。 */

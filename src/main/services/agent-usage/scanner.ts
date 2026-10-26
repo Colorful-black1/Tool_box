@@ -86,7 +86,7 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
   const parser = new UsageLogParser(client, path)
   const file = createReadStream(path)
   const decoder = new StringDecoder('utf8')
-  const stream = path.endsWith('.zstd') ? decodeZstdFrames(file) : file
+  const stream = path.endsWith('.zstd') ? decodeZstdFrames(file, true) : file
   let buffer = ''
   let bytes = 0
   let line = 0
@@ -114,10 +114,10 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
       }
       if (buffer.length > MAX_LINE_BYTES) throw new Error('source line limit')
     }
-    buffer += decoder.end()
-    // 活动日志末行必须等换行落盘，不提前计入，也不标记成可跳过的完整快照。
+    // 只提交已有换行的记录；末尾半行属于正常写入，不计数也不告警。
+    // 补完后文件指纹会变化，下次扫描再读取，不会因缓存跳过新增记录。
     const records = parser.finish()
-    const partial = Boolean(buffer.trim()) || parser.issues > 0
+    const partial = parser.issues > 0
     return { records, partial }
   } finally {
     file.destroy()
@@ -187,9 +187,11 @@ export class UsageScanner {
     for (const path of files) {
       const key = `${client}:${path}`
       const previous = this.files.get(key)
+      const database = DB_CLIENTS.has(client)
+      let before: string | undefined
+      let changing = false
       try {
-        const database = DB_CLIENTS.has(client)
-        const before = await fingerprint(path, database)
+        before = await fingerprint(path, database)
         if (previous?.fingerprint === before && !previous.partial) {
           for (const record of previous.records) records.push(record)
           partial ||= previous.records.some((r) => r.partial)
@@ -208,15 +210,30 @@ export class UsageScanner {
             partial: false
           }
         } else parsed = await readLog(client, path)
-        if ((await fingerprint(path, database)) !== before) throw new Error('source changed')
-        this.files.set(key, { client, path, ...parsed, fingerprint: before })
-        for (const record of parsed.records) records.push(record)
-        partial ||= parsed.partial || parsed.records.some((r) => r.partial)
+        changing = (await fingerprint(path, database)) !== before
+        if (!changing) {
+          this.files.set(key, { client, path, ...parsed, fingerprint: before })
+          for (const record of parsed.records) records.push(record)
+          partial ||= parsed.partial || parsed.records.some((r) => r.partial)
+          continue
+        }
       } catch {
-        // 正在写入、锁定或格式不兼容时保留上次快照，并明确标记非最新 / 不完整。
-        failures++
-        if (previous)
-          for (const record of previous.records) records.push({ ...record, partial: true })
+        // 写入也可能先导致解析失败；仅在指纹确实变化时按正常写入暂缓。
+        if (before !== undefined) {
+          try {
+            changing = (await fingerprint(path, database)) !== before
+          } catch {
+            // 无法确认仍在写入，保留真实读取失败，不能静默隐藏权限或文件错误。
+          }
+        }
+      }
+      // 本次读到变化中的文件时不提交、不覆盖缓存；下次稳定后再替换确认值。
+      // 已有的不完整标记继续保留，写入状态不能掩盖历史缺失。
+      if (!changing) failures++
+      if (previous) {
+        for (const record of previous.records)
+          records.push(changing ? record : { ...record, partial: true })
+        partial ||= previous.partial || previous.records.some((r) => r.partial)
       }
     }
     // 文件删除、路径变更或压缩代际替换后不让旧缓存继续参加统计。
@@ -237,7 +254,7 @@ export class UsageScanner {
       source.status === 'ready'
         ? '已读取本地用量'
         : source.status === 'partial'
-          ? '部分记录未完整解析或正在写入，显示已知用量；稍后刷新'
+          ? '部分记录读取失败或字段不完整，显示已知用量'
           : source.status === 'error'
             ? '无法读取或格式不兼容，请核对数据目录与工具版本'
             : source.status === 'empty'

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
-import { CodeIcon, RefreshIcon, SettingsIcon } from '../icons'
+import { AgentIcon, RefreshIcon, SettingsIcon } from '../icons'
+import { AgentIdentity } from '../agent-identity'
 
 /** 正常操作只选择 Agent 和项目，程序诊断收进连接设置。 */
 export function OpenCodeConnection(): JSX.Element {
@@ -26,7 +27,7 @@ export function OpenCodeConnection(): JSX.Element {
     <section className="glass opencode-connection" aria-label={`${name} 连接`}>
       <div className="opencode-connection-head">
         <span className="opencode-brandmark">
-          <CodeIcon />
+          <AgentIcon agent={runtimeId} />
         </span>
         <div className="opencode-identity">
           <div className="opencode-identity-title">
@@ -39,7 +40,7 @@ export function OpenCodeConnection(): JSX.Element {
                   aria-pressed={runtimeId === id}
                   onClick={() => switchRuntime(id)}
                 >
-                  {CODING_AGENT_NAMES[id]}
+                  <AgentIdentity agent={id} label={CODING_AGENT_NAMES[id]} />
                 </button>
               ))}
             </div>

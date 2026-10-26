@@ -5,6 +5,7 @@ import { renderMarkdown } from '../../lib/markdown'
 import { CodeIcon } from '../icons'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
+import { AgentIdentity, AgentMark } from '../agent-identity'
 import type { CodingAgentId } from '@shared/coding-agents'
 import { Dropdown } from '../dropdown'
 
@@ -100,7 +101,7 @@ export function OpenCodeMessages({
                     disabled={session.status === 'running' || session.status === 'stopping'}
                     onClick={() => transferMessage(message.id, targetId)}
                   >
-                    用于 {targetName}
+                    用于 <AgentIdentity agent={targetId} label={targetName} />
                   </button>
                   <Dropdown
                     ariaLabel="其他消息转用目标"
@@ -108,7 +109,11 @@ export function OpenCodeMessages({
                     placeholder="其他 Agent"
                     options={WORKBENCH_AGENT_IDS.filter(
                       (id) => id !== runtimeId && id !== targetId
-                    ).map((value) => ({ value, label: `用于 ${CODING_AGENT_NAMES[value]}` }))}
+                    ).map((value) => ({
+                      value,
+                      label: `用于 ${CODING_AGENT_NAMES[value]}`,
+                      icon: <AgentMark agent={value} />
+                    }))}
                     disabled={session.status === 'running' || session.status === 'stopping'}
                     onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
                     align="left"

@@ -207,6 +207,7 @@ const bridge: ToolboxBridge = {
   system: {
     networkAddresses: () => ipcRenderer.invoke(IPC.systemNetworkAddresses),
     portProcesses: () => ipcRenderer.invoke(IPC.systemNetworkPorts),
+    stopPortProcess: (token: string) => ipcRenderer.invoke(IPC.systemNetworkProcessStop, token),
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),
     getShortcut: () => ipcRenderer.invoke(IPC.systemShortcutGet),
     setShortcut: (config: ShortcutConfig) =>

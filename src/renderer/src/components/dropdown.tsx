@@ -1,10 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { JSX, KeyboardEvent } from 'react'
+import type { JSX, KeyboardEvent, ReactNode } from 'react'
 import { Popover } from './popover'
 
 export interface DropdownOption {
   value: string
   label: string
+  /** 可选装饰图标；搜索与键盘定位仍使用纯文字 label。 */
+  icon?: ReactNode
 }
 
 /** 超过这个数量的选项就显示过滤框 */
@@ -144,6 +146,11 @@ export function Dropdown({
           }
         }}
       >
+        {selected?.icon ? (
+          <span className="ui-dropdown-icon" aria-hidden="true">
+            {selected.icon}
+          </span>
+        ) : null}
         <span className={`ui-dropdown-label${selected ? '' : ' placeholder'}`}>
           {selected?.label ?? placeholder}
         </span>
@@ -214,6 +221,11 @@ export function Dropdown({
                     <span className="ui-dropdown-tick" aria-hidden="true">
                       {option.value === value ? '✓' : ''}
                     </span>
+                    {option.icon ? (
+                      <span className="ui-dropdown-icon" aria-hidden="true">
+                        {option.icon}
+                      </span>
+                    ) : null}
                     <span className="ui-dropdown-item-label">{option.label}</span>
                   </button>
                 </li>

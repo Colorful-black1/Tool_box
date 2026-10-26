@@ -4426,6 +4426,59 @@ textarea,
   display: inline-flex;
 }
 
+.agent-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.agent-identity-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-icon {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--gold);
+}
+
+.agent-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-icon[data-agent='codex'],
+.agent-icon[data-agent='dsh'],
+.agent-icon[data-agent='kimi'] {
+  color: var(--cyan);
+}
+
+.agent-icon[data-agent='gemini'],
+.agent-icon[data-agent='workbuddy'] {
+  color: var(--pink);
+}
+
+.opencode-agent-switch .btn-ghost[aria-pressed='true'] .agent-icon {
+  color: inherit;
+}
+
+.agent-usage-ledger td .agent-identity,
+.agent-usage-ledger td .agent-icon,
+.ui-dropdown-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .ui-dropdown-trigger {
   display: inline-flex;
   align-items: center;
