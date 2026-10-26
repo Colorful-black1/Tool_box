@@ -120,11 +120,15 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
     return openOpenCodeDesktop()
   })
   const dispose = service.subscribe((owner, event) => {
-    const window = BrowserWindow.getAllWindows().find((item) => item.webContents.id === owner)
-    if (window && !window.isDestroyed()) window.webContents.send(WINDOW_EVENT.codingAgent, event)
+    const window = BrowserWindow.getAllWindows().find(
+      (item) =>
+        !item.isDestroyed() && !item.webContents.isDestroyed() && item.webContents.id === owner
+    )
+    if (window) window.webContents.send(WINDOW_EVENT.codingAgent, event)
   })
   app.once('will-quit', () => {
-    service.dispose()
+    // 断开适配器会同步发布终态；退出时先撤销已失效的窗口订阅。
     dispose()
+    service.dispose()
   })
 }

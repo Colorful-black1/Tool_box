@@ -262,17 +262,19 @@ export class CodingAgentService {
   releaseOwner(owner: number): void {
     for (const state of this.runtimes.values()) {
       if (state.owner !== owner) continue
-      state.adapter.disconnect()
       state.owner = null
+      state.adapter.disconnect()
     }
   }
 
   dispose(): void {
-    for (const state of this.runtimes.values()) {
-      state.adapter.disconnect()
-      state.dispose()
-    }
     this.listeners.clear()
+    this.active = null
+    for (const state of this.runtimes.values()) {
+      state.owner = null
+      state.dispose()
+      state.adapter.disconnect()
+    }
   }
 
   private requireRuntime(id: CodingAgentId): RuntimeState {

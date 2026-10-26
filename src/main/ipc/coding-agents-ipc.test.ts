@@ -7,7 +7,10 @@ const mock = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, value?: unknown) => Promise<unknown>>(),
   fromWebContents: vi.fn(),
   send: vi.fn(),
-  otherSend: vi.fn()
+  otherSend: vi.fn(),
+  windowDestroyed: vi.fn(() => false),
+  contentsDestroyed: vi.fn(() => false),
+  onQuit: vi.fn()
 }))
 vi.mock('electron', () => ({
   ipcMain: {
@@ -17,22 +20,30 @@ vi.mock('electron', () => ({
   BrowserWindow: {
     fromWebContents: mock.fromWebContents,
     getAllWindows: () => [
-      { isDestroyed: () => false, webContents: { id: 1, send: mock.send } },
-      { isDestroyed: () => false, webContents: { id: 2, send: mock.otherSend } }
+      {
+        isDestroyed: mock.windowDestroyed,
+        webContents: { id: 1, isDestroyed: mock.contentsDestroyed, send: mock.send }
+      },
+      {
+        isDestroyed: () => false,
+        webContents: { id: 2, isDestroyed: () => false, send: mock.otherSend }
+      }
     ]
   },
-  app: { once: vi.fn() },
+  app: { once: mock.onQuit },
   dialog: { showOpenDialog: vi.fn() },
   shell: { openPath: vi.fn() }
 }))
 
 function fixture() {
+  const disposeEvents = vi.fn()
   const service = {
     inspect: vi.fn(),
     send: vi.fn(),
     connect: vi.fn(),
     approve: vi.fn(),
-    subscribe: vi.fn().mockReturnValue(vi.fn()),
+    subscribe: vi.fn().mockReturnValue(disposeEvents),
+    dispose: vi.fn(),
     releaseOwner: vi.fn()
   }
   registerCodingAgentsIpc(service as unknown as CodingAgentService)
@@ -41,15 +52,43 @@ function fixture() {
   const event = { sender: { id: 1, mainFrame: frame, once: destroyed }, senderFrame: frame }
   const invoke = (channel: string, input?: unknown, source: unknown = event) =>
     mock.handlers.get(channel)!(source, input)
-  return { service, invoke, destroyed }
+  return { service, invoke, destroyed, disposeEvents }
 }
 beforeEach(() => {
   vi.clearAllMocks()
   mock.handlers.clear()
   mock.fromWebContents.mockReturnValue({})
+  mock.windowDestroyed.mockReturnValue(false)
+  mock.contentsDestroyed.mockReturnValue(false)
 })
 
 describe('统一编程 IPC 安全边界', () => {
+  it('窗口仍存在但 WebContents 已销毁时丢弃退出终态，不调用 send', () => {
+    const f = fixture()
+    const listener = f.service.subscribe.mock.calls[0][0] as (owner: number, event: unknown) => void
+    mock.contentsDestroyed.mockReturnValue(true)
+    mock.send.mockImplementationOnce(() => {
+      throw new TypeError('Object has been destroyed')
+    })
+    expect(() => listener(1, { kind: 'runtime' })).not.toThrow()
+    expect(mock.send).not.toHaveBeenCalled()
+    expect(mock.otherSend).not.toHaveBeenCalled()
+    mock.send.mockReset()
+    mock.contentsDestroyed.mockReturnValue(false)
+    mock.windowDestroyed.mockReturnValue(true)
+    expect(() => listener(1, { kind: 'runtime' })).not.toThrow()
+    expect(mock.send).not.toHaveBeenCalled()
+  })
+  it('will-quit 在断开 Agent 前解除事件订阅', () => {
+    const f = fixture()
+    const quit = mock.onQuit.mock.calls.find(([name]) => name === 'will-quit')![1] as () => void
+    quit()
+    expect(f.disposeEvents).toHaveBeenCalledOnce()
+    expect(f.service.dispose).toHaveBeenCalledOnce()
+    expect(f.disposeEvents.mock.invocationCallOrder[0]).toBeLessThan(
+      f.service.dispose.mock.invocationCallOrder[0]
+    )
+  })
   it('Desktop 作为独立运行时复用既有校验通道，不接受任意 profile 或路由参数', async () => {
     const f = fixture()
     await f.invoke(IPC.codingAgentConnect, {

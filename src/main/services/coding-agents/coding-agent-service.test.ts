@@ -52,6 +52,37 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('窗口销毁先清除所有者，断连终态不再发送到原窗口', async () => {
+    const f = fixture('claude')
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('claude', 1, '/fixture/project')
+    const session = await service.openSession('claude', 1)
+    await service.send('claude', 1, session.id, '合成任务')
+    const notify = vi.fn()
+    service.subscribe(notify)
+    service.releaseOwner(1)
+    expect(f.adapter.disconnect).toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+    expect((await service.inspect('claude', 2)).connected).toBe(false)
+    await service.connect('claude', 2, '/fixture/project')
+    expect((await service.inspect('claude', 2)).connected).toBe(true)
+    service.dispose()
+  })
+  it('退出清理先解除订阅，不向已经关闭的窗口广播断开事件', async () => {
+    const code = fixture('claude')
+    const desktop = fixture('claude-desktop')
+    const service = new CodingAgentService([code.adapter, desktop.adapter])
+    await service.connect('claude', 1, '/fixture/project')
+    await service.connect('claude-desktop', 2, '/fixture/project')
+    const notify = vi.fn(() => {
+      throw new TypeError('Object has been destroyed')
+    })
+    service.subscribe(notify)
+    expect(() => service.dispose()).not.toThrow()
+    expect(notify).not.toHaveBeenCalled()
+    expect(code.adapter.disconnect).toHaveBeenCalled()
+    expect(desktop.adapter.disconnect).toHaveBeenCalled()
+  })
   it('Claude Code 与 Desktop 独立连接和会话归属，共享顶层任务互斥', async () => {
     const code = fixture('claude')
     const desktop = fixture('claude-desktop')
