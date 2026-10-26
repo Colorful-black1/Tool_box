@@ -39,6 +39,12 @@ const text = (value: unknown, limit = 200): string =>
   typeof value === 'string' ? value.slice(0, limit) : ''
 const DEFAULT_MODEL = 'native-default'
 const DEFAULT_MODEL_LABEL = '沿用 Claude / CC Switch 配置'
+const CLAUDE_PERMISSION_OPTIONS = [
+  { value: 'auto', label: '自动 · Auto' },
+  { value: 'default', label: '手动 · Manual' },
+  { value: 'acceptEdits', label: '接受编辑 · Accept edits' },
+  { value: 'plan', label: '计划 · Plan' }
+] as const
 
 /** 保持 stdin 打开，空输入只做初始化；只有显式发送才 yield 用户消息。 */
 function inputFeed(content?: string): { input: AsyncIterable<SDKUserMessage>; close(): void } {
@@ -404,6 +410,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   async openSession(id?: string): Promise<NativeCodingSession> {
     if (!this.sdk || !this.info.connected) throw new CodingAgentError('Claude 尚未连接')
+    if (this.run || this.preparing) throw new CodingAgentError('请先停止任务再刷新 Claude 历史')
     const sdk = this.sdk
     const generation = this.generation
     const directory = this.info.directory
@@ -464,10 +471,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
           category: 'permission',
           name: '操作权限',
           currentValue: 'plan',
-          options: [
-            { value: 'plan', label: '计划模式' },
-            { value: 'default', label: '标准模式 · 原生规则与单次审批' }
-          ]
+          options: CLAUDE_PERMISSION_OPTIONS.map((item) => ({ ...item }))
         }
       ]
     }
@@ -480,6 +484,9 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     })
     if (historyLimited || remaining === 0 || messages.length >= 200)
       session.error = '历史仅显示前 200 条、最多 200,000 字符，请在原生客户端查看完整记录'
+    // 只刷新正文，不把用户已选的模型、思考强度和操作模式重置为默认值。
+    const previous = this.sessions.get(nativeId)
+    if (previous) session.options = structuredClone(previous.options)
     this.sessions.set(nativeId, session)
     return structuredClone(session)
   }
@@ -551,7 +558,11 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       throw new CodingAgentError('Claude 连接或任务状态已变化，草稿已保留')
     const selected = (key: string): string | undefined =>
       session.options.find((item) => item.id === key)?.currentValue
-    options.permissionMode = selected('permission') === 'default' ? 'default' : 'plan'
+    const permissionMode = CLAUDE_PERMISSION_OPTIONS.find(
+      (item) => item.value === selected('permission')
+    )
+    if (!permissionMode) throw new CodingAgentError('Claude 操作模式不可用，请重新选择')
+    options.permissionMode = permissionMode.value
     if (selected('model') !== DEFAULT_MODEL) {
       if (currentModels && !currentModels.some((model) => model.value === selected('model')))
         throw new CodingAgentError('当前 Desktop 模型已不可用，请在更多菜单同步模型后重新选择')
@@ -732,6 +743,21 @@ export class ClaudeAdapter implements CodingAgentAdapter {
         if (typeof message.session_id === 'string' && message.session_id !== session.id)
           throw new CodingAgentError('Claude 返回了不同会话，已停止以保护草稿归属')
         if (message.type === 'system' && message.subtype === 'init') this.persisted.add(session.id)
+        if (
+          message.type === 'system' &&
+          (message.subtype === 'init' || message.subtype === 'status') &&
+          typeof message.permissionMode === 'string'
+        ) {
+          const mode = CLAUDE_PERMISSION_OPTIONS.find(
+            (item) => item.value === message.permissionMode
+          )
+          if (!mode) throw new CodingAgentError('原生程序返回了未支持的操作模式，已停止任务')
+          const option = session.options.find((item) => item.id === 'permission')
+          if (option && option.currentValue !== mode.value) {
+            option.currentValue = mode.value
+            session.error = `原生程序当前使用${mode.label}；所选模式未生效，请核对模型、供应商或原生策略`
+          }
+        }
         if (message.type === 'stream_event') {
           const event = object(message.event)
           if (event?.type === 'message_start')

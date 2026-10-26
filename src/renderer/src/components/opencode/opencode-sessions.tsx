@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { PlusIcon, RefreshIcon } from '../icons'
@@ -22,11 +22,37 @@ export function OpenCodeSessions(): JSX.Element {
   const historyLoaded = useCodingAgentStore((state) => state.historyLoaded)
   const busy = useCodingAgentStore((state) => state.busy)
   const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
+  const preparingRuntime = useCodingAgentStore((state) => state.preparingRuntime)
   const newSession = useCodingAgentStore((state) => state.newSession)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [query, setQuery] = useState('')
+  useEffect(() => {
+    const refresh = (): void => {
+      if (
+        (runtimeId === 'claude' || runtimeId === 'claude-desktop') &&
+        info?.connected &&
+        historyOpen &&
+        historyLoaded &&
+        !busy &&
+        !runningRuntime &&
+        !preparingRuntime
+      )
+        void listSessions()
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [
+    runtimeId,
+    info?.connected,
+    historyOpen,
+    historyLoaded,
+    busy,
+    runningRuntime,
+    preparingRuntime,
+    listSessions
+  ])
   const local = Object.values(sessions).filter(
     (item) => item.connectionId === info?.connectionId && item.directory === directory
   )

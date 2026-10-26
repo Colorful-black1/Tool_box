@@ -165,7 +165,7 @@ Kimi 尚未接入，不占用日常选择器，不会自动安装。原生内部
 使用固定版本 `@anthropic-ai/claude-agent-sdk@0.3.310`，Windows x64 原生组件随应用解包，
 也可在连接设置选择官方 `claude.exe`。登录与订阅认证交给官方程序，不读取或复制 OAuth 登录文件，不保证订阅额度可用。
 连接只初始化并读取原生模型目录，发送时才启动任务；支持真实增量、单次审批、停止及官方会话 API 的历史读取与续接。
-默认计划模式，可改为标准模式；原生规则已允许的操作不一定触发审批，项目目录不等于操作系统沙箱。
+默认计划模式，打开会话后支持 Auto（自动）、Manual（手动）、Accept edits（接受编辑）、Plan（计划）四种模式，Code 与 Desktop 两入口一致。Auto 是否可用取决于原生程序、模型与供应商；原生降级时界面同步实际模式并提示。Accept edits 的文件操作由原生权限系统决定，未解决的审批仍在工具箱确认；不提供 Bypass。项目目录不等于操作系统沙箱。模式说明见 [官方权限文档](https://code.claude.com/docs/en/agent-sdk/permissions)。
 SDK 使用 `settingSources: []`，不自动加载用户／项目／local settings 中的 hooks、MCP，不改写原生配置；
 连接与每次发送会单独读取 Claude 用户 `settings.json` 的供应商环境白名单（`ANTHROPIC_BASE_URL`、API Key／Auth Token、模型映射）及顶层默认模型，兼容 CC Switch 写入的第三方路由。支持 `CLAUDE_CONFIG_DIR` 绝对路径；凭据仅用于当前 Claude 子进程环境，不写入工具箱配置、日志、IPC 或命令行参数，也不导入用户 hooks、权限和 `apiKeyHelper`。默认模型选择「沿用 Claude / CC Switch 配置」，手动选择模型则覆盖默认。切换供应商后下次发送重读；已运行的任务不切路由。使用本地代理路由时需保持 CC Switch 运行，Claude Desktop 无需打开。
 这里沿用的是 CC Switch 的 **Claude Code** 配置与路由，Claude Desktop 使用独立的供应商和路由。
@@ -189,6 +189,8 @@ SDK 使用 `settingSources: []`，不自动加载用户／项目／local setting
 不包含普通 Chat、Cowork、远程会话或运行中任务接管；不重写 Desktop 列表与状态，返回 Desktop 后的新增消息回显尚未实机确认，不承诺实时双向同步。
 工具箱新建的 SDK 会话没有 Desktop 的列表记录，**不会自动出现在 Desktop**。Desktop 已有 Code 会话只会在相同项目目录下列出；列表缺失时先核对顶部项目路径，再切换到原目录并刷新历史，不能只比较模型或供应商配置。
 每次展开「历史会话」都会重新读取原生目录；列表已展开时可点击标题旁的刷新按钮，获取 Desktop 后来新增的记录。
+Claude 已打开的历史在刷新列表或空闲时再次点选后会重读正文，保留草稿、模型与模式，不要求断开重连。已连接且历史展开时，从外部应用返回工具箱也会刷新；任务运行或准备期间不刷新，不接管外部正在执行的任务。编程输入框统一使用 Enter 发送、Shift+Enter 换行，中文输入法确认文字的 Enter 不发送。
+本轮刷新、快捷键与四种模式的改动和手动验收见 [交互调整记录](docs/claude-workbench-interactions.md)。
 配置见 [独立入口规格](docs/SPEC-claude-desktop-provider.md)，历史、退出修复与操作步骤见 [本轮交付记录](docs/claude-desktop-history-verification.md)。
 
 #### DeepSeek Harness

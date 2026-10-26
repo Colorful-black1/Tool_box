@@ -3,6 +3,7 @@ module.exports = function codingAgentsFixture() {
   const listeners = new Set()
   const states = new Map()
   const addedHistory = new Map()
+  const externalReplies = new Map()
   let sequence = 0,
     revision = 0,
     active = null,
@@ -47,7 +48,10 @@ module.exports = function codingAgentsFixture() {
   }
   const open = (id, nativeId) => {
     const state = states.get(id)
-    const ref = `${id}-ref-${++sequence}`
+    const previous = nativeId
+      ? [...state.sessions.values()].find((item) => item.nativeSessionId === nativeId)
+      : null
+    const ref = previous?.id ?? `${id}-ref-${++sequence}`
     const view = {
       id: ref,
       nativeSessionId: nativeId || `${id}-native-${sequence}`,
@@ -92,6 +96,9 @@ module.exports = function codingAgentsFixture() {
         }
       ]
     }
+    if (previous) view.options = copy(previous.options)
+    if (nativeId && externalReplies.has(id))
+      view.messages.push({ id: 'external-reply', role: 'assistant', content: externalReplies.get(id) })
     state.sessions.set(ref, view)
     return publish(view)
   }
@@ -168,6 +175,9 @@ module.exports = function codingAgentsFixture() {
       agentCalls: () => copy(calls),
       agentAddHistory: (id) => {
         addedHistory.set(id, [{ id: 'new-external-history', title: 'Desktop 后来新增的 Code 会话' }])
+      },
+      agentExternalReply: (id) => {
+        externalReplies.set(id, 'Desktop 外部后来新增的回复')
       },
       agentFailHistory: () => {
         failHistory = true

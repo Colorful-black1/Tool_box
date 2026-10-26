@@ -415,7 +415,11 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
             item.status !== 'disconnected' &&
             sameDirectory(item.directory, before.directory)
         )
-        if (cached) {
+        // Claude 的正文可能由外部客户端更新；空闲时明确点选就重读，不只激活缓存。
+        if (
+          cached &&
+          ((id !== 'claude' && id !== 'claude-desktop') || get().runningRuntime || submission)
+        ) {
           await activate(id, cached.id, carryDraft)
           return
         }
@@ -437,8 +441,25 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         if (
           connection === read(id).info?.connectionId &&
           sameDirectory(directory, read(id).directory)
-        )
+        ) {
           update(id, { history, historyLoaded: true })
+          const current = read(id)
+          const selected = current.activeId ? current.sessions[current.activeId] : undefined
+          if (
+            (id === 'claude' || id === 'claude-desktop') &&
+            !get().runningRuntime &&
+            !submission &&
+            selected &&
+            selected.connectionId === connection &&
+            history.some((item) => item.id === selected.nativeSessionId)
+          ) {
+            const view = await codingAgentClient().resumeSession({
+              runtimeId: id,
+              sessionId: selected.nativeSessionId
+            })
+            if (sameDirectory(directory, read(id).directory)) upsert(view)
+          }
+        }
       }),
     setOption: (optionId, value) =>
       perform(async (id) => {

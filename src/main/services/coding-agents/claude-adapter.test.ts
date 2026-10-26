@@ -126,6 +126,56 @@ async function fixture(
 }
 
 describe('Claude 官方 SDK 适配器', () => {
+  it.each(['auto', 'default', 'acceptEdits', 'plan'] as const)(
+    '按用户选择传递原生 %s 模式，不开启 Bypass',
+    async (mode) => {
+      const f = await fixture()
+      await f.adapter.setOption(f.session.id, 'permission', mode)
+      await expect(
+        f.adapter.setOption(f.session.id, 'permission', 'bypassPermissions')
+      ).rejects.toThrow('不可用')
+      await f.adapter.send(f.session.id, '合成任务')
+      expect(f.options[1].permissionMode).toBe(mode)
+      expect(f.options[1].allowDangerouslySkipPermissions).not.toBe(true)
+    }
+  )
+  it('空闲重读正文保留模式与模型，运行中不允许刷新覆盖会话', async () => {
+    const f = await fixture()
+    const first = await f.adapter.openSession('native-one')
+    await f.adapter.setOption(first.id, 'permission', 'acceptEdits')
+    await f.adapter.setOption(first.id, 'model', 'fixture-model')
+    const records = await f.sdk.getSessionMessages(first.id)
+    records[0].message = { content: [{ type: 'text', text: '外部新增正文' }] }
+    vi.mocked(f.sdk.getSessionMessages).mockResolvedValueOnce(records)
+    const fresh = await f.adapter.openSession(first.id)
+    expect(fresh.messages[0].content).toBe('外部新增正文')
+    expect(fresh.options.find((item) => item.id === 'permission')?.currentValue).toBe('acceptEdits')
+    expect(fresh.options.find((item) => item.id === 'model')?.currentValue).toBe('fixture-model')
+    await f.adapter.send(first.id, '合成任务')
+    await expect(f.adapter.openSession(first.id)).rejects.toThrow('先停止任务')
+  })
+  it('原生 Auto 降为 Manual 时同步实际模式并提示，不冒充仍在 Auto', async () => {
+    const f = await fixture()
+    await f.adapter.setOption(f.session.id, 'permission', 'auto')
+    await f.adapter.send(f.session.id, '合成任务')
+    f.queries[1].push({
+      type: 'system',
+      subtype: 'status',
+      session_id: f.session.id,
+      permissionMode: 'default'
+    })
+    await vi.waitFor(() =>
+      expect(f.events.at(-1)).toMatchObject({
+        kind: 'session',
+        session: {
+          error: expect.stringContaining('所选模式未生效'),
+          options: expect.arrayContaining([
+            expect.objectContaining({ id: 'permission', currentValue: 'default' })
+          ])
+        }
+      })
+    )
+  })
   const nativeId = '00000000-0000-4000-8000-000000000003'
   const native = (): DesktopCodeSession => ({
     id: nativeId,

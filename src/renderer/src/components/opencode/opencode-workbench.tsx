@@ -211,6 +211,9 @@ export function OpenCodeWorkbench(): JSX.Element {
                   历史已打开。原会话权限无法直接沿用，请先选择只读或项目写入后继续。
                 </span>
               ) : null}
+              {runtimeId === 'claude' || runtimeId === 'claude-desktop' ? (
+                <span className="field-hint">Auto 是否可用由原生程序、模型和供应商决定。</span>
+              ) : null}
             </div>
           ) : (
             <p className="field-hint opencode-start-hint">
@@ -218,7 +221,7 @@ export function OpenCodeWorkbench(): JSX.Element {
               {runtimeId === 'opencode'
                 ? '新会话使用 Plan 模式。'
                 : runtimeId === 'claude' || runtimeId === 'claude-desktop'
-                  ? '新会话使用计划模式；标准模式中的操作遵循原生规则与审批。'
+                  ? '新会话使用计划模式；打开会话后可选择自动、手动或接受编辑模式。'
                   : runtimeId === 'dsh'
                     ? '操作权限沿用 DSH 原生规则，需要审批时在此确认。'
                     : '新会话使用只读权限。'}
@@ -286,10 +289,21 @@ export function OpenCodeWorkbench(): JSX.Element {
                 rows={3}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="描述任务，点击发送开始；也可从 Prompt 或工具结果填入内容"
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== 'Enter' ||
+                    event.shiftKey ||
+                    event.nativeEvent.isComposing ||
+                    event.nativeEvent.keyCode === 229
+                  )
+                    return
+                  event.preventDefault()
+                  if (canSend && !event.repeat) event.currentTarget.form?.requestSubmit()
+                }}
+                placeholder="描述任务，Enter 发送，Shift + Enter 换行"
               />
               <div className="composer-actions">
-                <span className="field-hint">只恢复输入，不自动发送</span>
+                <span className="field-hint">Enter 发送 · Shift + Enter 换行</span>
                 <span className="opencode-draft-count">{draft.length.toLocaleString()}/50,000</span>
                 {preparingRuntime ? (
                   <button type="button" className="btn-ghost" onClick={cancelPreparation}>

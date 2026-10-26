@@ -52,6 +52,27 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('明确重读历史可更新已结束会话正文，迟到运行事件仍不能覆盖新历史', async () => {
+    const f = fixture('claude-desktop')
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('claude-desktop', 1, '/fixture/project')
+    const original = await service.openSession('claude-desktop', 1, f.native.id)
+    await service.send('claude-desktop', 1, original.id, '原任务')
+    f.emit({ ...f.native, outcome: 'completed' })
+    const messages = [{ id: 'external', role: 'assistant' as const, content: 'Desktop 新增正文' }]
+    vi.mocked(f.adapter.openSession).mockResolvedValueOnce({ ...f.native, messages })
+    const fresh = await service.openSession('claude-desktop', 1, f.native.id)
+    expect(fresh.id).toBe(original.id)
+    expect(fresh.messages).toEqual(messages)
+    const events: NativeCodingEvent[] = []
+    service.subscribe((_owner, event) => events.push(event))
+    f.emit({ ...f.native, status: 'running', messages: [] })
+    expect(events.at(-1)).toMatchObject({
+      kind: 'session',
+      session: { status: 'ready', messages }
+    })
+    service.dispose()
+  })
   it('窗口销毁先清除所有者，断连终态不再发送到原窗口', async () => {
     const f = fixture('claude')
     const service = new CodingAgentService([f.adapter])

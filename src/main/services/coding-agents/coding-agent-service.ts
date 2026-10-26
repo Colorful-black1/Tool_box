@@ -150,7 +150,8 @@ export class CodingAgentService {
       const session = await state.adapter.openSession(nativeId)
       if (connectionId !== state.info.connectionId || !state.info.connected)
         throw new CodingAgentError('连接已结束，请重新选择原生会话')
-      return this.upsert(state, session)
+      // 明确的历史重读可以更新正文；普通运行事件仍走终态后的迟到事件拦截。
+      return this.upsert(state, session, Boolean(nativeId))
     })
   }
 
@@ -369,7 +370,11 @@ export class CodingAgentService {
     this.upsert(state, event.session)
   }
 
-  private upsert(state: RuntimeState, raw: NativeCodingSession): CodingAgentSessionView {
+  private upsert(
+    state: RuntimeState,
+    raw: NativeCodingSession,
+    historyReload = false
+  ): CodingAgentSessionView {
     const previous = state.sessions.get(raw.id)
     const view: CodingAgentSessionView = {
       ...structuredClone(raw),
@@ -395,7 +400,12 @@ export class CodingAgentService {
               ? 'stopped'
               : 'completed')
       this.active = null
-    } else if (!active && previous?.outcome !== null && previous?.outcome !== undefined) {
+    } else if (
+      !active &&
+      !historyReload &&
+      previous?.outcome !== null &&
+      previous?.outcome !== undefined
+    ) {
       // 已结算后的标题 / 配置可更新，迟到正文与工具分片不能复活或污染运行。
       view.messages = previous.messages
       view.tools = previous.tools

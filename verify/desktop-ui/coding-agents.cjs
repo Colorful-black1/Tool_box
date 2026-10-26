@@ -1,5 +1,5 @@
 const { withDialog } = require('./dialog.cjs')
-/* global window:readonly, document:readonly, innerWidth:readonly */
+/* global window:readonly, document:readonly, innerWidth:readonly, Event:readonly, KeyboardEvent:readonly */
 const assert = require('node:assert/strict')
 
 module.exports = async function verifyCodingAgents({ page, app, check, capture }) {
@@ -276,8 +276,48 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
       .filter({ hasText: 'Desktop 后来新增的 Code 会话' })
       .waitFor()
     const after = await calls()
-    assert.deepEqual(after.slice(before.length).map((item) => item.action), ['list'])
+    assert.deepEqual(
+      after.slice(before.length).map((item) => item.action),
+      ['list', 'resume']
+    )
     assert.equal(await draft().inputValue(), '读取新历史时保留这份草稿')
     await page.getByRole('heading', { name: 'Claude Desktop 原生历史标题', exact: true }).waitFor()
+  })
+  await check('返回已连接的 Claude 工作台会重读正文，不重连或自动发送', async () => {
+    const before = await calls()
+    await page.evaluate(() => {
+      window.uiVerification.agentExternalReply('claude-desktop')
+      window.dispatchEvent(new Event('focus'))
+    })
+    await page.getByText('Desktop 外部后来新增的回复', { exact: true }).waitFor()
+    const after = await calls()
+    assert.deepEqual(
+      after.slice(before.length).map((item) => item.action),
+      ['list', 'resume']
+    )
+    assert.equal(await draft().inputValue(), '读取新历史时保留这份草稿')
+  })
+  await check('编程输入 Shift+Enter 换行、输入法 Enter 不提交、普通 Enter 只发送一次', async () => {
+    const sent = await count('send')
+    await draft().fill('第一行')
+    await draft().press('End')
+    await draft().press('Shift+Enter')
+    await draft().press('a')
+    assert.equal(await draft().inputValue(), '第一行\na')
+    await draft().evaluate((element) => {
+      element.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          isComposing: true,
+          bubbles: true,
+          cancelable: true
+        })
+      )
+    })
+    assert.equal(await count('send'), sent)
+    await draft().press('Enter')
+    await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
+    assert.equal(await count('send'), sent + 1)
+    await page.evaluate(() => window.uiVerification.agentFinish())
   })
 }

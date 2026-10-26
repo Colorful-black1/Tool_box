@@ -115,6 +115,35 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('Claude 刷新列表及再次点选会话会重读正文，不重连、不丢草稿', async () => {
+    store.getState().switchRuntime('claude-desktop')
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('保留未发送草稿')
+    const updated = session('claude-desktop', 'claude-desktop-ref', 2)
+    updated.messages = [{ id: 'external', role: 'assistant', content: '外部新增正文' }]
+    api.resumeSession.mockResolvedValueOnce(updated)
+    await store.getState().listSessions()
+    expect(store.getState().sessions[updated.id].messages).toEqual(updated.messages)
+    expect(store.getState().draft).toBe('保留未发送草稿')
+    api.resumeSession.mockResolvedValueOnce({ ...updated, revision: 3 })
+    await store.getState().openSession('same-native-id')
+    expect(api.resumeSession).toHaveBeenCalledTimes(3)
+    expect(api.connect).toHaveBeenCalledTimes(1)
+    expect(api.createSession).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+  })
+  it('Claude 正文重读失败仍保留旧正文与输入，不补建新会话', async () => {
+    store.getState().switchRuntime('claude-desktop')
+    await store.getState().openSession('same-native-id')
+    const before = store.getState().sessions['claude-desktop-ref']
+    store.getState().setDraft('重读失败也保留')
+    api.resumeSession.mockRejectedValueOnce(new Error('原生历史暂不可读'))
+    await store.getState().listSessions()
+    expect(store.getState().sessions['claude-desktop-ref']).toEqual(before)
+    expect(store.getState().draft).toBe('重读失败也保留')
+    expect(store.getState().error).toContain('原生历史暂不可读')
+    expect(api.createSession).not.toHaveBeenCalled()
+  })
   it('Code 与 Desktop 分别保留草稿，Desktop 首次发送只连接自己的入口', async () => {
     store.getState().switchRuntime('claude')
     store.getState().setDraft('Code 待发送')
