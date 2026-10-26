@@ -102,6 +102,36 @@ export default function App(): JSX.Element {
   const railCollapsed = useRailStore((state) => state.collapsed || state.narrow)
 
   useEffect(() => {
+    let closeTimer: number | undefined
+    const onKey = (event: KeyboardEvent): void => {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        document.fullscreenElement ||
+        closeTimer !== undefined
+      )
+        return
+      // 同一事件先交给弹层、编辑框和阅读菜单；它们处理过的 Esc 不再关窗。
+      closeTimer = window.setTimeout(() => {
+        closeTimer = undefined
+        if (!event.defaultPrevented) window.close()
+      }, 0)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (closeTimer !== undefined) window.clearTimeout(closeTimer)
+    }
+  }, [])
+
+  useEffect(() => {
     const bridge = window.toolbox?.tools
     if (!bridge?.onAiOutput) return
     return bridge.onAiOutput((event) => {

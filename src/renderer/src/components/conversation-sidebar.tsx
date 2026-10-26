@@ -96,7 +96,11 @@ export function ConversationSidebar(): JSX.Element {
                         aria-label="会话标题"
                         onChange={(event) => setDraftTitle(event.target.value)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Escape') cancelEdit()
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            cancelEdit()
+                          }
                         }}
                         autoFocus
                       />

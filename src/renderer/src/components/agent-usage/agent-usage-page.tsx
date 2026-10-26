@@ -112,6 +112,29 @@ export function AgentUsagePage(): JSX.Element {
     loadRef.current = load
   }, [load])
 
+  const refresh = useCallback((): void => {
+    if (!loading.current && !configuring.current) void load(true)
+  }, [load])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (
+        event.key !== 'F5' ||
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey
+      )
+        return
+      // 只刷新统计数据，不能触发浏览器整页重载；长按或扫描中不重复排队。
+      event.preventDefault()
+      if (!event.repeat && !event.isComposing) refresh()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [refresh])
+
   const change = useCallback((patch: Partial<UsageQuery>): void => {
     setQuery((old) => ({ ...old, ...patch, offset: patch.offset ?? 0 }))
   }, [])
@@ -315,7 +338,9 @@ export function AgentUsagePage(): JSX.Element {
             type="button"
             className="btn-gold"
             disabled={busy || actionBusy}
-            onClick={() => void load(true)}
+            aria-keyshortcuts="F5"
+            title="刷新统计（F5）"
+            onClick={refresh}
           >
             <RefreshIcon />
             刷新

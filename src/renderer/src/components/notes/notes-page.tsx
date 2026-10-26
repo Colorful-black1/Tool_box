@@ -351,7 +351,11 @@ function NoteEditor(props: {
             setDirty(true)
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') void finish()
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              void finish()
+            }
             if ((event.ctrlKey || event.metaKey) && event.key === 's') {
               event.preventDefault()
               void finish()

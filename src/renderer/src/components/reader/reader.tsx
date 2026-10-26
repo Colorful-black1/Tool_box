@@ -149,11 +149,14 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft') goPage(-1)
       else if (event.key === 'ArrowRight') goPage(1)
-      else if (event.key === 'Escape') setMenuVisible(false)
+      else if (event.key === 'Escape' && menuVisible) {
+        event.preventDefault()
+        setMenuVisible(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [goPage, tocOpen, searchOpen, settingsOpen])
+  }, [goPage, tocOpen, searchOpen, settingsOpen, menuVisible])
 
   const onScroll = useCallback(() => {
     const viewport = viewportRef.current
