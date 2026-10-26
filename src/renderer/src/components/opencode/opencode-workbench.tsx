@@ -233,8 +233,9 @@ export function OpenCodeWorkbench(): JSX.Element {
           ) : null}
           {runtimeId === 'claude-desktop' ? (
             <p className="status-banner opencode-desktop-hint">
-              沿用 Desktop 的第三方供应商配置，不同步 Desktop 原有聊天；历史仅包含此入口创建的编程会话。
-              使用本地网关时需保持 CC Switch 运行，无需打开 Desktop 窗口。
+              沿用 Desktop 的第三方供应商配置；历史只列当前项目已结束的 Desktop Code 会话，不含普通
+              Chat。工具箱新建的会话不会自动出现在 Desktop。
+              续接原会话前需完整退出外部 Claude 程序；本地网关需保持 CC Switch 运行。
             </p>
           ) : null}
           {session || !transferred ? (

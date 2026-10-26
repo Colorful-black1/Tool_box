@@ -181,7 +181,15 @@ SDK 使用 `settingSources: []`，不自动加载用户／项目／local setting
 
 在 CC Switch 的 **Claude Desktop** 页面启用第三方供应商后，回工具箱选择 **Claude Desktop**，选择项目并发送即可。
 模型菜单沿用 profile 的模型 ID 和显示名；未配置列表时只读查询同一网关的 `/v1/models`，不发送模型任务。默认使用列表首个模型，也可手动选择。切换供应商后下次发送重读；显式模型已移除时需同步模型并重新选择，不自动换模型。
-程序／项目偏好、连接、草稿与 Code 分开；凭据只用于子进程环境，不保存到工具箱。Desktop 入口历史仅含在此入口发起的 SDK 会话，按既有 kv 中的原生 ID 来源索引恢复，Code 历史排除这些会话；两入口各显示近期最多 200 条（在最近 2000 项原生目录中筛选）。不读取或同步 Desktop 原有聊天、Cowork 或运行中的桌面任务。详情见 [规格](docs/SPEC-claude-desktop-provider.md) 与 [验证记录](docs/claude-desktop-provider-verification.md)。
+程序／项目偏好、连接、草稿与 Code 分开；凭据只用于子进程环境，不保存到工具箱。Desktop 历史合并本入口创建的 SDK 会话和本机 **Desktop Code 已结束会话**，使用桌面描述中的 `cliSessionId` 关联原生记录，Code 历史排除这些来源；两入口各显示近期最多 200 条（在最近 2000 项原生目录中筛选）。归档、等待处理、结束状态无法确认或缺少 SDK 记录的会话不提供续接。
+
+查看原有 Code 历史：选择 **Claude Desktop → 原项目 → 历史会话 → 点选会话**，即可查看正文，不会自动发送。
+继续提问前，请**完整退出外部 Claude Desktop 和其他 Claude 任务**；只关闭窗口可能仍驻留托盘。工具箱在每次续接前检查 Windows 进程，发现 Claude 或无法确认状态就保留草稿、不发送。使用本地网关时保持 CC Switch 运行。本入口新建的 SDK 会话无需这一步。
+续接仍使用同一原生 ID、Desktop 网关和工具箱的权限选项，默认计划模式。进程检查是发送前的快照，不能阻止之后重新打开外部程序，请顺序切换使用；macOS／Linux 原会话续接暂未开放。
+不包含普通 Chat、Cowork、远程会话或运行中任务接管；不重写 Desktop 列表与状态，返回 Desktop 后的新增消息回显尚未实机确认，不承诺实时双向同步。
+工具箱新建的 SDK 会话没有 Desktop 的列表记录，**不会自动出现在 Desktop**。Desktop 已有 Code 会话只会在相同项目目录下列出；列表缺失时先核对顶部项目路径，再切换到原目录并刷新历史，不能只比较模型或供应商配置。
+每次展开「历史会话」都会重新读取原生目录；列表已展开时可点击标题旁的刷新按钮，获取 Desktop 后来新增的记录。
+配置见 [独立入口规格](docs/SPEC-claude-desktop-provider.md)，历史、退出修复与操作步骤见 [本轮交付记录](docs/claude-desktop-history-verification.md)。
 
 #### DeepSeek Harness
 

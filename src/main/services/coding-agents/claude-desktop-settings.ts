@@ -23,17 +23,17 @@ function text(value: unknown, limit: number): value is string {
   )
 }
 
-function profileDirectory(): string {
+/** Desktop 第三方数据根；历史和网关配置使用同一 profile，不能混用官方数据根。 */
+export function claudeDesktopDataDirectory(): string {
   if (process.platform === 'win32') {
     const local = process.env.LOCALAPPDATA
     if (!local || !isAbsolute(local)) throw new CodingAgentError('未找到 Claude Desktop 配置目录')
-    return join(local, 'Claude-3p', 'configLibrary')
+    return join(local, 'Claude-3p')
   }
   return join(
     homedir(),
     ...(process.platform === 'darwin' ? ['Library', 'Application Support'] : ['.config']),
-    'Claude-3p',
-    'configLibrary'
+    'Claude-3p'
   )
 }
 
@@ -122,7 +122,7 @@ async function discoverModels(base: string, token: string): Promise<unknown> {
 
 /** 只使用当前应用的第三方 profile；缺失或损坏时不猜测其他 profile 或 Code 配置。 */
 export async function readClaudeDesktopProviderSettings(): Promise<ClaudeProviderSettings> {
-  const directory = profileDirectory()
+  const directory = join(claudeDesktopDataDirectory(), 'configLibrary')
   const meta = await readJson(join(directory, '_meta.json'))
   const id = meta.appliedId
   if (

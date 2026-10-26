@@ -2,6 +2,8 @@
 
 日期：2026-10-25。范围：只读评估，不改业务代码、不写外部数据、不发送模型请求。
 
+2026-10-26 实施后续：用户已要求执行，具体边界见 [实施规格](SPEC-claude-desktop-history.md)，结果与手动步骤见 [交付记录](claude-desktop-history-verification.md)。以下保留原评估与证据，不将合成验证视作真实第三方续接或 Desktop 回显的证明。
+
 ## 结论
 
 可以实现一部分，不能把所有 Desktop 对话承诺为与 OpenCode 相同的完整同步：

@@ -14,6 +14,7 @@ export const OPENCODE_STATUS = {
 /** 原生历史与已打开会话共用一份列表，只有明确打开历史时才连接读取。 */
 export function OpenCodeSessions(): JSX.Element {
   const info = useCodingAgentStore((state) => state.info)
+  const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const directory = useCodingAgentStore((state) => state.directory)
   const sessions = useCodingAgentStore((state) => state.sessions)
   const activeId = useCodingAgentStore((state) => state.activeId)
@@ -71,11 +72,18 @@ export function OpenCodeSessions(): JSX.Element {
         disabled={!directory || busy || !!runningRuntime}
         onClick={() => {
           setHistoryOpen(!historyOpen)
-          if (!historyOpen && !historyLoaded) void listSessions()
+          // 外部 Agent 可能在列表收起期间新增会话，展开时不能只沿用旧缓存。
+          if (!historyOpen) void listSessions()
         }}
       >
         历史会话
       </button>
+      {runtimeId === 'claude-desktop' && historyOpen && historyLoaded ? (
+        <p className="opencode-session-empty">
+          只列当前项目的 Code 历史。找不到时，请切换到 Desktop 使用的项目目录，再刷新历史。
+          普通 Chat 不在此列。
+        </p>
+      ) : null}
       {items.size > 6 ? (
         <input
           className="field-input"

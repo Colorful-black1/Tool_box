@@ -500,3 +500,9 @@ UI 验收需要新构建产物，旧产物只能作为历史基线，不可证�
 ## Claude Desktop 独立供应商入口（2026-10-25）
 
 按 [专项规格](../docs/SPEC-claude-desktop-provider.md) 依次完成 profile 只读解析、独立运行时和历史来源、工作台入口及合成回归。既有 Claude Code 保留；本轮不读取 Desktop 官方登录，不控制其窗口，也不修改外部应用配置。验证门槛只计算本任务相对开始时的增量。
+
+## Desktop Code 本机历史与退出修复（2026-10-26）
+
+用户要求先提交再执行；既有工作已分为 `05629b1`、`7838cd4`、`4312e57` 三个提交。按 [历史专项规格](../docs/SPEC-claude-desktop-history.md) 实施：退出先撤销所有者及订阅；只读 Desktop Code 描述并以 CLI ID 关联 SDK；复用历史列表读取和续接；原生续接前重新校验已结束状态及外部进程。没有新增协议、schema 或依赖。
+
+新改动不自动提交。自动化与手动边界、操作步骤见 [交付记录](../docs/claude-desktop-history-verification.md)，真实网关续接和 Desktop 回显仍待用户验收。

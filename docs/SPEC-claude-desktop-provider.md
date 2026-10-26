@@ -2,6 +2,8 @@
 
 日期：2026-10-25。用户已确认 Claude Code 供应商可用，要求像 CC Switch 一样分开支持 Desktop。
 
+2026-10-26 后续：本文件记录独立供应商入口的初版范围；已结束的本机 Code 历史读取与续接见 [历史专项规格](SPEC-claude-desktop-history.md)，普通 Chat 的限制不变。
+
 ## 目标与边界
 
 - 工作台新增独立的 Claude Desktop 入口，现有 `claude` 标识与 Code 配置保持兼容；新增 `claude-desktop` 标识。

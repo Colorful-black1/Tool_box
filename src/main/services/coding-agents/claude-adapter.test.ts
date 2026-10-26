@@ -3,6 +3,12 @@ import type { Options, Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeAdapter, type ClaudeSdk } from './claude-adapter'
 import type { NativeCodingEvent } from './adapter'
 import type { ClaudeProviderSettings } from './claude-provider-settings'
+import type { DesktopCodeSession } from './claude-desktop-history'
+
+vi.mock('./claude-desktop-history', () => ({
+  readDesktopCodeSessions: vi.fn(async () => []),
+  assertDesktopCodeIdle: vi.fn(async () => undefined)
+}))
 
 vi.mock('./claude-runtime', () => ({
   bundledClaudeExecutable: vi.fn(async () => '/fixture/claude.exe'),
@@ -90,16 +96,125 @@ async function fixture(
     })
   }
   const readProvider = vi.fn(async () => structuredClone(provider))
-  const adapter = new ClaudeAdapter(store, async () => sdk, readProvider, id)
+  const readDesktopHistory = vi.fn(async (): Promise<DesktopCodeSession[]> => [])
+  const assertDesktopIdle = vi.fn(async (): Promise<void> => undefined)
+  const adapter = new ClaudeAdapter(
+    store,
+    async () => sdk,
+    readProvider,
+    id,
+    readDesktopHistory,
+    assertDesktopIdle
+  )
   adapters.push(adapter)
   const events: NativeCodingEvent[] = []
   adapter.subscribe((event) => events.push(event))
   await adapter.connect(process.cwd())
   const session = await adapter.openSession()
-  return { adapter, sdk, store, queries, options, events, session, readProvider }
+  return {
+    adapter,
+    sdk,
+    store,
+    queries,
+    options,
+    events,
+    session,
+    readProvider,
+    readDesktopHistory,
+    assertDesktopIdle
+  }
 }
 
 describe('Claude 官方 SDK 适配器', () => {
+  const nativeId = '00000000-0000-4000-8000-000000000003'
+  const native = (): DesktopCodeSession => ({
+    id: nativeId,
+    title: 'Desktop 原有标题',
+    directory: process.cwd(),
+    resumable: true
+  })
+  const original = async () => {
+    const f = await fixture({ env: {} }, 'claude-desktop')
+    f.readDesktopHistory.mockResolvedValue([native()])
+    vi.mocked(f.sdk.listSessions).mockResolvedValue([
+      { sessionId: nativeId, summary: 'SDK 标题', lastModified: 1, cwd: process.cwd() },
+      { sessionId: 'code-only', summary: 'Code 标题', lastModified: 2, cwd: process.cwd() }
+    ])
+    return f
+  }
+  it('发现原 Desktop Code 历史，以 CLI ID 读取和续接，不查询原进程或复制成新会话', async () => {
+    const f = await original()
+    expect(await f.adapter.listSessions()).toEqual([{ id: nativeId, title: 'Desktop 原有标题' }])
+    const restored = await f.adapter.openSession(nativeId)
+    expect(restored.messages[0].content).toBe('历史正文')
+    expect(f.sdk.getSessionMessages).toHaveBeenCalledWith(nativeId, {
+      dir: process.cwd(),
+      limit: 201
+    })
+    expect(f.queries).toHaveLength(1)
+    expect(f.assertDesktopIdle).not.toHaveBeenCalled()
+    await f.adapter.send(restored.id, '在原上下文继续')
+    expect(f.assertDesktopIdle).toHaveBeenCalledOnce()
+    expect(f.options[1].resume).toBe(nativeId)
+    expect(f.options[1].sessionId).toBeUndefined()
+    expect(f.options[1].permissionMode).toBe('plan')
+    expect(f.store.configGet().claudeDesktop).not.toHaveProperty('sessionIds')
+  })
+  it('Code 不混入 Desktop 原生会话；归档和缺少实际 SDK 记录的描述不成为可续接历史', async () => {
+    const f = await original()
+    const code = new ClaudeAdapter(
+      f.store,
+      async () => f.sdk,
+      async () => ({ env: {} }),
+      'claude',
+      f.readDesktopHistory
+    )
+    adapters.push(code)
+    await code.connect(process.cwd())
+    expect(await code.listSessions()).toEqual([{ id: 'code-only', title: 'Code 标题' }])
+    f.readDesktopHistory.mockResolvedValue([
+      { ...native(), resumable: false },
+      { ...native(), id: '00000000-0000-4000-8000-000000000099' }
+    ])
+    expect(await f.adapter.listSessions()).toEqual([])
+    await expect(f.adapter.openSession(nativeId)).rejects.toThrow('不属于当前项目')
+  })
+  it('原进程未退出、描述移除或变为不可续接时拒绝发送，保留原生身份', async () => {
+    const f = await original()
+    const restored = await f.adapter.openSession(nativeId)
+    f.assertDesktopIdle.mockRejectedValueOnce(new Error('请完整退出 Claude Desktop'))
+    await expect(f.adapter.send(restored.id, '合成任务')).rejects.toThrow('完整退出')
+    expect(f.queries).toHaveLength(1)
+    f.readDesktopHistory.mockResolvedValueOnce([])
+    await expect(f.adapter.send(restored.id, '合成任务')).rejects.toThrow('原会话已失效')
+    expect(f.queries).toHaveLength(1)
+    f.readDesktopHistory.mockResolvedValueOnce([{ ...native(), resumable: false }])
+    await expect(f.adapter.send(restored.id, '合成任务')).rejects.toThrow('本次未发送')
+    expect(f.queries).toHaveLength(1)
+    await f.adapter.send(restored.id, '用户明确重试')
+    expect(f.options[1].resume).toBe(nativeId)
+  })
+  it('原生续接检查期间停止，不迟到创建 SDK 任务；普通 SDK 新会话不增加进程门', async () => {
+    const f = await original()
+    const restored = await f.adapter.openSession(nativeId)
+    let finish!: () => void
+    f.assertDesktopIdle.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    )
+    const pending = f.adapter.send(restored.id, '合成任务')
+    await vi.waitFor(() => expect(f.assertDesktopIdle).toHaveBeenCalledOnce())
+    f.adapter.stop(restored.id)
+    finish()
+    await expect(pending).rejects.toThrow('草稿已保留')
+    expect(f.queries).toHaveLength(1)
+    const fresh = await f.adapter.openSession()
+    await f.adapter.send(fresh.id, '新的 SDK 任务')
+    expect(f.assertDesktopIdle).toHaveBeenCalledOnce()
+    expect(f.options[1].sessionId).toBe(fresh.id)
+  })
   it('Desktop 独立读取网关模型和偏好，清理继承的 Code 路由、认证与云端模式', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'fixture-code-key')
     vi.stubEnv('ANTHROPIC_MODEL', 'code-model')
@@ -131,7 +246,7 @@ describe('Claude 官方 SDK 适配器', () => {
     expect(f.options[0].model).toBe('desktop-model')
     const info = await f.adapter.inspect()
     expect(info.runtimeId).toBe('claude-desktop')
-    expect(info.capabilities.desktopHistory).toBe('unsupported')
+    expect(info.capabilities.desktopHistory).toBe('supported')
     expect(info.visibleModelIds).toEqual(['native-default', 'desktop-model'])
     expect(f.queries[0].query.supportedModels).not.toHaveBeenCalled()
     expect(f.session.options[0].options).toContainEqual({

@@ -2,6 +2,8 @@
 
 日期：2026-10-25。
 
+2026-10-26 后续：本文件保留初版验收结果；当前历史能力、退出修复及最新验证见 [后续交付记录](claude-desktop-history-verification.md)。初版代码已按用户要求提交为 `4312e57`。
+
 ## 改动及原因
 
 用户已确认 Code 路由可用，但期望像 CC Switch 一样分别支持 Code／Desktop。新增 `claude-desktop` 工作台入口与独立适配器实例：Code 继续读取 `~/.claude/settings.json`，Desktop 只读当前 `Claude-3p` 第三方 profile；不再需要在 Code 页面重复配置 Desktop 所用供应商。

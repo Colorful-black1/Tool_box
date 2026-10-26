@@ -24,6 +24,8 @@ import {
 import { bundledClaudeExecutable, inspectClaudeExecutable } from './claude-runtime'
 import { readClaudeProviderSettings } from './claude-provider-settings'
 import type { ClaudeProviderSettings } from './claude-provider-settings'
+import { assertDesktopCodeIdle, readDesktopCodeSessions } from './claude-desktop-history'
+import type { DesktopCodeSession } from './claude-desktop-history'
 
 export type ClaudeSdk = Pick<
   typeof import('@anthropic-ai/claude-agent-sdk'),
@@ -81,6 +83,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   private models: ModelInfo[] = []
   private sessions = new Map<string, NativeCodingSession>()
   private persisted = new Set<string>()
+  private nativeDesktopIds = new Set<string>()
   private listeners = new Set<(event: NativeCodingEvent) => void>()
   private approvals = new Map<string, { run: ClaudeRun; settle(allowed: boolean): void }>()
   private run: ClaudeRun | null = null
@@ -115,14 +118,17 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       import('@anthropic-ai/claude-agent-sdk'),
     private readonly readProvider: () => Promise<ClaudeProviderSettings> =
       readClaudeProviderSettings,
-    readonly id: 'claude' | 'claude-desktop' = 'claude'
+    readonly id: 'claude' | 'claude-desktop' = 'claude',
+    private readonly readDesktopHistory: (directory: string) => Promise<DesktopCodeSession[]> =
+      readDesktopCodeSessions,
+    private readonly assertDesktopIdle: () => Promise<void> = assertDesktopCodeIdle
   ) {
     if (id === 'claude-desktop') {
       this.info.runtimeId = id
       this.info.name = 'Claude Desktop'
       this.info.detail =
-        '沿用 Desktop 第三方网关与模型列表，由官方 SDK 执行；无需打开 Desktop 窗口。仅显示本入口创建的 SDK 会话，不读取 Desktop 原有聊天或官方登录。'
-      this.info.capabilities.desktopHistory = 'unsupported'
+        '沿用 Desktop 第三方网关，由 SDK 执行；历史仅列当前项目已结束的 Code 会话。工具箱新建会话不会自动出现在 Desktop；续接前需退出外部 Claude。不含普通 Chat。'
+      this.info.capabilities.desktopHistory = 'supported'
     }
   }
 
@@ -157,7 +163,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   }
 
   private rememberDesktopSession(id: string): void {
-    if (this.id !== 'claude-desktop') return
+    if (this.id !== 'claude-desktop' || this.nativeDesktopIds.has(id)) return
     const ids = this.desktopSessionIds()
     if (ids.includes(id)) return
     if (ids.length >= 10000)
@@ -359,6 +365,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     }
     this.sessions.clear()
     this.persisted.clear()
+    this.nativeDesktopIds.clear()
     this.sdk = null
     this.info.connected = false
     for (const listener of this.listeners) listener({ kind: 'connection', connected: false })
@@ -368,25 +375,30 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     if (!this.sdk || !this.info.connected) throw new CodingAgentError('Claude 尚未连接')
     const generation = this.generation
     const directory = this.info.directory
-    const desktopIds = new Set(this.desktopSessionIds())
-    const items = await this.sdk.listSessions({
-      dir: directory,
-      limit: 2000,
-      includeWorktrees: false
-    })
+    const [native, items] = await Promise.all([
+      this.readDesktopHistory(directory),
+      this.sdk.listSessions({ dir: directory, limit: 2000, includeWorktrees: false })
+    ])
     if (generation !== this.generation) throw new CodingAgentError('Claude 连接已结束')
+    const nativeById = new Map(native.map((item) => [item.id, item]))
+    const desktopIds = new Set([...this.desktopSessionIds(), ...nativeById.keys()])
+    if (this.id === 'claude-desktop')
+      for (const id of nativeById.keys()) this.nativeDesktopIds.add(id)
     return items
       .filter(
         (item) =>
           (!item.cwd || normalizeDraftDirectory(item.cwd) === normalizeDraftDirectory(directory)) &&
           (this.id === 'claude-desktop'
-            ? desktopIds.has(item.sessionId)
+            ? desktopIds.has(item.sessionId) && nativeById.get(item.sessionId)?.resumable !== false
             : !desktopIds.has(item.sessionId))
       )
       .slice(0, 200)
       .map((item) => ({
         id: item.sessionId,
-        title: text(item.customTitle || item.summary || item.firstPrompt, 100) || 'Claude 会话'
+        title:
+          (this.id === 'claude-desktop' ? nativeById.get(item.sessionId)?.title : '') ||
+          text(item.customTitle || item.summary || item.firstPrompt, 100) ||
+          'Claude 会话'
       }))
   }
 
@@ -516,6 +528,21 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       const prepared = await this.options(session.directory, controller)
       options = prepared.options
       currentModels = prepared.models
+      if (this.id === 'claude-desktop' && this.persisted.has(id)) {
+        const native = (await this.readDesktopHistory(session.directory)).find(
+          (item) => item.id === id
+        )
+        if (controller.signal.aborted || generation !== this.generation)
+          throw new CodingAgentError('已停止准备，草稿已保留')
+        if (native) {
+          if (!native.resumable)
+            throw new CodingAgentError('Desktop 原会话尚未结束、正在等待处理或已归档；本次未发送')
+          this.nativeDesktopIds.add(id)
+          await this.assertDesktopIdle()
+        } else if (this.nativeDesktopIds.has(id)) {
+          throw new CodingAgentError('Desktop 原会话已失效，请刷新历史；草稿已保留')
+        }
+      }
     } finally {
       if (this.preparing === preparing) this.preparing = null
     }

@@ -2,6 +2,7 @@
 module.exports = function codingAgentsFixture() {
   const listeners = new Set()
   const states = new Map()
+  const addedHistory = new Map()
   let sequence = 0,
     revision = 0,
     active = null,
@@ -122,7 +123,10 @@ module.exports = function codingAgentsFixture() {
           failHistory = false
           throw new Error('合成历史读取失败')
         }
-        return [{ id: 'same-native-id', title: `${names[id]} 原生历史标题` }]
+        return [
+          { id: 'same-native-id', title: `${names[id]} 原生历史标题` },
+          ...(addedHistory.get(id) ?? [])
+        ]
       },
       createSession: async (id) => {
         calls.push({ action: 'create', id })
@@ -162,6 +166,9 @@ module.exports = function codingAgentsFixture() {
     },
     controls: {
       agentCalls: () => copy(calls),
+      agentAddHistory: (id) => {
+        addedHistory.set(id, [{ id: 'new-external-history', title: 'Desktop 后来新增的 Code 会话' }])
+      },
       agentFailHistory: () => {
         failHistory = true
       },
