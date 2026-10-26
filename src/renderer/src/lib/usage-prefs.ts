@@ -12,8 +12,19 @@ export const USAGE_PERIODS = [
 ] as const
 export type UsagePeriod = (typeof USAGE_PERIODS)[number]['value']
 
+/** 自动刷新间隔，单位为秒；0 表示关闭。 */
+export const USAGE_REFRESH_INTERVALS = [
+  { value: '0', label: '关闭' },
+  { value: '5', label: '5 秒' },
+  { value: '10', label: '10 秒' },
+  { value: '30', label: '30 秒' },
+  { value: '60', label: '60 秒' }
+] as const
+export type UsageRefreshInterval = (typeof USAGE_REFRESH_INTERVALS)[number]['value']
+
 export interface UsagePrefs {
   period: UsagePeriod
+  refreshInterval?: UsageRefreshInterval
   client?: UsageClient
   project?: string
   model?: string
@@ -80,6 +91,8 @@ export function loadUsagePrefs(): UsagePrefs | null {
     const period = USAGE_PERIODS.find((item) => item.value === value.period)?.value ?? 'today'
     return {
       period,
+      refreshInterval: USAGE_REFRESH_INTERVALS.find((item) => item.value === value.refreshInterval)
+        ?.value,
       ...(typeof value.client === 'string' && Object.hasOwn(USAGE_CLIENTS, value.client)
         ? { client: value.client as UsageClient }
         : {}),

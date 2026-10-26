@@ -20,12 +20,13 @@ import { UsageSources } from './usage-sources'
 import { UsageTrendChart } from './usage-trend-chart'
 import {
   USAGE_PERIODS,
+  USAGE_REFRESH_INTERVALS,
   loadUsagePrefs,
   localDateString,
   periodRange,
   saveUsagePrefs
 } from '../../lib/usage-prefs'
-import type { UsagePeriod, UsagePrefs } from '../../lib/usage-prefs'
+import type { UsagePeriod, UsagePrefs, UsageRefreshInterval } from '../../lib/usage-prefs'
 import { useAppStore } from '../../stores/app-store'
 
 const EXPORT_LIMIT = 50_000
@@ -39,6 +40,9 @@ export function AgentUsagePage(): JSX.Element {
   const usageTarget = useAppStore((state) => state.usageTarget)
   const [initial] = useState<UsagePrefs | null>(() => loadUsagePrefs())
   const [period, setPeriod] = useState<UsagePeriod>(initial?.period ?? 'today')
+  const [refreshInterval, setRefreshInterval] = useState<UsageRefreshInterval>(
+    initial?.refreshInterval ?? '60'
+  )
   const [query, setQuery] = useState<UsageQuery>(() => {
     if (usageTarget) return usageTarget
     const base: UsageQuery =
@@ -145,10 +149,11 @@ export function AgentUsagePage(): JSX.Element {
     void load(false)
   }, [query, load])
 
-  // 页面可见时每分钟对齐日期边界并增量刷新；隐藏后停止，切回时补一次。
+  // 仅在启用且页面可见时自动刷新；扫描中跳过，不积压定时任务。
   useEffect(() => {
+    if (refreshInterval === '0') return
     const tick = (): void => {
-      if (document.hidden || configuring.current) return
+      if (document.hidden || configuring.current || loading.current) return
       if (period !== 'custom') {
         const range = periodRange(period)
         if (range.from !== queryRef.current.from || range.to !== queryRef.current.to) {
@@ -156,15 +161,16 @@ export function AgentUsagePage(): JSX.Element {
           return
         }
       }
-      void load(false)
+      // 绕过服务的 60 秒查询缓存，仍复用文件指纹缓存，只解析变化的来源。
+      void load(true)
     }
-    const timer = setInterval(tick, 60_000)
+    const timer = setInterval(tick, Number(refreshInterval) * 1000)
     document.addEventListener('visibilitychange', tick)
     return () => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', tick)
     }
-  }, [load, period])
+  }, [load, period, refreshInterval])
 
   // 来源或模型被新数据淘汰时清掉失效筛选，避免页面停在空结果。
   useEffect(() => {
@@ -179,6 +185,7 @@ export function AgentUsagePage(): JSX.Element {
   useEffect(() => {
     saveUsagePrefs({
       period,
+      refreshInterval,
       client: query.client,
       project: query.project,
       model: query.model,
@@ -189,6 +196,7 @@ export function AgentUsagePage(): JSX.Element {
     })
   }, [
     period,
+    refreshInterval,
     query.client,
     query.project,
     query.model,
@@ -334,6 +342,16 @@ export function AgentUsagePage(): JSX.Element {
           >
             {exporting ? '导出中…' : '导出 CSV'}
           </button>
+          <span className="field-hint">自动刷新</span>
+          <Dropdown
+            ariaLabel="自动刷新间隔"
+            value={refreshInterval}
+            options={USAGE_REFRESH_INTERVALS.map((item) => ({ ...item }))}
+            onChange={(value) => {
+              const next = USAGE_REFRESH_INTERVALS.find((item) => item.value === value)
+              if (next) setRefreshInterval(next.value)
+            }}
+          />
           <button
             type="button"
             className="btn-gold"
