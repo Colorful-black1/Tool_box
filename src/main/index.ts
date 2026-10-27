@@ -19,6 +19,10 @@ import { createTray, showMainWindow } from './tray'
 import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
 
+// 在初始化数据库、托盘和草稿退出监听之前取得锁；重复实例直接退出，不走草稿确认。
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) app.exit(0)
+
 const safeStorageAdapter = safeStorage as SafeStorageAdapter
 
 /** 主窗口引用：托盘与快捷键都要用它 */
@@ -31,6 +35,16 @@ let shortcuts: ShortcutManager | null = null
 let quitting = false
 let checkingQuit = false
 const draftQuitFlush = new AgentDraftQuitFlush()
+
+app.on('second-instance', () => {
+  // 首次启动尚未创建窗口时，等待 ready-to-show 统一显示，避免并发创建窗口。
+  if (quitting || !mainWindow) return
+  if (mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow()
+    return
+  }
+  showMainWindow(mainWindow)
+})
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -52,7 +66,7 @@ function createMainWindow(): BrowserWindow {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => showMainWindow(win))
 
   // 关窗不退出：隐藏到托盘，等用户从托盘唤回或明确退出
   win.on('close', (event) => {
@@ -100,6 +114,7 @@ function initializeServices(): void {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return
   if (process.platform === 'win32') app.setAppUserModelId('com.toolbox.app')
   Menu.setApplicationMenu(null)
   try {

@@ -12,10 +12,11 @@ export function PortPanel(): JSX.Element {
   const [notice, setNotice] = useState('')
   const [stoppingPid, setStoppingPid] = useState<number | null>(null)
   const [query, setQuery] = useState('')
+  const [appliedQuery, setAppliedQuery] = useState('')
   const [protocol, setProtocol] = useState('all')
   const [listening, setListening] = useState(true)
   const [page, setPage] = useState(0)
-  const request = useRef({ sequence: 0, stopping: false, mounted: true })
+  const request = useRef({ sequence: 0, loading: false, stopping: false, mounted: true })
   useEffect(() => {
     const state = request.current
     state.mounted = true
@@ -25,8 +26,10 @@ export function PortPanel(): JSX.Element {
     }
   }, [])
   const refresh = async (afterStop = false): Promise<void> => {
-    if (request.current.stopping && !afterStop) return
+    if (request.current.loading || (request.current.stopping && !afterStop)) return
     const sequence = ++request.current.sequence
+    // 输入仅在手动查询时应用；停止进程后的刷新继续使用上次已提交条件。
+    setAppliedQuery(afterStop ? appliedQuery : query)
     setSnapshot(null)
     setError('')
     setNotice('')
@@ -35,6 +38,7 @@ export function PortPanel(): JSX.Element {
       setError('端口接口未就绪，请使用最新桌面应用')
       return
     }
+    request.current.loading = true
     setBusy(true)
     try {
       const result = await window.toolbox.system.portProcesses()
@@ -47,6 +51,7 @@ export function PortPanel(): JSX.Element {
             : '无法读取端口占用，系统命令失败或超时，请稍后重试'
         )
     } finally {
+      request.current.loading = false
       if (sequence === request.current.sequence) setBusy(false)
     }
   }
@@ -80,7 +85,7 @@ export function PortPanel(): JSX.Element {
       if (request.current.mounted) setStoppingPid(null)
     }
   }
-  const keyword = query.trim().toLowerCase()
+  const keyword = appliedQuery.trim().toLowerCase()
   const entries = (snapshot?.entries ?? []).filter(
     (row) =>
       (protocol === 'all' || protocol === row.protocol) &&
@@ -104,6 +109,7 @@ export function PortPanel(): JSX.Element {
           type="button"
           className="btn-ghost"
           disabled={busy || stoppingPid !== null}
+          title="输入端口或进程后按 Enter，也可点击查询"
           onClick={() => void refresh()}
         >
           {busy ? '查询中…' : '查询端口占用'}
@@ -111,7 +117,7 @@ export function PortPanel(): JSX.Element {
       </header>
       <p className="field-hint">
         查看 Windows TCP / UDP、PID 与进程名。停止操作会结束整个进程，不仅是当前端口；
-        系统关键进程及工具箱自身进程不可停止。首次使用请手动查询。
+        系统关键进程及工具箱自身进程不可停止。输入后按 Enter 或点击查询，不自动查询。
       </p>
       <div className="tool-controls">
         <input
@@ -119,10 +125,13 @@ export function PortPanel(): JSX.Element {
           aria-label="筛选端口或进程"
           value={query}
           maxLength={100}
-          placeholder="端口 / PID / 进程名 / 本地地址"
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setPage(0)
+          placeholder="端口 / PID / 进程名 / 本地地址，Enter 查询"
+          aria-keyshortcuts="Enter"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+            event.preventDefault()
+            if (!event.repeat) void refresh()
           }}
         />
         <Dropdown
@@ -151,6 +160,11 @@ export function PortPanel(): JSX.Element {
         </label>
         <CopyButton text={text} label="复制筛选结果" />
       </div>
+      {snapshot && query.trim() !== appliedQuery.trim() ? (
+        <p className="field-hint" role="status">
+          输入已修改，按 Enter 或点击查询后生效；当前显示上次查询结果。
+        </p>
+      ) : null}
       {error ? (
         <div className="status-banner" role="alert">
           {error}

@@ -11,6 +11,9 @@ import type { JSX, KeyboardEvent } from 'react'
 /** 超过这个长度就不自动算高度了，避免超大文本每次输入都触发重排 */
 const MAX_AUTO_HEIGHT_CHARS = 200_000
 
+/** 输入框底边至少留出的窗口空间，避免文本域长到窗口外面去。 */
+const VIEWPORT_MARGIN = 24
+
 export interface AutoTextareaProps {
   value: string
   onChange?: (value: string) => void
@@ -64,6 +67,18 @@ function measureContent(element: HTMLTextAreaElement, value: string, wrap: boole
   return height
 }
 
+/**
+ * 文本域最多长到「当前视口还能看见」的高度；超过后交给内部滚动。
+ * 窄屏下输出区可能位于首屏之外，可用高度不足时保留原上限。
+ */
+function heightLimit(element: HTMLTextAreaElement, preferred: number, minHeight: number): number {
+  const top = element.getBoundingClientRect().top
+  if (top < 0) return preferred
+  const available = Math.round(window.innerHeight - top - VIEWPORT_MARGIN)
+  if (available < minHeight * 2) return preferred
+  return Math.max(minHeight, Math.min(preferred, available))
+}
+
 export function AutoTextarea({
   value,
   onChange,
@@ -74,15 +89,16 @@ export function AutoTextarea({
   maxHeight,
   spellCheck = false,
   ariaLabel,
-  wrap = false,
+  wrap = true,
   onKeyDown
 }: AutoTextareaProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null)
-  const limit = maxHeight ?? Math.round(window.innerHeight * 0.7)
 
   useLayoutEffect(() => {
     const element = ref.current
     if (!element) return
+    const preferred = maxHeight ?? Math.round(window.innerHeight * 0.7)
+    const limit = heightLimit(element, preferred, minHeight)
     if (value.length > MAX_AUTO_HEIGHT_CHARS) {
       // 超大文本：交给内部滚动，别再每输入一个字就重排一次
       element.style.minHeight = `${minHeight}px`
@@ -94,8 +110,9 @@ export function AutoTextarea({
     const next = Math.min(Math.max(content, minHeight), limit)
     element.style.minHeight = `${minHeight}px`
     element.style.height = `${next}px`
-    element.style.overflowY = content > limit ? 'auto' : 'hidden'
-  }, [value, minHeight, limit, wrap])
+    // 交给浏览器判断是否需要滚动条；测量与实际折行就算有 1px 误差也不会裁掉内容。
+    element.style.overflowY = 'auto'
+  }, [value, minHeight, maxHeight, wrap])
 
   return (
     <textarea
@@ -106,6 +123,7 @@ export function AutoTextarea({
       readOnly={readOnly}
       spellCheck={spellCheck}
       aria-label={ariaLabel}
+      wrap={wrap ? 'soft' : 'off'}
       onChange={(event) => onChange?.(event.target.value)}
       onKeyDown={onKeyDown}
     />

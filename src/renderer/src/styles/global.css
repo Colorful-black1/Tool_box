@@ -5733,6 +5733,40 @@ textarea,
   resize: vertical;
 }
 
+/* 工具区滚动条比全局默认更宽、更亮：长日志必须一眼看出还能继续滚。 */
+.tool-input::-webkit-scrollbar,
+.tool-diff::-webkit-scrollbar,
+.tool-log-causes::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.tool-input::-webkit-scrollbar-track,
+.tool-diff::-webkit-scrollbar-track,
+.tool-log-causes::-webkit-scrollbar-track {
+  background: rgba(var(--neutral-rgb), 0.06);
+  border-radius: 5px;
+}
+
+.tool-input::-webkit-scrollbar-thumb,
+.tool-diff::-webkit-scrollbar-thumb,
+.tool-log-causes::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-rgb), 0.42);
+  border-radius: 5px;
+}
+
+.tool-input::-webkit-scrollbar-thumb:hover,
+.tool-diff::-webkit-scrollbar-thumb:hover,
+.tool-log-causes::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--accent-rgb), 0.65);
+}
+
+.tool-input::-webkit-scrollbar-corner,
+.tool-diff::-webkit-scrollbar-corner,
+.tool-log-causes::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* 单行输入（时间戳、UUID 这类）：不继承文本域的高度，宽度也别铺满 */
 .tool-input-line {
   width: 100%;

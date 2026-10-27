@@ -69,7 +69,8 @@ export function Workbench({
   outputExtra,
   singleLine = false
 }: WorkbenchProps): JSX.Element {
-  const [wrap, setWrap] = useState(false)
+  // 文本域默认软换行：长日志按窗口宽度折行，纵向滚动查看全文。
+  const [wrap, setWrap] = useState(true)
 
   return (
     <div className="tool-workbench">
