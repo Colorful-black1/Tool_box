@@ -1,17 +1,14 @@
 /** 工具快捷入口只存稳定 ID，不包含工具输入、输出或搜索记录。 */
 export const MAX_TOOL_FAVORITES = 30
-export const MAX_TOOL_RECENT = 20
-export const VISIBLE_TOOL_RECENT = 8
+export const MAX_TOOL_RECENT = 5
+export const VISIBLE_TOOL_RECENT = 5
 const TOOL_ID = /^[a-z][a-z0-9-]{0,63}$/
 
 /** 兼容旧版与损坏偏好；主进程写入时仍使用严格校验。 */
 export function readToolIds(value: unknown, limit: number): string[] {
   if (!Array.isArray(value)) return []
-  return [
-    ...new Set(
-      value.slice(0, limit).filter((id): id is string => typeof id === 'string' && TOOL_ID.test(id))
-    )
-  ]
+  const ids = value.filter((id): id is string => typeof id === 'string' && TOOL_ID.test(id))
+  return [...new Set(ids)].slice(0, limit)
 }
 
 export function validateToolIds(value: unknown, limit: number): string[] {
@@ -31,7 +28,7 @@ export function shortcutToolIds(known: string[], favorites: string[], recent: st
   return [
     ...new Set([
       ...readToolIds(favorites, MAX_TOOL_FAVORITES),
-      ...readToolIds(recent, MAX_TOOL_RECENT)
+      ...readToolIds(recent, recent.length)
         .filter((id) => valid.has(id))
         .slice(0, VISIBLE_TOOL_RECENT)
     ])

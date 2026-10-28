@@ -3538,6 +3538,47 @@ textarea,
   padding: 20px 24px;
 }
 
+/* 预览改为左右分栏：左侧继续编辑原文，右侧实时渲染，便于逐段比对。 */
+.note-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+}
+
+.note-split-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.note-split-head {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--gold-line);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+
+.note-split-input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.note-split-input:focus {
+  box-shadow: none;
+}
+
+/* 输入框自身去掉了描边，焦点提示改由整块分栏承担。 */
+.note-split-pane:focus-within {
+  border-color: var(--gold);
+  box-shadow: 0 0 13px rgba(var(--accent-rgb), 0.18);
+}
+
 .note-preview-title {
   margin: 0 0 14px;
   padding-bottom: 11px;
@@ -5645,6 +5686,92 @@ textarea,
 .tool-port-section {
   padding-top: 18px;
   border-top: 1px solid var(--gold-line);
+}
+
+/* Cron 逐字段生成：标签、模式与值控件在同一行，窄窗口自动换行。 */
+.cron-inline-field {
+  white-space: nowrap;
+}
+
+.cron-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: rgba(var(--neutral-rgb), 0.025);
+}
+
+.cron-builder-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 32px;
+}
+
+.cron-builder-row + .cron-builder-row {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.cron-builder-label {
+  width: 42px;
+  flex-shrink: 0;
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.cron-builder-mode {
+  min-width: 84px;
+  justify-content: space-between;
+}
+
+.cron-builder-week {
+  min-width: 72px;
+}
+
+.cron-builder-number {
+  width: 74px;
+  flex: none;
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cron-builder-list {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+  max-width: 240px;
+  padding: 6px 9px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cron-builder-text {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.cron-builder-weekdays {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cron-builder-weekdays .btn-ghost {
+  padding: 2px 7px;
+  font-size: 10.5px;
+}
+
+.cron-builder-weekdays .btn-ghost[aria-pressed='true'] {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .tool-port-search.field-input {

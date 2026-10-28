@@ -26,6 +26,6 @@ describe('工具快捷入口数据', () => {
   })
   it('最近展示上限在过滤过期 ID 之后应用，不让过期项占位置', () => {
     const known = Array.from({ length: 12 }, (_, i) => `tool-${i}`)
-    expect(shortcutToolIds(known, [], ['removed', ...known])).toEqual(known.slice(0, 8))
+    expect(shortcutToolIds(known, [], ['removed', ...known])).toEqual(known.slice(0, 5))
   })
 })

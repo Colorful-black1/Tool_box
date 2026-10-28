@@ -44,7 +44,9 @@ export const useToolShortcutStore = create<ToolShortcutState>((set, get) => {
       loading = (async () => {
         try {
           const config = await window.toolbox.config.get()
-          recentDirty = false
+          const storedRecent = config?.toolRecent
+          // 旧配置可能仍保存超过 5 条；标记待写，让下次打开工具时顺带裁剪落盘。
+          recentDirty = Array.isArray(storedRecent) && storedRecent.length > MAX_TOOL_RECENT
           set({
             favorites: readToolIds(config?.toolFavorites, MAX_TOOL_FAVORITES),
             recent: readToolIds(config?.toolRecent, MAX_TOOL_RECENT),

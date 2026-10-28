@@ -1,7 +1,6 @@
 import type { JSX } from 'react'
 import {
   MAX_TOOL_FAVORITES,
-  MAX_TOOL_RECENT,
   VISIBLE_TOOL_RECENT,
   readToolIds
 } from '../../../../shared/tool-shortcuts'
@@ -29,7 +28,7 @@ export function ToolShortcuts({
     },
     {
       label: '最近使用',
-      ids: readToolIds(recent, MAX_TOOL_RECENT)
+      ids: readToolIds(recent, recent.length)
         .filter((id) => known.has(id))
         .slice(0, VISIBLE_TOOL_RECENT)
     }

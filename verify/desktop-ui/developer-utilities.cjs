@@ -23,6 +23,7 @@ module.exports = async function verifyDeveloperUtilities({ page, app, check, cap
   await button('工具').click()
   await check('Cron 三种格式、字段说明、未来时间和非法字段反馈', async () => {
     await open('Cron 计算器')
+    await button('表达式解析').click()
     await page.getByLabel('计算起点', { exact: true }).fill('2026-10-22 08:00:00')
     await button('计算执行时间').click()
     assert.equal(
@@ -42,6 +43,20 @@ module.exports = async function verifyDeveloperUtilities({ page, app, check, cap
     await textbox('Cron 表达式').fill('0 9 * * MON-FRI')
     await button('计算执行时间').click()
     await page.getByRole('list', { name: '执行时间' }).waitFor()
+  })
+  await check('Cron 可视化间隔生成并带回表达式解析', async () => {
+    await open('Cron 计算器')
+    await choose('Cron 格式', 'Spring · 六段')
+    await button('可视化生成').click()
+    await choose('分钟模式', '间隔')
+    await page.getByLabel('分钟间隔起点', { exact: true }).fill('0')
+    await page.getByLabel('分钟间隔值', { exact: true }).fill('15')
+    await page.getByText('0 0/15 9 * * MON-FRI', { exact: true }).waitFor()
+    await capture('tools-cron-builder')
+    await button('填入表达式并计算').click()
+    assert.equal(await textbox('Cron 表达式').inputValue(), '0 0/15 9 * * MON-FRI')
+    await page.getByRole('list', { name: '执行时间' }).waitFor()
+    await capture('tools-cron-builder-applied')
   })
   await check('Spring 配置保留占位符与长整数，转换、比较和拒绝不支持的语法', async () => {
     await open('Spring 配置工具')

@@ -1,6 +1,6 @@
 ﻿import { confirmDialog } from '../../stores/dialog-store'
-import { useEffect, useMemo, useState } from 'react'
-import type { JSX } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { JSX, KeyboardEvent } from 'react'
 
 import type { NoteView } from '../../../../shared/types'
 import { useAppStore } from '../../stores/app-store'
@@ -228,6 +228,11 @@ function NoteEditor(props: {
   const [saving, setSaving] = useState(false)
   const [flash, setFlash] = useState('')
   const [dirty, setDirty] = useState(false)
+  // 保存后仍留在编辑页，后续保存必须继续更新同一条笔记，而不是再建一条。
+  const [noteId, setNoteId] = useState<string | null>(props.note?.id ?? null)
+  const source = useRef<HTMLTextAreaElement>(null)
+  const rendered = useRef<HTMLDivElement>(null)
+  const syncing = useRef(false)
 
   useEffect(() => {
     setUnsavedChanges(dirty)
@@ -239,45 +244,89 @@ function NoteEditor(props: {
     [preview, content]
   )
 
+  /** 保存但不离开编辑页；返回值和提示分开，供保存按钮与返回按钮复用。 */
+  async function persist(): Promise<'saved' | 'empty' | 'unchanged' | 'failed'> {
+    if (!title.trim() && !content.trim()) return 'empty'
+    if (noteId && !dirty) return 'unchanged'
+    setSaving(true)
+    try {
+      const saved = await saveNote({
+        id: noteId ?? undefined,
+        title: title.trim() || '（无标题）',
+        content
+      })
+      setNoteId(saved.id)
+      setTitle(saved.title)
+      setDirty(false)
+      setFlash('已保存')
+      return 'saved'
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : '保存失败')
+      return 'failed'
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSave(): Promise<void> {
+    if (saving) return
+    const outcome = await persist()
+    if (outcome === 'empty') setFlash('请先输入标题或正文')
+    else if (outcome === 'unchanged') setFlash('没有需要保存的修改')
+  }
+
+  /** 只有「返回」会离开编辑页；返回时若保存成功则同步刷新列表。 */
   async function finish(): Promise<void> {
     if (saving) return
     if (!title.trim() && !content.trim()) {
       props.onClose()
       return
     }
-    if (props.note && !dirty) {
+    if (noteId && !dirty) {
       props.onClose()
       return
     }
-    setSaving(true)
-    try {
-      await saveNote({
-        id: props.note?.id,
-        title: title.trim() || '（无标题）',
-        content
-      })
-      await props.onSaved()
-    } catch (error) {
-      setFlash(error instanceof Error ? error.message : '保存失败')
-      setSaving(false)
-    }
+    const outcome = await persist()
+    if (outcome === 'saved' || outcome === 'unchanged') await props.onSaved()
   }
 
   async function handleExport(): Promise<void> {
-    if (!props.note) return
-    const path = await exportNote(props.note.id)
+    if (!noteId) return
+    const path = await exportNote(noteId)
     setFlash(path ? '已导出' : '已取消导出')
   }
 
   async function handleDelete(): Promise<void> {
-    if (!props.note) return
+    if (!noteId) return
     if (!(await confirmDialog('确定删除该笔记吗？该操作不可恢复。'))) return
-    await deleteNote(props.note.id)
+    await deleteNote(noteId)
     await props.onSaved()
   }
 
+  function handleEditorKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault()
+      void handleSave()
+    }
+  }
+
+  /** 两侧滚动条按比例联动；程序设置 scrollTop 时用 syncing 防止互相触发。 */
+  function syncScroll(from: HTMLElement | null, to: HTMLElement | null): void {
+    if (!from || !to || syncing.current) return
+    const fromMax = from.scrollHeight - from.clientHeight
+    const toMax = to.scrollHeight - to.clientHeight
+    if (fromMax <= 0 || toMax <= 0) return
+    const top = (from.scrollTop / fromMax) * toMax
+    if (Math.abs(to.scrollTop - top) < 1) return
+    syncing.current = true
+    to.scrollTop = top
+    window.requestAnimationFrame(() => {
+      syncing.current = false
+    })
+  }
+
   return (
-    <div className="view-enter note-editor-page">
+    <div className="view-enter note-editor-page" onKeyDown={handleEditorKeyDown}>
       <div className="toolbar-row">
         <button type="button" className="btn-ghost" onClick={() => void finish()}>
           ← 返回
@@ -292,6 +341,7 @@ function NoteEditor(props: {
           onChange={(event) => {
             setTitle(event.target.value)
             setDirty(true)
+            setFlash('')
           }}
         />
         {flash ? <span className="toast-inline">{flash}</span> : null}
@@ -303,7 +353,7 @@ function NoteEditor(props: {
         >
           {preview ? '编辑' : '预览'}
         </button>
-        {props.note ? (
+        {noteId ? (
           <>
             <button
               type="button"
@@ -325,20 +375,45 @@ function NoteEditor(props: {
           type="button"
           className="btn-gold"
           disabled={saving}
-          onClick={() => void finish()}
+          onClick={() => void handleSave()}
         >
-          {saving ? '保存中…' : '完成'}
+          {saving ? '保存中…' : '保存'}
         </button>
       </div>
 
       {preview ? (
-        <div className="glass note-preview-pane">
-          <h2 className="note-preview-title">{title || '（无标题）'}</h2>
-          <div
-            className="markdown-body"
-            // 内容来自本地笔记，渲染前已做 HTML 转义，仅允许受控标签
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+        <div className="note-split">
+          <section className="glass note-split-pane" aria-label="原文">
+            <header className="note-split-head">原文</header>
+            <textarea
+              ref={source}
+              className="field-input note-body-input note-split-input"
+              placeholder={EDITOR_PLACEHOLDER}
+              aria-label="笔记原文"
+              value={content}
+              onChange={(event) => {
+                setContent(event.target.value)
+                setDirty(true)
+                setFlash('')
+              }}
+              onScroll={() => syncScroll(source.current, rendered.current)}
+            />
+          </section>
+          <section className="glass note-split-pane" aria-label="Markdown 预览">
+            <header className="note-split-head">Markdown 预览</header>
+            <div
+              ref={rendered}
+              className="note-preview-pane"
+              onScroll={() => syncScroll(rendered.current, source.current)}
+            >
+              <h2 className="note-preview-title">{title || '（无标题）'}</h2>
+              <div
+                className="markdown-body"
+                // 内容来自本地笔记，渲染前已做 HTML 转义，仅允许受控标签
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            </div>
+          </section>
         </div>
       ) : (
         <textarea
@@ -349,17 +424,7 @@ function NoteEditor(props: {
           onChange={(event) => {
             setContent(event.target.value)
             setDirty(true)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              event.stopPropagation()
-              void finish()
-            }
-            if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-              event.preventDefault()
-              void finish()
-            }
+            setFlash('')
           }}
           autoFocus
         />

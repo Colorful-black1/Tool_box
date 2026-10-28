@@ -21,7 +21,7 @@
 
 | 模块 | 主要文件 | 行为 |
 | --- | --- | --- |
-| 快捷入口 | `shared/tool-shortcuts.ts`、`tool-shortcut-store.ts`、工具目录、命令面板 | 复用注册表 ID 和 config；收藏 30、最近记录 20／显示 8；串行保存，失败回退／重试，不记录取消跳转 |
+| 快捷入口 | `shared/tool-shortcuts.ts`、`tool-shortcut-store.ts`、工具目录、命令面板 | 复用注册表 ID 和 config；收藏 30、最近记录／显示 5；串行保存，失败回退／重试，不记录取消跳转 |
 | 草稿契约 | `shared/agent-drafts.ts`、bridge／ipc-contract／preload／validation | 独立 DTO 与通道；不持久化连接引用、运行状态、审批或完整聊天 |
 | 密文记录 | `agent-draft-service.ts`、`chat-store.ts`、`safe-storage-secret-box.ts` | 既有 kv 的独立密文，CAS 修订号，解密失败阻止覆盖，旧密码兼容 |
 | 草稿协调 | `agent-draft-sync.ts`、`coding-agent-store.ts`、`agent-draft-recovery.tsx` | 读取合并、输入优先、防抖／串行保存、管理取回、正常退出有界刷新 |
