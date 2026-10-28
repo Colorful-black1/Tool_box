@@ -69,6 +69,7 @@ interface ActiveRun {
   runtimeId: CodingAgentId
   sessionRef: string
   runId: string
+  directory: string
   targetFile?: string
 }
 
@@ -76,7 +77,7 @@ interface ActiveRun {
 export class CodingAgentService {
   private readonly runtimes = new Map<CodingAgentId, RuntimeState>()
   private readonly listeners = new Set<(owner: number, event: CodingAgentEvent) => void>()
-  private active: ActiveRun | null = null
+  private readonly active = new Map<CodingAgentId, ActiveRun>()
   private readonly files = new AgentProjectFiles()
   private readonly selectedDirectories = new Map<number, Map<string, string>>()
   private readonly catalogs = new Map<
@@ -235,8 +236,8 @@ export class CodingAgentService {
       try {
         await state.adapter.send(session.nativeSessionId, text, context)
       } catch (error) {
-        if (this.active?.runId === session.runId) {
-          this.active = null
+        if (this.active.get(id)?.runId === session.runId) {
+          this.active.delete(id)
           session.status = state.info.connected ? 'error' : 'disconnected'
           session.outcome = state.info.connected ? 'failed' : 'unknown'
           session.error = this.errorText(error)
@@ -473,8 +474,9 @@ export class CodingAgentService {
               session.options.some(
                 (item) => item.category === 'mode' && item.currentValue === 'build'
               )
-      if (action.targetFile && this.active && (action.kind === 'native' || canWrite))
-        this.active.targetFile = action.targetFile
+      const active = this.active.get(input.runtimeId)
+      if (action.targetFile && active && (action.kind === 'native' || canWrite))
+        active.targetFile = action.targetFile
       console.info('[CodingAgent] 执行快捷操作', {
         runtimeId: input.runtimeId,
         kind: action.kind,
@@ -495,8 +497,8 @@ export class CodingAgentService {
           })
         }
       } catch (error) {
-        if (this.active?.runId === session.runId) {
-          this.active = null
+        if (this.active.get(input.runtimeId)?.runId === session.runId) {
+          this.active.delete(input.runtimeId)
           session.status = state.info.connected ? 'error' : 'disconnected'
           session.outcome = 'unknown'
           session.error = this.errorText(error)
@@ -535,12 +537,15 @@ export class CodingAgentService {
   ): void {
     const state = this.connected(id, owner)
     const session = this.session(state, ref)
-    if (this.active?.runId !== session.runId || !session.approvals.some((a) => a.id === approvalId))
+    if (
+      this.active.get(id)?.runId !== session.runId ||
+      !session.approvals.some((a) => a.id === approvalId)
+    )
       throw new CodingAgentError('该审批已结束或不属于当前运行')
     state.adapter.approve(session.nativeSessionId, approvalId, approved)
   }
 
-  /** 旧 OpenCode IPC 经过同一把互斥与所有权检查，避免与 Codex 并发绕过。 */
+  /** 旧 OpenCode IPC 同样遵守本运行时互斥及项目冲突检查。 */
   runLegacy<T>(owner: number, channel: string, action: () => T | Promise<T>): Promise<T> {
     const state = this.requireRuntime('opencode')
     const read = new Set<string>([
@@ -556,6 +561,7 @@ export class CodingAgentService {
       !read && !control,
       async () => {
         if (channel === IPC.opencodeConnect) this.prepareConnection(state, owner)
+        if (channel === IPC.opencodeSend) this.requireIdleProject(state.info.directory)
         state.legacySending = channel === IPC.opencodeSend
         try {
           const value = await action()
@@ -591,7 +597,7 @@ export class CodingAgentService {
 
   dispose(): void {
     this.listeners.clear()
-    this.active = null
+    this.active.clear()
     for (const state of this.runtimes.values()) {
       state.owner = null
       state.dispose()
@@ -634,7 +640,8 @@ export class CodingAgentService {
   ): Promise<T> {
     this.requireOwner(state, owner)
     if (state.busy && !control) throw new CodingAgentError('Agent 正在处理操作，请稍候')
-    if (idle && this.active) throw new CodingAgentError('请先等待或停止正在运行的编程任务')
+    if (idle && this.active.has(state.adapter.id))
+      throw new CodingAgentError('请先等待或停止当前 Agent 正在运行的编程任务')
     if (!control) state.busy = true
     try {
       return await action()
@@ -660,10 +667,24 @@ export class CodingAgentService {
   }
 
   private begin(state: RuntimeState, session: CodingAgentSessionView): void {
+    // 检查与占位同步完成，两个异步发送准备不能同时抢到同一项目。
+    this.requireIdleProject(session.directory)
     session.runId = randomUUID()
     session.outcome = null
     session.error = ''
-    this.active = { runtimeId: state.adapter.id, sessionRef: session.id, runId: session.runId }
+    this.active.set(state.adapter.id, {
+      runtimeId: state.adapter.id,
+      sessionRef: session.id,
+      runId: session.runId,
+      directory: session.directory
+    })
+  }
+
+  private requireIdleProject(directory: string): void {
+    for (const run of this.active.values()) {
+      if (this.directoryKey(run.directory) === this.directoryKey(directory))
+        throw new CodingAgentError('请先等待或停止正在运行的相同项目任务')
+    }
   }
 
   private receive(state: RuntimeState, event: NativeCodingEvent): void {
@@ -679,7 +700,8 @@ export class CodingAgentService {
             session.outcome = 'unknown'
             session.error = '连接中断，任务结果未知；请核对原生会话，不会自动重发'
             for (const tool of session.tools)
-              if (!['completed', 'failed', 'cancelled'].includes(tool.status)) tool.status = 'unknown'
+              if (!['completed', 'failed', 'cancelled'].includes(tool.status))
+                tool.status = 'unknown'
             for (const child of session.subtasks)
               if (!['completed', 'errored', 'shutdown', 'interrupted'].includes(child.status))
                 child.status = 'unknown'
@@ -687,7 +709,7 @@ export class CodingAgentService {
           session.status = 'disconnected'
           this.publishSession(state, session)
         }
-        if (this.active?.runtimeId === state.adapter.id) this.active = null
+        this.active.delete(state.adapter.id)
         this.publishRuntime(state)
       }
       return
@@ -712,9 +734,11 @@ export class CodingAgentService {
       outcome: previous?.outcome ?? null,
       subtasks: structuredClone(raw.subtasks ?? [])
     }
-    if (raw.status === 'running' && !this.active && state.legacySending) this.begin(state, view)
-    const active = this.active?.sessionRef === view.id
-    const targetFile = active ? this.active?.targetFile : undefined
+    if (raw.status === 'running' && !this.active.has(state.adapter.id) && state.legacySending)
+      this.begin(state, view)
+    const run = this.active.get(state.adapter.id)
+    const active = run?.sessionRef === view.id && run.runId === view.runId
+    const targetFile = active ? run.targetFile : undefined
     if (active && raw.status !== 'running' && raw.status !== 'stopping') {
       view.outcome =
         raw.outcome ??
@@ -725,7 +749,7 @@ export class CodingAgentService {
             : previous?.status === 'stopping'
               ? 'stopped'
               : 'completed')
-      this.active = null
+      this.active.delete(state.adapter.id)
     } else if (
       !active &&
       !historyReload &&

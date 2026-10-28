@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
-import { AgentIcon, RefreshIcon, SettingsIcon } from '../icons'
+import { AgentIcon, FolderIcon, RefreshIcon, SettingsIcon } from '../icons'
 import { AgentIdentity } from '../agent-identity'
 import { AgentExtensionSettings } from './agent-extension-settings'
 
@@ -13,7 +13,7 @@ export function OpenCodeConnection(): JSX.Element {
   const switchRuntime = useCodingAgentStore((state) => state.switchRuntime)
   const directory = useCodingAgentStore((state) => state.directory)
   const busy = useCodingAgentStore((state) => state.busy)
-  const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
+  const running = useCodingAgentStore((state) => Boolean(state.runs[state.runtimeId]))
   const inspect = useCodingAgentStore((state) => state.inspect)
   const chooseExecutable = useCodingAgentStore((state) => state.chooseExecutable)
   const chooseDirectory = useCodingAgentStore((state) => state.chooseDirectory)
@@ -55,15 +55,16 @@ export function OpenCodeConnection(): JSX.Element {
           <button
             type="button"
             className="btn-ghost"
-            disabled={busy || runningRuntime === runtimeId}
+            disabled={busy || running}
             onClick={() => void chooseDirectory()}
           >
+            <FolderIcon />
             {directory ? '切换项目' : '选择项目'}
           </button>
           <button
             type="button"
             className="btn-ghost"
-            aria-expanded={expanded}
+            aria-expanded={showSettings}
             aria-controls="opencode-connection-settings"
             onClick={() => setExpanded(!expanded)}
           >
@@ -114,7 +115,7 @@ export function OpenCodeConnection(): JSX.Element {
             <button
               type="button"
               className="btn-ghost"
-              disabled={busy || !!runningRuntime || !directory || !info?.executablePath}
+              disabled={busy || running || !directory || !info?.executablePath}
               onClick={() => (connected ? void disconnect() : void connect())}
             >
               {connected ? '断开连接' : `连接 ${name}`}

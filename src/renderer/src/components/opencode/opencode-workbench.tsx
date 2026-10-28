@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES } from '@shared/coding-agents'
@@ -9,7 +9,8 @@ import { AgentComposer } from './agent-composer'
 import { OpenCodeSessions, OPENCODE_STATUS } from './opencode-sessions'
 import { OpenCodeActivity } from './opencode-activity'
 import { AgentDraftRecovery } from './agent-draft-recovery'
-import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
+import { OpenCodeMoreMenu } from './opencode-more-menu'
+import { AgentRunningTasks } from './agent-running-tasks'
 
 const OPTION_NAMES: Record<string, string> = {
   model: '模型',
@@ -22,9 +23,8 @@ export function OpenCodeWorkbench(): JSX.Element {
   const info = useCodingAgentStore((state) => state.info)
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const directory = useCodingAgentStore((state) => state.directory)
-  const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
-  const runningSession = useCodingAgentStore((state) => state.runningSession)
-  const preparingRuntime = useCodingAgentStore((state) => state.preparingRuntime)
+  const running = useCodingAgentStore((state) => Boolean(state.runs[state.runtimeId]))
+  const preparing = useCodingAgentStore((state) => state.preparations[state.runtimeId])
   const sessions = useCodingAgentStore((state) => state.sessions)
   const activeId = useCodingAgentStore((state) => state.activeId)
   const draft = useCodingAgentStore((state) => state.draft)
@@ -35,20 +35,11 @@ export function OpenCodeWorkbench(): JSX.Element {
   const inspect = useCodingAgentStore((state) => state.inspect)
   const setOption = useCodingAgentStore((state) => state.setOption)
   const summarize = useCodingAgentStore((state) => state.summarize)
-  const stop = useCodingAgentStore((state) => state.stop)
-  const viewRunning = useCodingAgentStore((state) => state.viewRunning)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const clearError = useCodingAgentStore((state) => state.clearError)
   const [advanced, setAdvanced] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [showHistory, setShowHistory] = useState(0)
-  const menu = useRef<HTMLDetailsElement>(null)
-  const closeMenu = (): void => {
-    setMenuOpen(false)
-    menu.current?.querySelector('summary')?.focus()
-  }
-  useOverlayEscape(closeMenu, menuOpen)
   const name = CODING_AGENT_NAMES[runtimeId]
   const session = activeId ? sessions[activeId] : undefined
   const visibleModels = new Set(info?.visibleModelIds ?? [])
@@ -60,7 +51,7 @@ export function OpenCodeWorkbench(): JSX.Element {
     permission &&
     !permission.options.some((item) => item.value === permission.currentValue)
   )
-  const locked = Boolean(runningRuntime || preparingRuntime)
+  const locked = Boolean(running || preparing)
   const canSend = Boolean(
     directory &&
     info?.available &&
@@ -80,14 +71,6 @@ export function OpenCodeWorkbench(): JSX.Element {
   useEffect(() => {
     void inspect()
   }, [inspect, runtimeId])
-  useEffect(() => {
-    const outside = (event: MouseEvent): void => {
-      if (event.target instanceof Node && !menu.current?.contains(event.target))
-        setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', outside)
-    return () => document.removeEventListener('mousedown', outside)
-  }, [])
 
   return (
     <div className="opencode-page view-enter">
@@ -100,17 +83,7 @@ export function OpenCodeWorkbench(): JSX.Element {
           </button>
         </div>
       ) : null}
-      {runningRuntime && (runningRuntime !== runtimeId || runningSession !== activeId) ? (
-        <div className="status-banner" role="status">
-          <span>{CODING_AGENT_NAMES[runningRuntime]} 正在执行任务。</span>
-          <button type="button" className="btn-ghost" onClick={viewRunning}>
-            查看运行任务
-          </button>
-          <button type="button" className="btn-ghost" onClick={() => void stop()}>
-            停止任务
-          </button>
-        </div>
-      ) : null}
+      <AgentRunningTasks />
       <div className="opencode-layout">
         <OpenCodeSessions
           key={`${runtimeId}:${directory}`}
@@ -120,58 +93,16 @@ export function OpenCodeWorkbench(): JSX.Element {
         <section className="glass chat-panel opencode-panel" aria-label={`${name} 工作台`}>
           <header className="chat-head">
             <h2 className="chat-title">{session?.title ?? '新对话'}</h2>
-            <details
-              className="opencode-more"
-              ref={menu}
-              open={menuOpen}
-            >
-              <summary
-                aria-expanded={menuOpen}
-                onClick={(event) => {
-                  event.preventDefault()
-                  setMenuOpen(!menuOpen)
-                }}
-              >
-                更多
-              </summary>
-              <div className="opencode-more-menu">
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={
-                    !session || busy || locked || !info?.connected || permissionNeedsSelection
-                  }
-                  onClick={() => {
-                    closeMenu()
-                    void summarize()
-                  }}
-                >
-                  生成交接说明
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={busy || locked}
-                  onClick={() => {
-                    closeMenu()
-                    void inspect(true)
-                  }}
-                >
-                  同步模型
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  aria-expanded={advanced}
-                  onClick={() => {
-                    closeMenu()
-                    setAdvanced(!advanced)
-                  }}
-                >
-                  更多模型设置
-                </button>
-              </div>
-            </details>
+            <OpenCodeMoreMenu
+              canSummarize={Boolean(
+                session && !busy && !locked && info?.connected && !permissionNeedsSelection
+              )}
+              canSync={!busy && !locked}
+              advanced={advanced}
+              onSummarize={() => void summarize()}
+              onSync={() => void inspect(true)}
+              onAdvanced={() => setAdvanced(!advanced)}
+            />
             <span className="chat-status opencode-session-state" data-status={session?.status}>
               {session ? OPENCODE_STATUS[session.status] : '等待输入'}
             </span>

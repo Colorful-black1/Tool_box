@@ -2,6 +2,13 @@ import { CodingAgentError } from './adapter'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 type JsonObject = Record<string, unknown>
+type CloseCause =
+  | 'process-exit'
+  | 'spawn-error'
+  | 'stdin-error'
+  | 'invalid-json'
+  | 'invalid-protocol'
+  | 'buffer-limit'
 
 /** 外部 ACP 消息只在边界收窄，错误不透传第三方正文或 stderr。 */
 export function acpObject(value: unknown): JsonObject | null {
@@ -34,9 +41,20 @@ export class StdioRpcConnection {
     child.stdout.on('data', (chunk: string) => this.receive(chunk))
     // 仅排空诊断管道，不保留可能含路径、凭据或用户内容的原始 stderr。
     child.stderr.on('data', () => undefined)
-    child.on('error', () => this.close())
-    child.stdin.on('error', () => this.close())
-    child.once('exit', () => this.close())
+    child.on('error', () => this.close('spawn-error'))
+    child.stdin.on('error', () => this.close('stdin-error'))
+    // close 在 stdout/stderr 排空之后触发，避免 exit 先到而丢弃最后一帧响应。
+    let exitTimer: NodeJS.Timeout | null = null
+    child.once('exit', (code) => {
+      if (this.closed) return
+      // 正常情况 close 紧随 exit；仅当输出管道被外部持有、迟迟不关时兜底。
+      exitTimer = setTimeout(() => this.close('process-exit', code), this.exitGraceMs)
+      exitTimer.unref()
+    })
+    child.once('close', (code) => {
+      if (exitTimer) clearTimeout(exitTimer)
+      this.close('process-exit', code)
+    })
   }
 
   request(method: string, params: unknown, timeoutMs = 20_000): Promise<unknown> {
@@ -59,12 +77,35 @@ export class StdioRpcConnection {
     if (!this.closed) this.write({ jsonrpc: '2.0', method, params })
   }
 
-  close(): void {
+  close(cause?: CloseCause, exitCode?: number | null): void {
     if (this.closed) return
     this.closed = true
+    const detail =
+      cause === 'process-exit'
+        ? `原生进程已退出${typeof exitCode === 'number' ? `，退出码 ${exitCode}` : ''}`
+        : cause === 'spawn-error'
+          ? '原生程序启动失败'
+          : cause === 'stdin-error'
+            ? '原生程序输入管道已关闭'
+            : cause === 'buffer-limit'
+              ? '原生程序输出超过上限'
+              : cause === 'invalid-json' || cause === 'invalid-protocol'
+                ? '原生程序输出的协议格式不兼容'
+                : ''
+    if (cause)
+      console.warn('[CodingAgent] 原生连接结束', {
+        runtime: this.runtimeName,
+        reason: cause,
+        ...(typeof exitCode === 'number' ? { exitCode } : {}),
+        pending: this.pending.size
+      })
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer)
-      pending.reject(this.makeError(`${this.runtimeName} 连接已结束，未自动重发任务`))
+      pending.reject(
+        this.makeError(
+          `${this.runtimeName} 连接已结束${detail ? `（${detail}）` : ''}，未自动重发任务`
+        )
+      )
     }
     this.pending.clear()
     this.buffer = ''
@@ -82,14 +123,14 @@ export class StdioRpcConnection {
     try {
       this.child.stdin.write(JSON.stringify(message) + '\n')
     } catch {
-      this.close()
+      this.close('stdin-error')
     }
   }
 
   private receive(chunk: string): void {
     if (this.closed) return
     this.buffer += chunk
-    if (Buffer.byteLength(this.buffer) > 2_000_000) return this.close()
+    if (Buffer.byteLength(this.buffer) > 2_000_000) return this.close('buffer-limit')
     let index: number
     while ((index = this.buffer.indexOf('\n')) >= 0) {
       const line = this.buffer.slice(0, index)
@@ -99,9 +140,9 @@ export class StdioRpcConnection {
       try {
         message = acpObject(JSON.parse(line))
       } catch {
-        return this.close()
+        return this.close('invalid-json')
       }
-      if (!message || message.jsonrpc !== '2.0') return this.close()
+      if (!message || message.jsonrpc !== '2.0') return this.close('invalid-protocol')
       if (typeof message.method === 'string') {
         if (typeof message.id === 'number' || typeof message.id === 'string') {
           void this.handleRequest(message.id, message.method, message.params)
@@ -109,7 +150,7 @@ export class StdioRpcConnection {
           try {
             this.notification(message.method, message.params)
           } catch {
-            this.close()
+            this.close('invalid-protocol')
           }
         }
       } else if (typeof message.id === 'number') {

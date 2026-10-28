@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DshAdapter, type DshPeer } from './dsh-adapter'
-import { launchDsh } from './dsh-runtime'
+import { dshSessionMetadata, launchDsh } from './dsh-runtime'
 import type { NativeCodingEvent } from './adapter'
 
 vi.mock('./dsh-runtime', () => ({
   detectDshExecutable: vi.fn(async () => '/fixture/dsh.exe'),
+  dshLaunchDirectory: vi.fn(() => '/fixture/launch'),
+  dshSessionMetadata: vi.fn(async () => new Map()),
   inspectDshExecutable: vi.fn(async () => ({
     path: '/fixture/dsh.exe',
     command: '/fixture/dsh.exe',
@@ -83,6 +85,35 @@ async function fixture() {
 }
 
 describe('DSH ACP 适配器', () => {
+  it('宿主使用独立启动目录，项目路径只通过会话 cwd 传入', async () => {
+    vi.mocked(launchDsh).mockClear()
+    await fixture()
+    expect(vi.mocked(launchDsh).mock.calls.at(-1)?.[1]).toBe('/fixture/launch')
+  })
+  it('历史列表使用 Desktop 缓存标题，并隐藏空白会话', async () => {
+    const f = await fixture()
+    vi.mocked(dshSessionMetadata).mockResolvedValueOnce(
+      new Map([
+        ['history-native', { title: '桌面历史标题', blank: false, lastPromptAt: 10 }],
+        ['blank-native', { title: '', blank: true, lastPromptAt: null }],
+        ['empty-native', { title: '', blank: false, lastPromptAt: null }]
+      ])
+    )
+    f.calls.mockImplementationOnce(async (method: string) => {
+      if (method === 'session/list')
+        return {
+          sessions: [
+            { sessionId: 'history-native', cwd: process.cwd() },
+            { sessionId: 'blank-native', cwd: process.cwd() },
+            { sessionId: 'empty-native', cwd: process.cwd() }
+          ]
+        }
+      return {}
+    })
+    await expect(f.adapter.listSessions()).resolves.toEqual([
+      { id: 'history-native', title: '桌面历史标题' }
+    ])
+  })
   it('迟到的旧初始化失败不关闭新连接', async () => {
     const peers: DshPeer[] = []
     let failOld!: (error: Error) => void

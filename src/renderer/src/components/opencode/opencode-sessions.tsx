@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
-import { PlusIcon, RefreshIcon } from '../icons'
+import { CaretIcon, PlusIcon, RefreshIcon, SearchIcon } from '../icons'
 
 export const OPENCODE_STATUS = {
   ready: '就绪',
@@ -27,13 +27,30 @@ export function OpenCodeSessions({
   const history = useCodingAgentStore((state) => state.history)
   const historyLoaded = useCodingAgentStore((state) => state.historyLoaded)
   const busy = useCodingAgentStore((state) => state.busy)
-  const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
-  const preparingRuntime = useCodingAgentStore((state) => state.preparingRuntime)
+  const running = useCodingAgentStore((state) => Boolean(state.runs[state.runtimeId]))
+  const preparing = useCodingAgentStore((state) => state.preparations[state.runtimeId])
   const newSession = useCodingAgentStore((state) => state.newSession)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const lastHistoryConnection = useRef('')
+  useEffect(() => {
+    // 重连会换 connectionId 并清空缓存历史；历史面板已打开时自动补读一次。
+    if (!historyOpen || !info?.connected || historyLoaded || busy || running || preparing) return
+    if (lastHistoryConnection.current === info.connectionId) return
+    lastHistoryConnection.current = info.connectionId
+    void listSessions()
+  }, [
+    historyOpen,
+    info?.connected,
+    info?.connectionId,
+    historyLoaded,
+    busy,
+    running,
+    preparing,
+    listSessions
+  ])
   useEffect(() => {
     if (showHistory) {
       setHistoryOpen(true)
@@ -49,8 +66,8 @@ export function OpenCodeSessions({
         historyOpen &&
         historyLoaded &&
         !busy &&
-        !runningRuntime &&
-        !preparingRuntime
+        !running &&
+        !preparing
       )
         void listSessions()
     }
@@ -62,12 +79,14 @@ export function OpenCodeSessions({
     historyOpen,
     historyLoaded,
     busy,
-    runningRuntime,
-    preparingRuntime,
+    running,
+    preparing,
     listSessions
   ])
   const local = Object.values(sessions).filter(
-    (item) => item.connectionId === info?.connectionId && item.directory === directory
+    (item) =>
+      (item.connectionId === info?.connectionId || item.status === 'disconnected') &&
+      item.directory === directory
   )
   const items = new Map(
     (historyOpen ? history : []).map((item) => [item.id, { ...item, ref: '', status: '历史' }])
@@ -91,7 +110,7 @@ export function OpenCodeSessions({
             type="button"
             className="icon-btn"
             aria-label="刷新历史会话"
-            disabled={busy || !!runningRuntime}
+            disabled={busy || running}
             onClick={() => void listSessions()}
           >
             <RefreshIcon />
@@ -108,7 +127,8 @@ export function OpenCodeSessions({
         type="button"
         className="btn-ghost"
         aria-expanded={historyOpen}
-        disabled={!directory || busy || !!runningRuntime}
+        aria-controls="opencode-session-list"
+        disabled={!directory || busy || running}
         onClick={() => {
           setHistoryOpen(!historyOpen)
           // 外部 Agent 可能在列表收起期间新增会话，展开时不能只沿用旧缓存。
@@ -116,6 +136,9 @@ export function OpenCodeSessions({
         }}
       >
         历史会话
+        <span className="ui-dropdown-caret" data-expanded={historyOpen}>
+          <CaretIcon />
+        </span>
       </button>
       {runtimeId === 'claude-desktop' && historyOpen && historyLoaded ? (
         <p className="opencode-session-empty">
@@ -124,15 +147,18 @@ export function OpenCodeSessions({
         </p>
       ) : null}
       {items.size > 6 ? (
-        <input
-          className="field-input"
-          aria-label="搜索会话"
-          placeholder="搜索会话"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="opencode-session-search">
+          <SearchIcon />
+          <input
+            className="field-input"
+            aria-label="搜索会话"
+            placeholder="搜索会话"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       ) : null}
-      <div className="opencode-session-list" aria-busy={busy}>
+      <div className="opencode-session-list" id="opencode-session-list" aria-busy={busy}>
         {!visible.length ? (
           <p className="opencode-session-empty">
             {busy
@@ -149,7 +175,7 @@ export function OpenCodeSessions({
             type="button"
             key={item.id}
             className={`btn-ghost opencode-session-item${item.ref && item.ref === activeId ? ' active' : ''}`}
-            disabled={busy || (!item.ref && (!!runningRuntime || !info?.canLoadSession))}
+            disabled={busy || (!item.ref && (running || !info?.canLoadSession))}
             onClick={() => void openSession(item.id)}
             aria-current={item.ref === activeId ? 'page' : undefined}
           >

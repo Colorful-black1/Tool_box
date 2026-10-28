@@ -864,6 +864,16 @@ textarea::placeholder {
   opacity: 1;
 }
 
+::selection {
+  background: rgba(var(--accent-rgb), 0.25);
+  color: var(--text-hi);
+}
+
+input,
+textarea {
+  caret-color: var(--gold);
+}
+
 textarea,
 .reader-content,
 .markdown-body,
@@ -999,7 +1009,6 @@ textarea,
 }
 
 .nav-group > .nav-group-toggle:hover {
-  border-color: var(--gold-line);
   color: var(--gold);
 }
 
@@ -1030,12 +1039,6 @@ textarea,
   gap: 8px;
   padding: 7px 6px;
   border-radius: 10px;
-}
-
-.nav-group-children .nav-item.active::before {
-  left: -10px;
-  width: 2px;
-  height: 16px;
 }
 
 .nav-group > .nav-group-toggle[hidden],
@@ -1178,32 +1181,10 @@ textarea,
 
 .nav-item.active {
   color: var(--gold);
-  background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.03));
-  border-color: var(--gold-line);
-  box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.12);
 }
 
 .nav-item.active svg {
   opacity: 1;
-  transform: scale(1.12);
-}
-
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: -10px;
-  top: 50%;
-  width: 3px;
-  height: 22px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--gold), transparent);
-  box-shadow: 0 0 8px var(--gold);
-  transform: translateY(-50%);
-}
-
-/* 折叠态的指示条贴到栏的左缘 */
-.side-rail.collapsed .nav-item.active::before {
-  left: -8px;
 }
 
 .rail-spacer {
@@ -1306,10 +1287,12 @@ textarea,
 .btn-gold {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-height: 34px;
   gap: 6px;
   padding: 8px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--button-ink);
   font-family: var(--serif);
   font-size: 13.5px;
@@ -1320,9 +1303,8 @@ textarea,
   box-shadow:
     0 4px 16px rgba(var(--accent-rgb), 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   cursor: pointer;
-  transition: all 0.22s;
+  transition: filter 0.18s, box-shadow 0.18s, transform 0.18s;
 }
 
 .btn-gold:hover:not(:disabled) {
@@ -1333,34 +1315,61 @@ textarea,
 
 .btn-gold:disabled {
   filter: grayscale(0.4);
-  opacity: 0.6;
-  cursor: not-allowed;
+  opacity: 0.5;
+  cursor: default;
 }
 
-.btn-ghost {
+.btn-ghost,
+.btn-danger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-height: 32px;
   gap: 5px;
   padding: 6px 12px;
   border: 1px solid rgba(var(--accent-rgb), 0.22);
-  border-radius: 8px;
+  border-radius: 9px;
   background: rgba(var(--neutral-rgb), 0.04);
   color: var(--text-mid);
   font-size: 11.5px;
   letter-spacing: 1px;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
 }
 
-.btn-ghost:hover:not(:disabled) {
+.btn-ghost:where(:not(.nav-group-toggle)):hover:not(:disabled) {
   border-color: var(--gold);
   color: var(--gold);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
-.btn-ghost:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.btn-ghost:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+:is(.btn-gold, .btn-ghost, .btn-danger) svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+:is(.btn-ghost:where(:not(.nav-group-toggle)), .ui-dropdown-trigger)[aria-expanded='true'],
+.btn-ghost[aria-pressed='true'] {
+  border-color: var(--gold-line);
+  color: var(--gold);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.btn-gold:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+:is(.btn-ghost:where(:not(.nav-group-toggle)), .icon-btn):active:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .btn-danger {
@@ -1371,6 +1380,7 @@ textarea,
 .btn-danger:hover:not(:disabled) {
   border-color: var(--pink);
   color: var(--pink);
+  background: rgba(var(--pink-rgb), 0.1);
 }
 
 .icon-btn {
@@ -1387,12 +1397,12 @@ textarea,
   transition: all 0.2s;
 }
 
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   border-color: var(--gold);
   color: var(--gold);
 }
 
-.icon-btn.danger:hover {
+.icon-btn.danger:hover:not(:disabled) {
   border-color: var(--pink);
   color: var(--pink);
 }
@@ -1427,6 +1437,15 @@ textarea,
 .field-input:focus {
   border-color: var(--gold);
   box-shadow: 0 0 13px rgba(var(--accent-rgb), 0.18);
+}
+
+.field-input:hover:not(:focus):not(:disabled):not([readonly]) {
+  border-color: var(--gold-line);
+}
+
+.field-input:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .field-textarea {
@@ -3602,6 +3621,7 @@ textarea,
   align-items: center;
   gap: 14px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .opencode-brandmark {
@@ -3624,7 +3644,8 @@ textarea,
 .opencode-identity-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
+  flex-wrap: wrap;
 }
 
 .opencode-connection {
@@ -3641,9 +3662,9 @@ textarea,
 }
 
 .opencode-agent-switch .btn-ghost[aria-pressed='true'] {
-  border-color: var(--gold-line);
+  border-color: var(--gold);
   color: var(--gold);
-  background: rgba(var(--accent-rgb), 0.08);
+  background: rgba(var(--accent-rgb), 0.14);
 }
 
 .opencode-message-actions {
@@ -3664,36 +3685,25 @@ textarea,
 }
 
 .opencode-more {
-  position: relative;
   margin-left: auto;
   font-size: 12px;
 }
 
-.opencode-more summary,
-.opencode-transfer-target summary {
-  cursor: pointer;
-  color: var(--gold-dim);
-}
-
-.opencode-more summary:focus-visible,
-.opencode-transfer-target summary:focus-visible {
-  outline: 1px solid var(--gold);
-  outline-offset: 4px;
-}
-
 .opencode-more-menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 35;
   display: grid;
   gap: 4px;
-  min-width: 170px;
-  padding: 8px;
-  background: var(--bg-menu);
-  border: 1px solid var(--gold-line);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  min-width: 190px;
+  padding: 6px;
+}
+
+.opencode-more-menu .btn-ghost {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+}
+
+.opencode-more-menu .btn-ghost:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .opencode-transfer-target {
@@ -3733,6 +3743,17 @@ textarea,
   flex-shrink: 0;
   font-size: 11px;
   color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.opencode-connection-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .opencode-connection-status[data-connected='true'] {
@@ -3744,9 +3765,11 @@ textarea,
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .opencode-page .btn-ghost svg,
+.opencode-page .btn-danger svg,
 .opencode-page .btn-gold svg {
   width: 14px;
   height: 14px;
@@ -3860,6 +3883,33 @@ textarea,
   background: rgba(var(--accent-rgb), 0.08);
 }
 
+.opencode-session-item.active .opencode-session-title {
+  color: var(--gold);
+}
+
+.opencode-session-search {
+  position: relative;
+}
+
+.opencode-session-search > svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.opencode-session-search .field-input {
+  padding-left: 32px;
+}
+
+.ui-dropdown-caret[data-expanded='true'] {
+  transform: rotate(180deg);
+}
+
 .opencode-session-title {
   overflow: hidden;
   white-space: nowrap;
@@ -3914,12 +3964,18 @@ textarea,
   min-height: 50px;
   padding: 8px 18px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .opencode-panel .chat-title {
   min-width: 0;
   font-size: 15px;
   letter-spacing: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 120px;
 }
 
 .opencode-options {
@@ -4041,7 +4097,7 @@ textarea,
 .opencode-panel .composer-box {
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   padding: 12px;
 }
 
@@ -4050,6 +4106,8 @@ textarea,
   height: 58px;
   min-height: 58px;
   flex: none;
+  padding: 4px;
+  line-height: 1.7;
 }
 
 .opencode-transfer-space {
@@ -4067,14 +4125,20 @@ textarea,
 .opencode-panel .opencode-transferred .composer-box {
   flex: 1;
   min-height: 0;
+  padding: 8px;
+  gap: 6px;
 }
 
 .opencode-panel .opencode-transferred .composer-input {
   height: min(180px, 30vh);
-  min-height: 80px;
+  min-height: 48px;
   max-height: 40vh;
   flex: 0 1 auto;
   resize: vertical;
+}
+
+.opencode-panel .opencode-transferred .agent-composer-toolbar {
+  flex-shrink: 0;
 }
 
 .opencode-panel .composer-actions {
@@ -4093,6 +4157,11 @@ textarea,
   font-size: 10.5px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.opencode-draft-count[data-over-limit='true'] {
+  color: var(--pink);
 }
 
 .agent-draft-recovery {
@@ -4482,6 +4551,9 @@ textarea,
 .ui-dropdown-trigger {
   display: inline-flex;
   align-items: center;
+  min-height: 32px;
+  min-width: 0;
+  max-width: 100%;
   gap: 6px;
   padding: 6px 11px;
   border: 1px solid rgba(var(--accent-rgb), 0.22);
@@ -4524,9 +4596,20 @@ textarea,
 }
 
 .ui-dropdown-caret {
-  font-size: 9px;
+  display: inline-flex;
+  flex-shrink: 0;
   color: var(--gold-dim);
   transition: transform 0.15s;
+}
+
+.ui-dropdown-caret svg,
+.ui-dropdown-tick svg {
+  width: 12px;
+  height: 12px;
+}
+
+.ui-dropdown-caret svg {
+  transform: rotate(90deg);
 }
 
 .ui-dropdown-trigger[aria-expanded='true'] .ui-dropdown-caret {
@@ -4561,6 +4644,7 @@ textarea,
 .ui-dropdown-item {
   display: flex;
   align-items: center;
+  min-height: 32px;
   gap: 6px;
   width: 100%;
   padding: 6px 11px;
@@ -4583,6 +4667,7 @@ textarea,
 }
 
 .ui-dropdown-tick {
+  display: inline-flex;
   width: 12px;
   flex-shrink: 0;
   color: var(--gold);
@@ -4996,6 +5081,7 @@ textarea,
 }
 
 .btn-mini {
+  min-height: 26px;
   padding: 3px 9px;
   border-radius: 7px;
   font-size: 10.5px;
@@ -5820,12 +5906,30 @@ textarea,
 }
 
 .tool-segment-item {
+  min-height: 28px;
   padding: 3px 10px;
   border: none;
   background: transparent;
   color: var(--text-dim);
   font-size: 11px;
   cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tool-segment-item:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--text-hi);
+}
+
+.tool-segment-item:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+.tool-segment-item:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .tool-segment-item.active {
@@ -6523,20 +6627,95 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   border-top: 1px solid var(--gold-line);
 }
 .agent-composer-shortcuts {
-  padding: 0 12px 8px;
+  padding: 0;
+  gap: 6px;
+}
+.agent-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agent-composer-shortcuts .btn-ghost {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.agent-composer-keyboard kbd {
+  font-family: var(--sans);
+  font-size: inherit;
+  color: var(--text-mid);
 }
 .opencode-panel .composer-actions {
   justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.12);
 }
 .agent-reference-list {
-  padding: 8px 12px 0;
+  padding: 0;
 }
 .agent-reference-list .btn-ghost {
   max-width: 100%;
   overflow-wrap: anywhere;
   color: var(--gold);
   text-align: left;
+  white-space: normal;
+  font-size: 11px;
+  letter-spacing: 0;
+  min-width: 0;
+}
+.agent-reference-list .btn-ghost > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .agent-extension-settings {
   margin-top: 8px;
+}
+
+/* 折叠内容保留 HTML 键盘语义，指示符与交互态使用应用主题。 */
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  list-style: none;
+  border-radius: 8px;
+  color: var(--text-mid);
+  cursor: pointer;
+}
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary::-webkit-details-marker {
+  display: none;
+}
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources)[open] > summary::before {
+  transform: rotate(45deg);
+}
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary:hover {
+  color: var(--gold);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+:is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.btn-gold, .btn-ghost, .btn-danger, .icon-btn, .ui-dropdown-trigger, .ui-dropdown-caret, .tool-segment-item) {
+    transition: none;
+  }
+  .btn-gold:hover:not(:disabled) {
+    transform: none;
+  }
 }

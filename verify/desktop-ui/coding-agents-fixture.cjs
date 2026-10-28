@@ -4,9 +4,10 @@ module.exports = function codingAgentsFixture() {
   const states = new Map()
   const addedHistory = new Map()
   const externalReplies = new Map()
+  const active = new Map()
+  let nextDirectory = 'E:\\合成项目'
   let sequence = 0,
     revision = 0,
-    active = null,
     failHistory = false
   const calls = []
   const names = {
@@ -98,7 +99,11 @@ module.exports = function codingAgentsFixture() {
     }
     if (previous) view.options = copy(previous.options)
     if (nativeId && externalReplies.has(id))
-      view.messages.push({ id: 'external-reply', role: 'assistant', content: externalReplies.get(id) })
+      view.messages.push({
+        id: 'external-reply',
+        role: 'assistant',
+        content: externalReplies.get(id)
+      })
     state.sessions.set(ref, view)
     return publish(view)
   }
@@ -106,7 +111,7 @@ module.exports = function codingAgentsFixture() {
     bridge: {
       listRuntimes: async () => Object.keys(names).map((id) => copy(info(id))),
       inspect: async (id) => copy(info(id)),
-      chooseDirectory: async () => 'E:\\合成项目',
+      chooseDirectory: async () => nextDirectory,
       chooseExecutable: async (id) => copy(info(id)),
       connect: async ({ runtimeId: id, directory }) => {
         calls.push({ action: 'connect', id })
@@ -121,6 +126,13 @@ module.exports = function codingAgentsFixture() {
       },
       disconnect: async (id) => {
         const state = states.get(id)
+        const run = active.get(id)
+        if (run) {
+          run.status = 'disconnected'
+          run.outcome = 'unknown'
+          publish(run)
+          active.delete(id)
+        }
         state.info.connected = false
         emit({ kind: 'runtime', runtime: state.info, revision: ++revision })
       },
@@ -213,12 +225,12 @@ module.exports = function codingAgentsFixture() {
         throw new Error('合成界面通过发送路径执行命令')
       },
       send: async ({ runtimeId: id, sessionId, content, references, literal }) => {
-        if (active) throw new Error('已有编程任务')
+        if (active.has(id)) throw new Error('当前 Agent 已有编程任务')
         if (content.startsWith('/') && !literal && !/^\/(compact|init)(\s|$)/.test(content))
           throw new Error('未识别为可用命令；可明确选择“作为普通文字发送”')
         calls.push({ action: 'send', id, content, references, literal })
         const view = states.get(id).sessions.get(sessionId)
-        active = view
+        active.set(id, view)
         view.status = 'running'
         view.runId = `run-${++sequence}`
         view.messages.push({ id: `user-${sequence}`, role: 'user', content })
@@ -226,11 +238,12 @@ module.exports = function codingAgentsFixture() {
       },
       stop: async ({ runtimeId: id, sessionId }) => {
         calls.push({ action: 'stop', id, sessionId })
-        if (active) {
-          active.status = 'ready'
-          active.outcome = 'stopped'
-          publish(active)
-          active = null
+        const run = active.get(id)
+        if (run && run.id === sessionId) {
+          run.status = 'ready'
+          run.outcome = 'stopped'
+          publish(run)
+          active.delete(id)
         }
       },
       approve: async () => undefined,
@@ -242,8 +255,13 @@ module.exports = function codingAgentsFixture() {
     },
     controls: {
       agentCalls: () => copy(calls),
+      agentDirectory: (directory) => {
+        nextDirectory = directory
+      },
       agentAddHistory: (id) => {
-        addedHistory.set(id, [{ id: 'new-external-history', title: 'Desktop 后来新增的 Code 会话' }])
+        addedHistory.set(id, [
+          { id: 'new-external-history', title: 'Desktop 后来新增的 Code 会话' }
+        ])
       },
       agentExternalReply: (id) => {
         externalReplies.set(id, 'Desktop 外部后来新增的回复')
@@ -251,23 +269,25 @@ module.exports = function codingAgentsFixture() {
       agentFailHistory: () => {
         failHistory = true
       },
-      agentDelta: (text) => {
-        if (!active) return
-        let last = active.messages.at(-1)
+      agentDelta: (text, id) => {
+        const run = id ? active.get(id) : [...active.values()].at(-1)
+        if (!run) return
+        let last = run.messages.at(-1)
         if (last.role !== 'assistant') {
           last = { id: `answer-${sequence}`, role: 'assistant', content: '' }
-          active.messages.push(last)
+          run.messages.push(last)
         }
         last.content += text
-        active.subtasks = [{ id: 'native-child', title: '检查器', status: 'running', result: '' }]
-        publish(active)
+        run.subtasks = [{ id: 'native-child', title: '检查器', status: 'running', result: '' }]
+        publish(run)
       },
-      agentFinish: () => {
-        if (active) {
-          active.status = 'ready'
-          active.outcome = 'completed'
-          publish(active)
-          active = null
+      agentFinish: (id) => {
+        const run = id ? active.get(id) : [...active.values()].at(-1)
+        if (run) {
+          run.status = 'ready'
+          run.outcome = 'completed'
+          publish(run)
+          active.delete(run.runtimeId)
         }
       }
     }

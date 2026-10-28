@@ -18,7 +18,7 @@ describe('OpenCode ACP 连接', () => {
     const { connection } = connect(
       `process.stdin.once('data', () => process.stdout.write('x'.repeat(2000001)))`
     )
-    await expect(connection.request('test', {})).rejects.toThrow('连接已结束')
+    await expect(connection.request('test', {})).rejects.toThrow('输出超过上限')
   })
   it('拆包和粘包均按请求编号关联，支持 UTF-8 文本', async () => {
     const { connection } = connect(`
@@ -55,6 +55,28 @@ describe('OpenCode ACP 连接', () => {
       `process.stdin.once('data', () => process.stdout.write('invalid\\n'))`
     )
     await expect(connection.request('test', {})).rejects.toThrow('连接已结束')
+  })
+  it('诊断区分进程退出和协议异常，不包含原生正文与 stderr', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const exited = connect(`process.stdin.once('data', () => {
+        process.stderr.write('fixture-private-detail'); process.exit(7)
+      })`)
+      await expect(exited.connection.request('test', {})).rejects.toThrow('退出码 7')
+      const invalid = connect(`process.stdin.once('data', () => {
+        process.stdout.write('fixture-private-detail\\n')
+      })`)
+      await expect(invalid.connection.request('test', {})).rejects.toThrow('协议格式不兼容')
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('fixture-private-detail')
+      expect(warn).toHaveBeenCalledWith('[CodingAgent] 原生连接结束', {
+        runtime: 'OpenCode',
+        reason: 'process-exit',
+        exitCode: 7,
+        pending: 1
+      })
+    } finally {
+      warn.mockRestore()
+    }
   })
   it('第三方错误不包含原始错误正文', async () => {
     const { connection } = connect(`process.stdin.once('data', data => {

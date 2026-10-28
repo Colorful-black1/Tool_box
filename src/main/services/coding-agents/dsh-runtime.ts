@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { CodingAgentError } from './adapter'
 import { StdioRpcConnection } from './stdio-rpc-connection'
@@ -12,6 +13,84 @@ export interface DshLaunchSpec {
   args: string[]
   electronNode: boolean
   version: string
+}
+
+/**
+ * DSH 宿主只把启动 cwd 用于 .env 等启动层；项目路径由 ACP session cwd 传入。
+ * 固定使用独立空目录，避免项目 .env 中的 DEEPSEEK_BASE_URL、代理等启动变量
+ * 让宿主退出，同时保留项目自身继续使用该 .env。
+ */
+export function dshLaunchDirectory(): string {
+  const directory = join(tmpdir(), 'tool-box-dsh-launch')
+  try {
+    mkdirSync(directory, { recursive: true })
+  } catch {
+    throw new CodingAgentError('无法创建 DSH 启动目录，请检查临时目录权限')
+  }
+  return directory
+}
+
+export interface DshSessionMeta {
+  title: string
+  blank: boolean
+  lastPromptAt: number | null
+}
+
+/** 解析 DSH Desktop 的单会话缓存记录；只取标题和空白标记，不读消息正文。 */
+export function parseDshSessionRecord(value: unknown): DshSessionMeta | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = (value as Record<string, unknown>).record
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) return null
+  const rows = (record as Record<string, unknown>).rows
+  if (rows === null || typeof rows !== 'object' || Array.isArray(rows)) return null
+  const titleRow = (rows as Record<string, unknown>).title
+  const metaRow = (rows as Record<string, unknown>).sessionListMetadata
+  const titleValue =
+    titleRow !== null && typeof titleRow === 'object' && !Array.isArray(titleRow)
+      ? (titleRow as Record<string, unknown>).val
+      : undefined
+  const metaValue =
+    metaRow !== null && typeof metaRow === 'object' && !Array.isArray(metaRow)
+      ? (metaRow as Record<string, unknown>).val
+      : undefined
+  const title = typeof titleValue === 'string' ? titleValue.trim().slice(0, 100) : ''
+  const blank =
+    metaValue !== null &&
+    typeof metaValue === 'object' &&
+    !Array.isArray(metaValue) &&
+    (metaValue as Record<string, unknown>).blank === true
+  const lastPromptAt =
+    metaValue !== null &&
+    typeof metaValue === 'object' &&
+    !Array.isArray(metaValue) &&
+    typeof (metaValue as Record<string, unknown>).lastPromptAt === 'number'
+      ? ((metaValue as Record<string, unknown>).lastPromptAt as number)
+      : null
+  return { title, blank, lastPromptAt }
+}
+
+/**
+ * 读取指定会话的 Desktop 标题/空白标记。
+ * 使用 `session_projcache/sessions/<id>.json` 单会话缓存；总索引会被 Desktop 按当前工作区截断。
+ */
+export async function dshSessionMetadata(ids: string[]): Promise<Map<string, DshSessionMeta>> {
+  const result = new Map<string, DshSessionMeta>()
+  const home = process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh')
+  const directory = join(home, 'storages/session_projcache/sessions')
+  const unique = [...new Set(ids)]
+    .filter((id) => /^[A-Za-z0-9._-]{1,200}$/.test(id))
+    .slice(0, 500)
+  for (const id of unique) {
+    try {
+      const content = await readFile(join(directory, `${id}.json`), 'utf8')
+      if (content.length > 1_000_000) continue
+      const meta = parseDshSessionRecord(JSON.parse(content))
+      if (meta) result.set(id, meta)
+    } catch {
+      // 单会话缓存可能尚未写入或正在更新；保留 ACP 结果并回退到通用标题。
+    }
+  }
+  return result
 }
 
 function commandOutput(command: string, args: string[], env = process.env): Promise<string> {
@@ -127,9 +206,10 @@ export async function detectDshExecutable(preferred?: string): Promise<string | 
   return null
 }
 
+/** 用独立启动目录运行宿主；项目目录由 ACP 会话参数传入，避免读取项目 .env。 */
 export function launchDsh(
   spec: DshLaunchSpec,
-  directory: string,
+  launchDirectory: string,
   notification: (method: string, params: unknown) => void,
   request: (method: string, params: unknown) => Promise<unknown>,
   disconnected: () => void
@@ -142,7 +222,7 @@ export function launchDsh(
       delete env[key]
   return new StdioRpcConnection(
     spawn(spec.command, [...spec.args, '--profile', 'acp'], {
-      cwd: directory,
+      cwd: launchDirectory,
       env,
       windowsHide: true,
       shell: false,

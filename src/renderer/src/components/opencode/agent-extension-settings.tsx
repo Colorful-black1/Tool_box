@@ -9,7 +9,7 @@ export function AgentExtensionSettings(): JSX.Element {
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const directory = useCodingAgentStore((state) => state.directory)
   const info = useCodingAgentStore((state) => state.info)
-  const running = useCodingAgentStore((state) => state.runningRuntime)
+  const running = useCodingAgentStore((state) => Boolean(state.runs[state.runtimeId]))
   const [enabled, setEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')

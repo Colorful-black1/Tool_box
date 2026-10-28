@@ -7,8 +7,8 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
   const draft = () => page.getByRole('textbox', { name: '编程任务草稿', exact: true })
   const click = (name) => page.getByRole('button', { name, exact: true }).click()
   const more = async (name) => {
-    await page.locator('.opencode-more > summary').click()
-    await click(name)
+    await page.getByRole('button', { name: '更多会话操作', exact: true }).click()
+    await page.getByRole('menuitem', { name, exact: true }).click()
   }
   const initialChatCount = await page.evaluate(() => window.uiVerification.chatSendCount())
   await check('未选择项目不能开始任务，正常入口不展开程序路径', async () => {
@@ -46,7 +46,7 @@ module.exports = async function verifyOpenCode({ page, app, check, capture }) {
     assert.equal(await draft().inputValue(), '首次任务')
     assert.equal(
       await page.getByRole('button', { name: 'OpenCode 工作模式', exact: true }).textContent(),
-      'Plan▾'
+      'Plan'
     )
     await click('发送给 OpenCode')
     await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()

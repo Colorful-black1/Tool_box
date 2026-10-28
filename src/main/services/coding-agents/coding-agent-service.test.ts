@@ -26,9 +26,11 @@ function fixture(id: CodingAgentId) {
     id,
     inspect: vi.fn(async () => ({ ...info })),
     selectExecutable: vi.fn(async () => ({ ...info })),
-    connect: vi.fn(async () => {
+    connect: vi.fn(async (directory: string) => {
       info.connected = true
       info.canLoadSession = true
+      info.directory = directory
+      native.directory = directory
       return { ...info }
     }),
     disconnect: vi.fn(() => {
@@ -52,6 +54,61 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('不同项目可并行；停止、结算和断连仅释放对应运行时', async () => {
+    const a = fixture('opencode')
+    const b = fixture('codex')
+    const service = new CodingAgentService([a.adapter, b.adapter])
+    await service.connect('opencode', 1, '/fixture/project-a')
+    await service.connect('codex', 1, '/fixture/project-b')
+    const av = await service.openSession('opencode', 1)
+    const bv = await service.openSession('codex', 1)
+    await service.send('opencode', 1, av.id, '项目 A')
+    await service.send('codex', 1, bv.id, '项目 B')
+    expect(a.adapter.send).toHaveBeenCalledOnce()
+    expect(b.adapter.send).toHaveBeenCalledOnce()
+    await expect(service.send('opencode', 1, av.id, '重复')).rejects.toThrow('当前 Agent')
+    await service.stop('opencode', 1, av.id)
+    expect(a.adapter.stop).toHaveBeenCalledOnce()
+    expect(b.adapter.stop).not.toHaveBeenCalled()
+    // A 结束后收到旧的运行分片，不能释放 B 的槽位或恢复 A 的运行。
+    a.emit({ ...a.native, status: 'running' })
+    await expect(service.send('codex', 1, bv.id, '重复')).rejects.toThrow('当前 Agent')
+    await service.send('opencode', 1, av.id, '项目 A 第二轮')
+    service.disconnect('opencode', 1)
+    await expect(service.connect('codex', 1, '/fixture/project-c')).rejects.toThrow('当前 Agent')
+    await service.stop('codex', 1, bv.id)
+    expect(b.adapter.stop).toHaveBeenCalledWith(bv.nativeSessionId)
+    service.dispose()
+  })
+
+  it('原生同名会话的审批分别绑定各自运行，不允许跨运行时使用', async () => {
+    const a = fixture('opencode')
+    const b = fixture('codex')
+    const service = new CodingAgentService([a.adapter, b.adapter])
+    await service.connect('opencode', 1, '/fixture/project-a')
+    await service.connect('codex', 1, '/fixture/project-b')
+    const av = await service.openSession('opencode', 1)
+    const bv = await service.openSession('codex', 1)
+    await service.send('opencode', 1, av.id, '项目 A')
+    await service.send('codex', 1, bv.id, '项目 B')
+    a.emit({
+      ...a.native,
+      status: 'running',
+      approvals: [{ id: 'approve-a', title: 'A 审批', details: '', canAllow: true }]
+    })
+    b.emit({
+      ...b.native,
+      status: 'running',
+      approvals: [{ id: 'approve-b', title: 'B 审批', details: '', canAllow: true }]
+    })
+    service.approve('opencode', 1, av.id, 'approve-a', true)
+    service.approve('codex', 1, bv.id, 'approve-b', false)
+    expect(a.adapter.approve).toHaveBeenCalledWith(av.nativeSessionId, 'approve-a', true)
+    expect(b.adapter.approve).toHaveBeenCalledWith(bv.nativeSessionId, 'approve-b', false)
+    expect(() => service.approve('codex', 1, bv.id, 'approve-a', true)).toThrow('该审批已结束')
+    service.dispose()
+  })
+
   it('明确重读历史可更新已结束会话正文，迟到运行事件仍不能覆盖新历史', async () => {
     const f = fixture('claude-desktop')
     const service = new CodingAgentService([f.adapter])
@@ -104,7 +161,7 @@ describe('统一编程运行时边界', () => {
     expect(code.adapter.disconnect).toHaveBeenCalled()
     expect(desktop.adapter.disconnect).toHaveBeenCalled()
   })
-  it('Claude Code 与 Desktop 独立连接和会话归属，共享顶层任务互斥', async () => {
+  it('Claude Code 与 Desktop 独立连接和会话归属，同一项目仍互斥', async () => {
     const code = fixture('claude')
     const desktop = fixture('claude-desktop')
     const service = new CodingAgentService([code.adapter, desktop.adapter])
@@ -137,7 +194,9 @@ describe('统一编程运行时边界', () => {
     })
     await expect(service.stop('opencode', 1, view.id)).rejects.toThrow('fixture-private')
     expect(events.at(-1)?.status).toBe('running')
-    await expect(service.connect('codex', 1, '/fixture/project')).rejects.toThrow('正在运行')
+    await service.connect('codex', 1, '/fixture/project')
+    const other = await service.openSession('codex', 1)
+    await expect(service.send('codex', 1, other.id, '冲突任务')).rejects.toThrow('相同项目')
     await service.stop('opencode', 1, view.id)
     expect(events.at(-1)?.status).toBe('ready')
     service.dispose()

@@ -12,7 +12,7 @@ export function AgentDraftRecovery(): JSX.Element {
   const message = useAgentDraftSaveStore((state) => state.message)
   const entries = useAgentDraftSaveStore((state) => state.entries)
   const busy = useCodingAgentStore((state) => state.busy)
-  const running = useCodingAgentStore((state) => state.runningRuntime)
+  const runs = useCodingAgentStore((state) => state.runs)
   const directory = useCodingAgentStore((state) => state.directory)
   const draft = useCodingAgentStore((state) => state.draft)
   const [expanded, setExpanded] = useState(false)
@@ -68,7 +68,7 @@ export function AgentDraftRecovery(): JSX.Element {
               <button
                 type="button"
                 className="btn-ghost"
-                disabled={busy || Boolean(running)}
+                disabled={busy || Boolean(runs[entry.runtimeId])}
                 onClick={() => useCodingAgentStore.getState().retrieveDraft(entry)}
               >
                 取回

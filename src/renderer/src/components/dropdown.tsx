@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, ReactNode } from 'react'
 import { Popover } from './popover'
+import { CaretIcon, CheckIcon } from './icons'
 
 export interface DropdownOption {
   value: string
@@ -79,13 +80,14 @@ export function Dropdown({
     if (!keyword) return options
     return options.filter((option) => option.label.toLowerCase().includes(keyword))
   }, [options, query, showFilter])
+  const activeIndex = Math.min(active, Math.max(0, visibleOptions.length - 1))
 
   useEffect(() => {
     if (open) {
-      const option = list.current?.querySelectorAll('[role="option"]').item(active)
+      const option = list.current?.querySelectorAll('[role="option"]').item(activeIndex)
       option?.scrollIntoView({ block: 'nearest' })
     }
-  }, [active, open])
+  }, [activeIndex, open, visibleOptions.length])
   useEffect(() => {
     if (disabled) setOpen(false)
   }, [disabled])
@@ -104,18 +106,18 @@ export function Dropdown({
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      setActive((index) =>
+      setActive(
         Math.max(
           0,
-          Math.min(visibleOptions.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))
+          Math.min(visibleOptions.length - 1, activeIndex + (event.key === 'ArrowDown' ? 1 : -1))
         )
       )
     } else if ((event.key === 'Home' || event.key === 'End') && event.target !== search.current) {
       event.preventDefault()
       setActive(event.key === 'Home' ? 0 : Math.max(0, visibleOptions.length - 1))
-    } else if (event.key === 'Enter' && visibleOptions[active]) {
+    } else if (event.key === 'Enter' && visibleOptions[activeIndex]) {
       event.preventDefault()
-      choose(visibleOptions[active])
+      choose(visibleOptions[activeIndex])
     } else if (!showFilter && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
       const index = visibleOptions.findIndex((option) =>
         option.label.toLowerCase().startsWith(event.key.toLowerCase())
@@ -155,7 +157,7 @@ export function Dropdown({
           {selected?.label ?? placeholder}
         </span>
         <span className="ui-dropdown-caret" aria-hidden="true">
-          ▾
+          <CaretIcon />
         </span>
       </button>
 
@@ -183,7 +185,7 @@ export function Dropdown({
                 aria-expanded="true"
                 aria-controls={`${optionId}-options`}
                 aria-activedescendant={
-                  visibleOptions[active] ? `${optionId}-option-${active}` : undefined
+                  visibleOptions[activeIndex] ? `${optionId}-option-${activeIndex}` : undefined
                 }
                 placeholder="筛选…"
                 aria-label={`${ariaLabel} 过滤`}
@@ -200,11 +202,11 @@ export function Dropdown({
             tabIndex={-1}
             onKeyDown={onKey}
             aria-activedescendant={
-              visibleOptions[active] ? `${optionId}-option-${active}` : undefined
+              visibleOptions[activeIndex] ? `${optionId}-option-${activeIndex}` : undefined
             }
           >
             {visibleOptions.length === 0 ? (
-              <li className="ui-dropdown-empty">暂无可选项</li>
+              <li className="ui-dropdown-empty">{query ? '没有匹配项，试试其他关键词' : '暂无可选项'}</li>
             ) : (
               visibleOptions.map((option, index) => (
                 <li key={option.value}>
@@ -214,12 +216,12 @@ export function Dropdown({
                     aria-selected={option.value === value}
                     id={`${optionId}-option-${index}`}
                     tabIndex={-1}
-                    className={`ui-dropdown-item${option.value === value ? ' active' : ''}${index === active ? ' highlighted' : ''}`}
+                    className={`ui-dropdown-item${option.value === value ? ' active' : ''}${index === activeIndex ? ' highlighted' : ''}`}
                     onMouseMove={() => setActive(index)}
                     onClick={() => choose(option)}
                   >
                     <span className="ui-dropdown-tick" aria-hidden="true">
-                      {option.value === value ? '✓' : ''}
+                      {option.value === value ? <CheckIcon /> : null}
                     </span>
                     {option.icon ? (
                       <span className="ui-dropdown-icon" aria-hidden="true">

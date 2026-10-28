@@ -12,7 +12,7 @@ import {
   type LocalAgentCommand
 } from '../../lib/agent-composer-input'
 import { AgentActionMenu, type AgentActionChoice } from './agent-action-menu'
-import { SendIcon, StopIcon } from '../icons'
+import { CloseIcon, CodeIcon, FolderIcon, SendIcon, StopIcon } from '../icons'
 
 type Menu = 'commands' | 'files' | 'skills' | 'mcp'
 
@@ -33,9 +33,8 @@ export function AgentComposer({
   const draft = useCodingAgentStore((state) => state.draft)
   const busy = useCodingAgentStore((state) => state.busy)
   const transferred = useCodingAgentStore((state) => state.transferred)
-  const runningRuntime = useCodingAgentStore((state) => state.runningRuntime)
-  const runningSession = useCodingAgentStore((state) => state.runningSession)
-  const preparingRuntime = useCodingAgentStore((state) => state.preparingRuntime)
+  const runningSession = useCodingAgentStore((state) => state.runs[state.runtimeId]?.sessionId)
+  const preparing = useCodingAgentStore((state) => state.preparations[state.runtimeId])
   const session = useCodingAgentStore((state) => (activeId ? state.sessions[activeId] : undefined))
   const setDraft = useCodingAgentStore((state) => state.setDraft)
   const send = useCodingAgentStore((state) => state.send)
@@ -58,7 +57,7 @@ export function AgentComposer({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
-  const locked = busy || Boolean(runningRuntime || preparingRuntime)
+  const locked = busy || Boolean(runningSession || preparing)
   const close = useCallback(() => {
     setMode(null)
     setLoading(false)
@@ -358,7 +357,8 @@ export function AgentComposer({
                   setDraft(draft.replace(marker, ''))
                 }}
               >
-                {item.label} ×
+                <span>{item.label}</span>
+                <CloseIcon />
               </button>
             ))}
           </div>
@@ -398,35 +398,47 @@ export function AgentComposer({
           aria-controls={mode ? 'agent-action-options' : undefined}
           aria-activedescendant={mode && visible[active] ? `agent-action-${active}` : undefined}
         />
-        <div className="agent-composer-shortcuts">
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={locked || !directory}
-            onClick={() => open('files')}
-          >
-            @ 文件
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={locked || !directory}
-            onClick={() => open('commands')}
-          >
-            / 命令
-          </button>
-          <span className="field-hint">Enter 发送 · Shift + Enter 换行</span>
-        </div>
-        <div className="composer-actions">
-          <span className="opencode-draft-count">{draft.length.toLocaleString()}/50,000</span>
-          {preparingRuntime ? (
-            <button type="button" className="btn-ghost" onClick={cancelPreparation}>
-              取消准备
-            </button>
-          ) : runningRuntime === runtimeId && runningSession === activeId ? (
+        <div className="agent-composer-toolbar">
+          <div className="agent-composer-shortcuts" role="group" aria-label="任务输入工具">
             <button
               type="button"
               className="btn-ghost"
+              disabled={locked || !directory}
+              aria-expanded={mode === 'files'}
+              aria-controls={mode === 'files' ? 'agent-action-options' : undefined}
+              onClick={() => (mode === 'files' ? close() : open('files'))}
+            >
+              <FolderIcon />
+              @ 文件
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={locked || !directory}
+              aria-expanded={mode === 'commands'}
+              aria-controls={mode === 'commands' ? 'agent-action-options' : undefined}
+              onClick={() => (mode === 'commands' ? close() : open('commands'))}
+            >
+              <CodeIcon />
+              / 命令
+            </button>
+          </div>
+          <span className="opencode-draft-count" data-over-limit={draft.length > 50_000}>
+            {draft.length.toLocaleString()}/50,000
+          </span>
+        </div>
+        <div className="composer-actions">
+          <span className="field-hint agent-composer-keyboard">
+            <kbd>Enter</kbd> 发送 · <kbd>Shift + Enter</kbd> 换行
+          </span>
+          {preparing ? (
+            <button type="button" className="btn-ghost" onClick={() => cancelPreparation()}>
+              取消准备
+            </button>
+          ) : runningSession && runningSession === activeId ? (
+            <button
+              type="button"
+              className="btn-danger"
               disabled={session?.status !== 'running'}
               onClick={() => void stop()}
             >

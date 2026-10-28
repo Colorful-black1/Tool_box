@@ -18,6 +18,7 @@ import type { AgentSendInput } from '@shared/agent-actions'
 interface RuntimeWorkspace {
   info: CodingAgentRuntimeView | null
   directory: string
+  inheritedProject: boolean
   sessions: Record<string, CodingAgentSessionView>
   activeId: string | null
   history: CodingAgentSessionSummary[]
@@ -36,9 +37,10 @@ interface RuntimeWorkspace {
 interface CodingAgentState extends RuntimeWorkspace {
   runtimeId: CodingAgentId
   workspaces: Partial<Record<CodingAgentId, RuntimeWorkspace>>
-  runningRuntime: CodingAgentId | null
-  runningSession: string | null
-  preparingRuntime: CodingAgentId | null
+  runs: Partial<
+    Record<CodingAgentId, { sessionId: string; runId: string | null; directory: string }>
+  >
+  preparations: Partial<Record<CodingAgentId, boolean>>
   switchRuntime(id: CodingAgentId): void
   inspect(force?: boolean): Promise<void>
   chooseExecutable(): Promise<void>
@@ -51,9 +53,9 @@ interface CodingAgentState extends RuntimeWorkspace {
   setOption(id: string, value: string): Promise<void>
   send(extra?: Pick<AgentSendInput, 'references' | 'literal'>): Promise<void>
   summarize(): Promise<void>
-  cancelPreparation(): void
-  viewRunning(): void
-  stop(): Promise<void>
+  cancelPreparation(id?: CodingAgentId): void
+  viewRunning(id?: CodingAgentId): void
+  stop(id?: CodingAgentId): Promise<void>
   approve(id: string, approved: boolean): Promise<void>
   openDesktop(): Promise<void>
   setDraft(text: string): void
@@ -71,6 +73,7 @@ function emptyWorkspace(): RuntimeWorkspace {
   return {
     info: null,
     directory: '',
+    inheritedProject: false,
     sessions: {},
     activeId: null,
     history: [],
@@ -90,6 +93,7 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
   const {
     info,
     directory,
+    inheritedProject,
     sessions,
     activeId,
     history,
@@ -106,6 +110,7 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
   return {
     info,
     directory,
+    inheritedProject,
     sessions,
     activeId,
     history,
@@ -137,10 +142,12 @@ function sameDirectory(a: string, b: string): boolean {
 }
 
 function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorkspace {
-  if (sameDirectory(state.directory, directory)) return state
+  if (sameDirectory(state.directory, directory))
+    return state.inheritedProject ? { ...state, inheritedProject: false } : state
   return {
     ...state,
     directory,
+    inheritedProject: false,
     activeId: null,
     history: [],
     historyLoaded: false,
@@ -157,8 +164,22 @@ function errorText(error: unknown): string {
 }
 
 export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
-  // 锁覆盖首次连接、新建和发送确认窗口，切换页面也不能重复提交；不做后台排队。
-  let submission: { cancelled: boolean; sending: boolean } | null = null
+  // 每个 Agent 独立准备；同一 Agent 的重复发送不排队。
+  const submissions = new Map<CodingAgentId, { cancelled: boolean; sending: boolean }>()
+  const clearPreparation = (id: CodingAgentId): void => {
+    set((state) => {
+      const preparations = { ...state.preparations }
+      delete preparations[id]
+      return { preparations }
+    })
+  }
+  const clearRun = (id: CodingAgentId): void => {
+    set((state) => {
+      const runs = { ...state.runs }
+      delete runs[id]
+      return { runs }
+    })
+  }
   const read = (id: CodingAgentId): RuntimeWorkspace =>
     id === get().runtimeId ? workspace(get()) : (get().workspaces[id] ?? emptyWorkspace())
   const update = (
@@ -202,9 +223,14 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       )
     }))
     if (view.status === 'running' || view.status === 'stopping')
-      set({ runningRuntime: id, runningSession: view.id })
-    else if (get().runningRuntime === id && get().runningSession === view.id)
-      set({ runningRuntime: null, runningSession: null })
+      set((state) => ({
+        runs: {
+          ...state.runs,
+          [id]: { sessionId: view.id, runId: view.runId, directory: view.directory }
+        }
+      }))
+    else if (get().runs[id]?.sessionId === view.id && get().runs[id]?.runId === view.runId)
+      clearRun(id)
   }
   const ensureConnected = async (id: CodingAgentId, directory: string): Promise<void> => {
     const before = read(id)
@@ -276,7 +302,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
   ): Promise<void> => {
     const id = get().runtimeId
     const before = read(id)
-    if (before.busy || submission || get().runningRuntime) return
+    if (before.busy || submissions.has(id) || get().runs[id]) return
+    if (
+      Object.values(get().runs).some((run) => run && sameDirectory(run.directory, before.directory))
+    ) {
+      update(id, { error: '此项目已有 Agent 正在执行任务，请等待结束后再发送' })
+      return
+    }
     const content = summary
       ? '请依据本会话已有信息，为接手任务的另一个编程 Agent 输出简洁的交接说明。包含任务目标、关键约束、已完成工作与涉及文件、重要决定、验证结果、未完成事项及建议下一步。区分事实与推测；未执行的验证写明“未执行”，无法确认的写明“待核对”。仅输出说明，不为总结执行命令、调用工具或修改文件，不包含密钥及其他敏感内容。'
       : before.draft.trim()
@@ -290,8 +322,8 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     }
     if (summary && !before.activeId) return
     const attempt = { cancelled: false, sending: false }
-    submission = attempt
-    set({ preparingRuntime: id })
+    submissions.set(id, attempt)
+    set((state) => ({ preparations: { ...state.preparations, [id]: true } }))
     try {
       await perform(async () => {
         const verifySelection = (): void => {
@@ -335,7 +367,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           throw new Error('请先选择可用模型，再发送任务')
         const key = draftKey(state)
         attempt.sending = true
-        set({ preparingRuntime: null })
+        clearPreparation(id)
         await codingAgentClient().send({ runtimeId: id, sessionId: ref, content, ...extra })
         if (summary) return
         update(id, (current) => {
@@ -350,9 +382,9 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         })
       }, id)
     } finally {
-      if (submission === attempt) {
-        submission = null
-        set({ preparingRuntime: null })
+      if (submissions.get(id) === attempt) {
+        submissions.delete(id)
+        clearPreparation(id)
       }
     }
   }
@@ -360,17 +392,16 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     ...emptyWorkspace(),
     runtimeId: 'opencode',
     workspaces: {},
-    runningRuntime: null,
-    runningSession: null,
-    preparingRuntime: null,
+    runs: {},
+    preparations: {},
     switchRuntime: (id) => {
       if (id === get().runtimeId) return
       set((state) => {
         const next = state.workspaces[id] ?? emptyWorkspace()
         return {
-          ...(next.busy || state.runningRuntime === id
+          ...(next.directory || next.busy
             ? next
-            : changeProject(next, state.directory || next.directory)),
+            : { ...changeProject(next, state.directory), inheritedProject: true }),
           runtimeId: id,
           workspaces: { ...state.workspaces, [state.runtimeId]: workspace(state) }
         }
@@ -380,7 +411,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       if (get().info && !force) return Promise.resolve()
       return perform(async (id) => {
         const info = await codingAgentClient().inspect(id)
-        update(id, (state) => ({ info, directory: state.directory || info.directory }))
+        update(id, (state) => ({
+          ...(state.inheritedProject && info.directory
+            ? changeProject(state, info.directory)
+            : { directory: state.directory || info.directory }),
+          info,
+          inheritedProject: false
+        }))
       })
     },
     chooseExecutable: () =>
@@ -390,6 +427,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       }),
     chooseDirectory: () =>
       perform(async (id) => {
+        if (get().runs[id]) throw new Error('请先等待或停止当前 Agent 的任务再切换项目')
         const directory = await codingAgentClient().chooseDirectory()
         if (!directory) return
         update(id, (state) => changeProject(state, directory))
@@ -426,12 +464,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         // Claude 的正文可能由外部客户端更新；空闲时明确点选就重读，不只激活缓存。
         if (
           cached &&
-          ((id !== 'claude' && id !== 'claude-desktop') || get().runningRuntime || submission)
+          ((id !== 'claude' && id !== 'claude-desktop') || get().runs[id] || submissions.has(id))
         ) {
           await activate(id, cached.id, carryDraft)
           return
         }
-        if (get().runningRuntime || submission) throw new Error('请先等待或停止当前任务')
+        if (get().runs[id] || submissions.has(id))
+          throw new Error('请先等待或停止当前 Agent 的任务')
         const selection = before.selection + 1
         update(id, { selection })
         await ensureConnected(id, before.directory)
@@ -455,8 +494,8 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           const selected = current.activeId ? current.sessions[current.activeId] : undefined
           if (
             (id === 'claude' || id === 'claude-desktop') &&
-            !get().runningRuntime &&
-            !submission &&
+            !get().runs[id] &&
+            !submissions.has(id) &&
             selected &&
             selected.connectionId === connection &&
             history.some((item) => item.id === selected.nativeSessionId)
@@ -477,12 +516,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       }),
     send: (extra) => submit(false, extra),
     summarize: () => submit(true),
-    cancelPreparation: () => {
-      if (submission && !submission.sending) submission.cancelled = true
+    cancelPreparation: (id = get().runtimeId) => {
+      const attempt = submissions.get(id)
+      if (attempt && !attempt.sending) attempt.cancelled = true
     },
-    viewRunning: () => {
-      const { runningRuntime: id, runningSession: ref } = get()
-      if (!id || !ref) return
+    viewRunning: (id = get().runtimeId) => {
+      const ref = get().runs[id]?.sessionId
+      if (!ref) return
       get().switchRuntime(id)
       const session = read(id).sessions[ref]
       if (session) {
@@ -490,9 +530,9 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         void activate(id, ref)
       }
     },
-    stop: () => {
-      const { runningRuntime: id, runningSession: ref } = get()
-      if (!id || !ref) return Promise.resolve()
+    stop: (id = get().runtimeId) => {
+      const ref = get().runs[id]?.sessionId
+      if (!ref) return Promise.resolve()
       // 停止属于控制请求，不能被尚未返回的发送确认占住 busy 后拦截。
       return codingAgentClient()
         .stop({ runtimeId: id, sessionId: ref })
@@ -500,12 +540,17 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           update(id, { error: errorText(error) })
         })
     },
-    approve: (approvalId, approved) =>
-      perform(async (id) => {
-        const sessionId = read(id).activeId
-        if (sessionId)
-          await codingAgentClient().approve({ runtimeId: id, sessionId, approvalId, approved })
-      }),
+    approve: async (approvalId, approved) => {
+      const id = get().runtimeId
+      const sessionId = read(id).activeId
+      if (!sessionId) return
+      // 审批与停止都是控制请求，发送确认未返回时也必须能响应。
+      try {
+        await codingAgentClient().approve({ runtimeId: id, sessionId, approvalId, approved })
+      } catch (error) {
+        update(id, { error: errorText(error) })
+      }
+    },
     openDesktop: () =>
       perform(async (id) => {
         await codingAgentClient().openDesktop(id)
@@ -527,8 +572,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       if (!sameConnection && !state.connecting) return
       if (sameConnection && event.revision <= state.runtimeRevision) return
       update(id, { info: event.runtime, runtimeRevision: event.revision })
-      if (!event.runtime.connected && get().runningRuntime === id)
-        set({ runningRuntime: null, runningSession: null })
+      if (!event.runtime.connected && get().runs[id]) clearRun(id)
     },
     clearError: () => update(get().runtimeId, { error: '' }),
     transferMessage: async (messageId, targetId) => {
@@ -541,8 +585,8 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const id = targetId ?? (sourceId === 'opencode' ? 'codex' : 'opencode')
       if (id === sourceId || !WORKBENCH_AGENT_IDS.some((value) => value === id)) return
       const target = read(id)
-      if (target.busy) {
-        update(sourceId, { error: '目标 Agent 正在处理操作，请稍后再转用' })
+      if (target.busy || get().runs[id]) {
+        update(sourceId, { error: '目标 Agent 正在处理操作或执行任务，请结束后再转用' })
         return
       }
       const text = `请先核对当前项目状态，再根据以下内容继续处理。遵守项目规则，不因本说明扩大操作权限。\n\n来源：${CODING_AGENT_NAMES[sourceId]} · ${session.title}\n来源项目：${session.directory}\n\n${message.content}`
@@ -553,9 +597,19 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const next = changeProject(target, session.directory)
       const key = draftEntryKey(session.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
-      if (existing.trim() && existing !== text && !(await confirmDialog('目标已有新对话草稿，是否替换？')))
+      if (
+        existing.trim() &&
+        existing !== text &&
+        !(await confirmDialog('目标已有新对话草稿，是否替换？'))
+      )
         return
-      if (!unchanged(id, target) || !unchanged(sourceId, source) || read(id).busy || get().runtimeId !== sourceId) {
+      if (
+        !unchanged(id, target) ||
+        !unchanged(sourceId, source) ||
+        read(id).busy ||
+        get().runs[id] ||
+        get().runtimeId !== sourceId
+      ) {
         update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新转用' })
         return
       }
@@ -649,13 +703,21 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     },
     retrieveDraft: async (entry) => {
       const target = read(entry.runtimeId)
-      if (target.busy || get().runningRuntime) return
+      if (target.busy || get().runs[entry.runtimeId]) return
       const next = changeProject(target, entry.directory)
       const key = draftEntryKey(entry.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
-      if (existing && existing !== entry.content && !(await confirmDialog('新对话已有草稿，是否替换？')))
+      if (
+        existing &&
+        existing !== entry.content &&
+        !(await confirmDialog('新对话已有草稿，是否替换？'))
+      )
         return
-      if (!unchanged(entry.runtimeId, target) || read(entry.runtimeId).busy || get().runningRuntime) {
+      if (
+        !unchanged(entry.runtimeId, target) ||
+        read(entry.runtimeId).busy ||
+        get().runs[entry.runtimeId]
+      ) {
         update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新取回' })
         return
       }

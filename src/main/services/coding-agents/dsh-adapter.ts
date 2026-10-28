@@ -15,7 +15,13 @@ import {
 } from './adapter'
 import { acpObject } from './stdio-rpc-connection'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
-import { detectDshExecutable, inspectDshExecutable, launchDsh } from './dsh-runtime'
+import {
+  detectDshExecutable,
+  dshLaunchDirectory,
+  dshSessionMetadata,
+  inspectDshExecutable,
+  launchDsh
+} from './dsh-runtime'
 import { unavailableCatalog, type NativeAgentCatalog } from './agent-action-catalog'
 
 /** 合成协议测试与本机 ACP 共用的最小传输契约。 */
@@ -104,17 +110,17 @@ export class DshAdapter implements CodingAgentAdapter {
   async connect(directory: string): Promise<Omit<CodingAgentRuntimeView, 'connectionId'>> {
     if (!isAbsolute(directory) || !(await stat(directory).catch(() => null))?.isDirectory())
       throw new CodingAgentError('请选择存在的项目绝对目录')
+    const cwd = await realpath(directory)
     this.disconnect()
     const generation = this.generation
     await this.inspect()
     if (!this.info.executablePath)
       throw new CodingAgentError('未找到 DSH，请选择官方 CLI 或 DeepSeek Harness.exe')
     const spec = await inspectDshExecutable(this.info.executablePath)
-    const cwd = await realpath(directory)
     if (generation !== this.generation) throw new CodingAgentError('DSH 连接已结束')
     const peer = this.launch(
       spec,
-      cwd,
+      dshLaunchDirectory(),
       (method, params) => {
         if (generation === this.generation) this.notification(method, params)
       },
@@ -202,7 +208,7 @@ export class DshAdapter implements CodingAgentAdapter {
 
   async listSessions(): Promise<CodingAgentSessionSummary[]> {
     const peer = this.connection()
-    const result: CodingAgentSessionSummary[] = []
+    const items: Array<{ id: string; title: string }> = []
     const cursors = new Set<string>()
     let cursor: string | undefined
     for (let page = 0; page < 10; page++) {
@@ -221,13 +227,20 @@ export class DshAdapter implements CodingAgentAdapter {
           id &&
           cwd &&
           normalizeDraftDirectory(cwd) === normalizeDraftDirectory(this.info.directory) &&
-          !result.some((item) => item.id === id)
+          !items.some((entry) => entry.id === id)
         )
-          result.push({ id, title: acpText(item?.title, 100) || 'DSH 历史会话' })
+          items.push({ id, title: acpText(item?.title, 100) })
       }
       cursor = acpText(response.nextCursor, 200) || undefined
       if (!cursor || cursors.has(cursor)) break
       cursors.add(cursor)
+    }
+    const metadata = await dshSessionMetadata(items.map((item) => item.id))
+    const result: CodingAgentSessionSummary[] = []
+    for (const item of items) {
+      const meta = metadata.get(item.id)
+      if (meta?.blank || (meta && !meta.title && meta.lastPromptAt === null)) continue
+      result.push({ id: item.id, title: meta?.title || item.title || 'DSH 历史会话' })
     }
     return result
   }

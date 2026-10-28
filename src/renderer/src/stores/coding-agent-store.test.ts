@@ -61,7 +61,8 @@ const api = {
   send: vi.fn(),
   listSessions: vi.fn(),
   chooseDirectory: vi.fn(),
-  stop: vi.fn()
+  stop: vi.fn(),
+  approve: vi.fn()
 }
 
 beforeEach(() => {
@@ -92,11 +93,11 @@ beforeEach(() => {
   store.setState({
     runtimeId: 'opencode',
     workspaces: {},
-    runningRuntime: null,
-    runningSession: null,
-    preparingRuntime: null,
+    runs: {},
+    preparations: {},
     info: null,
     directory: '/fixture/project',
+    inheritedProject: false,
     sessions: {},
     activeId: null,
     history: [],
@@ -115,6 +116,144 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('切换恢复各自项目、历史和草稿，不用来源项目重置目标工作台', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('项目 A 草稿')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/project-b')
+    await store.getState().chooseDirectory()
+    await store.getState().openSession('same-native-id')
+    await store.getState().listSessions()
+    store.getState().setDraft('项目 B 草稿')
+    store.getState().switchRuntime('opencode')
+    expect(store.getState().directory).toBe('/fixture/project')
+    expect(store.getState().activeId).toBe('opencode-ref')
+    expect(store.getState().draft).toBe('项目 A 草稿')
+    store.getState().switchRuntime('codex')
+    expect(store.getState().directory).toBe('/fixture/project-b')
+    expect(store.getState().activeId).toBe('codex-ref')
+    expect(store.getState().historyLoaded).toBe(true)
+    expect(store.getState().draft).toBe('项目 B 草稿')
+  })
+
+  it('首次继承项目仅作起点，检测优先恢复该 Agent 的原生项目偏好', async () => {
+    store.getState().switchRuntime('codex')
+    api.inspect.mockResolvedValueOnce({ ...info('codex'), directory: '/fixture/saved-project' })
+    await store.getState().inspect()
+    expect(store.getState().directory).toBe('/fixture/saved-project')
+    store.getState().switchRuntime('opencode')
+    store.getState().switchRuntime('codex')
+    expect(store.getState().directory).toBe('/fixture/saved-project')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/explicit-project')
+    await store.getState().chooseDirectory()
+    await store.getState().inspect(true)
+    expect(store.getState().directory).toBe('/fixture/explicit-project')
+  })
+  it('用户明确选择继承来的同一目录后，检测不再覆盖该选择', async () => {
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/project')
+    await store.getState().chooseDirectory()
+    api.inspect.mockResolvedValueOnce({ ...info('codex'), directory: '/fixture/saved-project' })
+    await store.getState().inspect()
+    expect(store.getState().directory).toBe('/fixture/project')
+  })
+
+  it('两个项目独立发送，A 结算或断连不会解锁、停止或覆盖 B', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('项目 A 任务')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/project-b')
+    await store.getState().chooseDirectory()
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('项目 B 任务')
+    api.send.mockImplementation(async ({ runtimeId }: { runtimeId: CodingAgentId }) => {
+      const state = store.getState()
+      const current = state.runtimeId === runtimeId ? state : state.workspaces[runtimeId]!
+      store.getState().receive({
+        kind: 'session',
+        session: {
+          ...session(runtimeId, `${runtimeId}-ref`, 2),
+          directory: current.directory,
+          status: 'running'
+        }
+      })
+    })
+    store.getState().switchRuntime('opencode')
+    await store.getState().send()
+    store.getState().switchRuntime('codex')
+    await store.getState().send()
+    expect(api.send).toHaveBeenCalledTimes(2)
+    expect(Object.keys(store.getState().runs)).toEqual(['opencode', 'codex'])
+    store.getState().receive({
+      kind: 'session',
+      session: { ...session('opencode', 'opencode-ref', 3), outcome: 'completed' }
+    })
+    expect(store.getState().runs.opencode).toBeUndefined()
+    expect(store.getState().runs.codex?.directory).toBe('/fixture/project-b')
+    store.getState().receive({
+      kind: 'runtime',
+      runtime: { ...info('opencode'), connected: false },
+      revision: 100
+    })
+    await store.getState().stop()
+    expect(api.stop).toHaveBeenCalledExactlyOnceWith({ runtimeId: 'codex', sessionId: 'codex-ref' })
+    expect(store.getState().directory).toBe('/fixture/project-b')
+    store.getState().viewRunning('opencode')
+    expect(store.getState().runtimeId).toBe('codex')
+  })
+
+  it('旧运行迟到的结算不会清除同会话的新运行', () => {
+    store.setState({
+      info: info('opencode'),
+      runs: {
+        opencode: { sessionId: 'opencode-ref', runId: 'run-new', directory: '/fixture/project' }
+      }
+    })
+    store.getState().receive({
+      kind: 'session',
+      session: { ...session('opencode', 'opencode-ref', 4), runId: 'run-old', outcome: 'completed' }
+    })
+    expect(store.getState().runs.opencode?.runId).toBe('run-new')
+    store.getState().receive({
+      kind: 'session',
+      session: { ...session('opencode', 'opencode-ref', 5), runId: 'run-new', outcome: 'completed' }
+    })
+    expect(store.getState().runs.opencode).toBeUndefined()
+  })
+
+  it('不同 Agent 可同时准备，取消 A 不取消 B，也不把 A 的草稿误发送', async () => {
+    const completions = new Map<CodingAgentId, () => void>()
+    api.connect.mockImplementation(
+      ({ runtimeId, directory }: { runtimeId: CodingAgentId; directory: string }) =>
+        new Promise<CodingAgentRuntimeView>((resolve) => {
+          completions.set(runtimeId, () => resolve({ ...info(runtimeId), directory }))
+        })
+    )
+    store.getState().setDraft('项目 A 待发送')
+    const a = store.getState().send()
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/project-b')
+    await store.getState().chooseDirectory()
+    store.getState().setDraft('项目 B 待发送')
+    const b = store.getState().send()
+    await vi.waitFor(() =>
+      expect(store.getState().preparations).toEqual({ opencode: true, codex: true })
+    )
+    store.getState().cancelPreparation('opencode')
+    completions.get('codex')!()
+    await b
+    completions.get('opencode')!()
+    await a
+    expect(api.createSession).toHaveBeenCalledExactlyOnceWith('codex')
+    expect(api.send).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ runtimeId: 'codex' })
+    )
+    expect(store.getState().preparations).toEqual({})
+    store.getState().switchRuntime('opencode')
+    expect(store.getState().draft).toBe('项目 A 待发送')
+    expect(store.getState().error).toContain('已取消')
+  })
+
   it('Claude 刷新列表及再次点选会话会重读正文，不重连、不丢草稿', async () => {
     store.getState().switchRuntime('claude-desktop')
     await store.getState().openSession('same-native-id')
@@ -220,7 +359,7 @@ describe('工作台按需准备与明确发送', () => {
     await sending
     expect(api.send).not.toHaveBeenCalled()
     expect(store.getState().draft).toBe('保留内容')
-    expect(store.getState().preparingRuntime).toBeNull()
+    expect(store.getState().preparations).toEqual({})
   })
 
   it('新建中取消不发送，已经创建的空会话仍可复用', async () => {
@@ -287,6 +426,17 @@ describe('工作台按需准备与明确发送', () => {
     api.listSessions.mockRejectedValueOnce(new Error('读取失败'))
     await store.getState().listSessions()
     expect(store.getState().history).toHaveLength(1)
+  })
+
+  it('断开重连后重新读取历史仍能恢复列表', async () => {
+    await store.getState().listSessions()
+    expect(store.getState().history).toHaveLength(1)
+    store.setState({ info: { ...info('opencode'), connected: false } })
+    api.connect.mockResolvedValueOnce({ ...info('opencode'), connectionId: 'opencode-connection-2' })
+    await store.getState().listSessions()
+    expect(store.getState().info?.connectionId).toBe('opencode-connection-2')
+    expect(store.getState().history).toHaveLength(1)
+    expect(store.getState().historyLoaded).toBe(true)
   })
 
   it('准备和发送的晚到响应只更新原工作台，发送期间编辑的新文字不被清空', async () => {
@@ -432,13 +582,48 @@ describe('消息转用与来源总结', () => {
       content: expect.stringContaining('交接说明')
     })
     expect(store.getState().draft).toBe('正在编辑的下一步')
-    store.setState({ runningRuntime: 'opencode', runningSession: 'opencode-ref' })
+    store.setState({
+      runs: { opencode: { sessionId: 'opencode-ref', runId: null, directory: '/fixture/project' } }
+    })
     await store.getState().summarize()
     expect(api.send).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('原生事件和运行身份', () => {
+  it('发送确认未返回时仍可审批，切换后不会批准另一 Agent 的任务', async () => {
+    await store.getState().openSession('same-native-id')
+    let finish!: () => void
+    api.send.mockImplementationOnce(() => {
+      store.getState().receive({
+        kind: 'session',
+        session: {
+          ...session('opencode', 'opencode-ref', 2),
+          status: 'running',
+          approvals: [{ id: 'approval-a', title: '审批 A', details: '', canAllow: true }]
+        }
+      })
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    store.getState().setDraft('等待审批的任务')
+    const sending = store.getState().send()
+    await vi.waitFor(() => expect(store.getState().busy).toBe(true))
+    await vi.waitFor(() => expect(store.getState().runs.opencode).toBeDefined())
+    await store.getState().approve('approval-a', true)
+    expect(api.approve).toHaveBeenCalledExactlyOnceWith({
+      runtimeId: 'opencode',
+      sessionId: 'opencode-ref',
+      approvalId: 'approval-a',
+      approved: true
+    })
+    store.getState().switchRuntime('codex')
+    await store.getState().stop()
+    expect(api.stop).not.toHaveBeenCalled()
+    finish()
+    await sending
+  })
   it('发送确认尚未返回时，停止仍立即命中当前运行', async () => {
     await store.getState().openSession('same-native-id')
     let finish!: () => void
@@ -456,7 +641,7 @@ describe('原生事件和运行身份', () => {
     })
     store.getState().setDraft('执行中的任务')
     const sending = store.getState().send()
-    await vi.waitFor(() => expect(store.getState().runningRuntime).toBe('opencode'))
+    await vi.waitFor(() => expect(store.getState().runs.opencode?.sessionId).toBe('opencode-ref'))
     await store.getState().stop()
     expect(api.stop).toHaveBeenCalledExactlyOnceWith({
       runtimeId: 'opencode',
@@ -508,20 +693,20 @@ describe('原生事件和运行身份', () => {
       kind: 'session',
       session: { ...session('opencode', 'opencode-ref', 4), connectionId: 'old', status: 'ready' }
     })
-    expect(store.getState().runningRuntime).toBe('opencode')
-    await store.getState().stop()
+    expect(store.getState().runs.opencode?.sessionId).toBe('opencode-ref')
+    await store.getState().stop('opencode')
     expect(api.stop).toHaveBeenCalledExactlyOnceWith({
       runtimeId: 'opencode',
       sessionId: 'opencode-ref'
     })
-    store.getState().viewRunning()
+    store.getState().viewRunning('opencode')
     expect(store.getState().runtimeId).toBe('opencode')
     expect(store.getState().activeId).toBe('opencode-ref')
     store.getState().receive({
       kind: 'session',
       session: { ...session('opencode', 'opencode-ref', 5), status: 'ready' }
     })
-    expect(store.getState().runningRuntime).toBeNull()
+    expect(store.getState().runs.opencode).toBeUndefined()
   })
   it('等待转用确认期间目标草稿变化，不覆盖新内容', async () => {
     await store.getState().openSession('same-native-id')
@@ -551,7 +736,12 @@ describe('原生事件和运行身份', () => {
     store.getState().setDraft('目标原稿')
     store.getState().switchRuntime('opencode')
     let answer!: (value: boolean) => void
-    vi.mocked(confirmDialog).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+    vi.mocked(confirmDialog).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
     const pending = store.getState().transferMessage('answer')
     const updated = { ...session('codex', 'codex-ref', 8), title: '等待期间更新的标题' }
     store.getState().receive({ kind: 'session', session: updated })
