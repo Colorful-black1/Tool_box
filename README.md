@@ -254,7 +254,8 @@ ACP 只推送已提交回复，**没有实时 Token 分片；可续接上下文�
 #### OpenCode
 
 首版已在 Windows 的 **OpenCode Desktop 2.1.1** 上验证，无需另装 CLI 或新增 npm 依赖。
-自动检测 `%LOCALAPPDATA%/Programs/@opencodedesktop/resources/opencode-cli.exe`，
+自动检测 `%LOCALAPPDATA%/Programs/ai.opencode.desktop/resources/opencode-cli.exe`（Desktop 2.2.0 的标准位置），
+同时兼容旧版 `@opencodedesktop` / `OpenCode` 安装目录；每次连接前重新检测，更新移除旧程序后会回退到当前安装位置。
 自定义安装位置可通过「选择程序」指定原生 `opencode-cli.exe` / `opencode.exe`。
 其他平台仅提供标准路径尝试和手动选择入口，尚未实机验证。
 

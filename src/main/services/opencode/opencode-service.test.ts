@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OpenCodeEvent } from '../../../shared/types'
 import { OpenCodeService } from './opencode-service'
 import type { AcpPeer } from './opencode-service'
-import { launchOpenCode } from './opencode-runtime'
+import { detectOpenCodeExecutable, launchOpenCode } from './opencode-runtime'
 import { readOpenCodeVisibleModels } from './opencode-models'
 
 vi.mock('./opencode-models', () => ({
@@ -270,6 +270,16 @@ describe('OpenCode 会话业务', () => {
     fail()
     await vi.waitFor(() => expect(session.status).toBe('error'))
     expect(session.error).not.toContain('private')
+    service.disconnect()
+  })
+  it('检测之后 Desktop 更新，连接会重新定位而不继续使用旧路径', async () => {
+    const { service, requests } = setup()
+    vi.mocked(detectOpenCodeExecutable)
+      .mockResolvedValueOnce('/fixture/old/opencode-cli.exe')
+      .mockResolvedValueOnce('/fixture/current/opencode-cli.exe')
+    expect((await service.inspect()).executablePath).toContain('/old/')
+    expect((await service.connect(process.cwd())).executablePath).toContain('/current/')
+    expect(requests.map((item) => item.method)).toEqual(['initialize'])
     service.disconnect()
   })
   it('检测只返回程序信息，连接保留其他配置且不自动请求模型', async () => {

@@ -1,9 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { access } from 'node:fs/promises'
-import { join } from 'node:path'
 import { IPC, WINDOW_EVENT } from '../../shared/ipc-contract'
 import type { OpenCodeService } from '../services/opencode/opencode-service'
 import { OpenCodeError } from '../services/opencode/opencode-error'
+import { detectOpenCodeDesktop } from '../services/opencode/opencode-runtime'
 import type { CodingAgentService } from '../services/coding-agents/coding-agent-service'
 import { CodingAgentError } from '../services/coding-agents/adapter'
 import {
@@ -98,14 +97,8 @@ export function registerOpenCodeIpc(service: OpenCodeService, unified?: CodingAg
 
 /** 保留已验证的 Desktop 外部入口，统一工作台与旧接口共用。 */
 export async function openOpenCodeDesktop(): Promise<void> {
-  const path =
-    process.platform === 'win32' && process.env.LOCALAPPDATA
-      ? join(process.env.LOCALAPPDATA, 'Programs', '@opencodedesktop', 'OpenCode.exe')
-      : process.platform === 'darwin'
-        ? '/Applications/OpenCode.app'
-        : ''
+  const path = await detectOpenCodeDesktop()
   if (!path) throw new OpenCodeError('请通过系统应用入口打开 OpenCode Desktop')
-  await access(path)
   if (await shell.openPath(path))
     throw new OpenCodeError('无法打开 OpenCode Desktop，请通过系统应用入口打开')
 }

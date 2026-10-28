@@ -100,7 +100,8 @@ export class OpenCodeService {
       const cwd = await realpath(directory).catch(() => '')
       if (!cwd || !(await stat(cwd)).isDirectory())
         throw new OpenCodeError('项目目录不存在或不可访问')
-      const path = this.info.executablePath ?? (await this.inspect()).executablePath
+      // Desktop 更新可能移除上次检测的程序，连接前重新定位，避免一直复用失效路径。
+      const path = (await this.inspect()).executablePath
       if (!path) throw new OpenCodeError('未发现 OpenCode Desktop 内置 CLI，请选择程序')
       const executable = await inspectOpenCodeExecutable(path)
       if (generation !== this.generation) throw new OpenCodeError('连接已取消')

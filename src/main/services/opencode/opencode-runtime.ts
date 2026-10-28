@@ -1,6 +1,6 @@
 import { OpenCodeError } from './opencode-error'
 import { execFile, spawn } from 'node:child_process'
-import { access, realpath, stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
 import { AcpConnection } from './acp-connection'
 
@@ -28,33 +28,49 @@ export async function inspectOpenCodeExecutable(
   return { path: resolved, version }
 }
 
-export async function detectOpenCodeExecutable(preferred?: string): Promise<string | null> {
-  const candidates = [
-    preferred,
-    process.env.LOCALAPPDATA &&
-      join(
-        process.env.LOCALAPPDATA,
-        'Programs',
-        '@opencodedesktop',
-        'resources',
-        'opencode-cli.exe'
-      ),
-    process.env.LOCALAPPDATA &&
-      join(process.env.LOCALAPPDATA, 'Programs', 'OpenCode', 'resources', 'opencode-cli.exe'),
-    process.platform === 'darwin'
-      ? '/Applications/OpenCode.app/Contents/Resources/opencode-cli'
-      : undefined
-  ]
+/** 同时兼容新旧 Desktop 安装目录，不扫描或执行私有启动脚本。 */
+function desktopInstallations(): string[] {
+  if (process.platform === 'darwin') return ['/Applications/OpenCode.app']
+  const localAppData = process.env.LOCALAPPDATA
+  if (process.platform !== 'win32' || !localAppData) return []
+  return ['ai.opencode.desktop', '@opencodedesktop', 'OpenCode'].map((name) =>
+    join(localAppData, 'Programs', name)
+  )
+}
+
+/** 只返回实际文件，防止残留目录被误报为可执行程序。 */
+async function firstExistingFile(candidates: Array<string | undefined>): Promise<string | null> {
   for (const candidate of candidates) {
-    if (!candidate) continue
+    if (!candidate || !isAbsolute(candidate)) continue
     try {
-      await access(candidate)
-      return candidate
+      if ((await stat(candidate)).isFile()) return candidate
     } catch {
-      /* 不存在的标准安装位置继续尝试；自定义安装位置由用户选择。 */
+      /* 更新后旧路径可能已被移除，继续检测当前标准安装位置。 */
     }
   }
   return null
+}
+
+export async function detectOpenCodeExecutable(preferred?: string): Promise<string | null> {
+  const candidates = [
+    preferred,
+    ...desktopInstallations().map((root) =>
+      process.platform === 'darwin'
+        ? join(root, 'Contents', 'Resources', 'opencode-cli')
+        : join(root, 'resources', 'opencode-cli.exe')
+    )
+  ]
+  return firstExistingFile(candidates)
+}
+
+/** 外部 Desktop 入口与 CLI 使用同一组新旧安装位置。 */
+export async function detectOpenCodeDesktop(): Promise<string | null> {
+  const roots = desktopInstallations()
+  if (process.platform === 'darwin') {
+    const root = roots[0]
+    return root && (await stat(root).catch(() => null))?.isDirectory() ? root : null
+  }
+  return firstExistingFile(roots.map((root) => join(root, 'OpenCode.exe')))
 }
 
 /** 固定参数启动，Prompt 经 stdin JSON-RPC 传递，不拼接进命令行。 */
