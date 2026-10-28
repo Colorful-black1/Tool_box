@@ -1,8 +1,11 @@
 import { execFile, spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { copyFile, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, normalize, resolve } from 'node:path'
+import { zstdDecompressSync } from 'node:zlib'
+import type { CodingAgentWorkspaceResult } from '../../../shared/coding-agents'
 import { CodingAgentError } from './adapter'
 import { StdioRpcConnection } from './stdio-rpc-connection'
 
@@ -69,13 +72,18 @@ export function parseDshSessionRecord(value: unknown): DshSessionMeta | null {
   return { title, blank, lastPromptAt }
 }
 
+/** DSH 配置根目录；默认 ~/.dsh，可被 DSH_HOME 覆盖。 */
+function dshHome(): string {
+  return process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh')
+}
+
 /**
  * 读取指定会话的 Desktop 标题/空白标记。
  * 使用 `session_projcache/sessions/<id>.json` 单会话缓存；总索引会被 Desktop 按当前工作区截断。
  */
 export async function dshSessionMetadata(ids: string[]): Promise<Map<string, DshSessionMeta>> {
   const result = new Map<string, DshSessionMeta>()
-  const home = process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh')
+  const home = dshHome()
   const directory = join(home, 'storages/session_projcache/sessions')
   const unique = [...new Set(ids)]
     .filter((id) => /^[A-Za-z0-9._-]{1,200}$/.test(id))
@@ -91,6 +99,263 @@ export async function dshSessionMetadata(ids: string[]): Promise<Map<string, Dsh
     }
   }
   return result
+}
+
+export interface DshHistoryMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface ZstdFrame {
+  start: number
+  end: number
+}
+
+const ZSTD_MAGIC = 0xfd2fb528
+
+/**
+ * 扫描 DSH `session.v4.jsonl.zstd` 的连续 Zstandard frame。
+ * Node 的一次性解码只读第一帧；这里按 frame 边界拆分，再逐帧解码。
+ */
+function scanZstdFrames(buffer: Buffer): ZstdFrame[] {
+  const frames: ZstdFrame[] = []
+  let offset = 0
+  while (offset < buffer.length) {
+    const start = offset
+    if (buffer.length - offset < 4 || buffer.readUInt32LE(offset) !== ZSTD_MAGIC) break
+    offset += 4
+    if (offset === buffer.length) break
+    const descriptor = buffer.readUInt8(offset)
+    offset += 1
+    if ((descriptor & 24) !== 0) break
+    const contentSizeFlag = descriptor >>> 6
+    const singleSegment = (descriptor & 32) !== 0
+    const checksum = (descriptor & 4) !== 0
+    const dictionaryFlag = descriptor & 3
+    const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag
+    const contentSizeBytes =
+      contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : ([0, 2, 4, 8][contentSizeFlag] ?? 0)
+    offset += (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes
+    if (offset > buffer.length) break
+    let last = false
+    while (!last) {
+      if (buffer.length - offset < 3) return frames
+      const blockHeader = buffer.readUIntLE(offset, 3)
+      offset += 3
+      last = (blockHeader & 1) !== 0
+      const blockType = (blockHeader >>> 1) & 3
+      const blockSize = blockHeader >>> 3
+      if (blockType === 3) return frames
+      const payloadBytes = blockType === 1 ? 1 : blockSize
+      if (buffer.length - offset < payloadBytes) return frames
+      offset += payloadBytes
+    }
+    if (checksum) {
+      if (buffer.length - offset < 4) break
+      offset += 4
+    }
+    frames.push({ start, end: offset })
+  }
+  return frames
+}
+
+/** 解码完整的 session frame；文件末尾的未完成 frame 直接忽略。 */
+function decodeDshSession(buffer: Buffer): string {
+  const chunks: Buffer[] = []
+  let total = 0
+  for (const frame of scanZstdFrames(buffer)) {
+    try {
+      const output = zstdDecompressSync(buffer.subarray(frame.start, frame.end))
+      total += output.length
+      if (total > 64_000_000) break
+      chunks.push(output)
+    } catch {
+      break
+    }
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+function eventObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+/** 只拼接文本 part；reasoning、图片和工具块不进入消息正文。 */
+function contentText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return ''
+  const parts: string[] = []
+  for (const raw of value) {
+    const part = eventObject(raw)
+    if (part?.type === 'text' && typeof part.text === 'string') parts.push(part.text)
+  }
+  return parts.join('')
+}
+
+/** 解析 DSH session 事件，只保留真实用户消息和助教文本消息。 */
+export function parseDshSessionEvents(text: string): DshHistoryMessage[] {
+  const messages: DshHistoryMessage[] = []
+  const ids = new Set<string>()
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    let value: unknown
+    try {
+      value = JSON.parse(line)
+    } catch {
+      continue
+    }
+    const event = eventObject(value)
+    if (!event) continue
+    const data = eventObject(event.data)
+    const seq = typeof event.seq === 'number' ? event.seq : messages.length + 1
+    if (event.type === 'user/message') {
+      const source = eventObject(data?.source)
+      if (source && source.kind !== 'user') continue
+      const content = contentText(data?.content)
+      if (!content.trim()) continue
+      const id = typeof data?.id === 'string' ? data.id : `user-${seq}`
+      if (ids.has(id)) continue
+      ids.add(id)
+      messages.push({ id, role: 'user', content })
+    } else if (event.type === 'assistant/message') {
+      const message = eventObject(data?.message)
+      const content = contentText(message?.content)
+      if (!content.trim()) continue
+      const id = typeof message?.id === 'string' ? message.id : `assistant-${seq}`
+      if (ids.has(id)) continue
+      ids.add(id)
+      messages.push({ id, role: 'assistant', content })
+    }
+  }
+  const result: DshHistoryMessage[] = []
+  let chars = 0
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const content = messages[index].content.slice(0, 50_000)
+    if (result.length >= 200 || chars + content.length > 200_000) break
+    result.unshift({ ...messages[index], content })
+    chars += content.length
+  }
+  return result
+}
+
+async function findDshSessionFile(id: string): Promise<string | null> {
+  if (!/^[A-Za-z0-9._-]{1,200}$/.test(id)) return null
+  const root = join(dshHome(), 'sessions')
+  let projects
+  try {
+    projects = await readdir(root, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const project of projects.slice(0, 200)) {
+    if (!project.isDirectory()) continue
+    const file = join(root, project.name, id, 'session.v4.jsonl.zstd')
+    try {
+      if ((await stat(file)).isFile()) return file
+    } catch {
+      // 继续检查其他项目目录。
+    }
+  }
+  return null
+}
+
+/** 读取一个 DSH 会话的历史正文；格式不匹配或读取失败时返回空数组。 */
+export async function dshSessionMessages(id: string): Promise<DshHistoryMessage[]> {
+  const file = await findDshSessionFile(id)
+  if (!file) return []
+  try {
+    const buffer = await readFile(file)
+    if (buffer.length > 16_000_000) return []
+    return parseDshSessionEvents(decodeDshSession(buffer))
+  } catch {
+    return []
+  }
+}
+
+function canonicalDshPath(value: string): string {
+  const normalized = normalize(resolve(value)).replace(/[\\/]+$/, '')
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+/**
+ * 把已存在的 DSH 会话归入匹配的项目工作区。
+ * DSH 的工作区归属保存在 `storages/workspace.json`，不是 ACP 字段；只在用户明确操作时写入，
+ * 版本/路径不匹配或文件不可写时拒绝，不自动创建或删除工作区。
+ */
+export async function attachDshWorkspace(
+  sessionId: string,
+  directory: string
+): Promise<CodingAgentWorkspaceResult> {
+  if (!/^[A-Za-z0-9._-]{1,200}$/.test(sessionId))
+    throw new CodingAgentError('DSH 会话标识无效，未写入工作区')
+  const file = join(dshHome(), 'storages', 'workspace.json')
+  let content: string
+  try {
+    content = await readFile(file, 'utf8')
+  } catch {
+    throw new CodingAgentError('DSH 工作区数据不存在，请先在 DSH Desktop 创建项目工作区')
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(content)
+  } catch {
+    throw new CodingAgentError('DSH 工作区数据无法读取，未写入')
+  }
+  const root = eventObject(value)
+  const unit = eventObject(root?.unit)
+  const tables = eventObject(root?.tables)
+  const workspaces = eventObject(tables?.workspaces)
+  if (unit?.name !== 'workspace' || unit.version !== 2 || !workspaces)
+    throw new CodingAgentError('DSH 工作区数据版本不支持，未写入')
+  const targetPath = canonicalDshPath(directory)
+  let target: Record<string, unknown> | null = null
+  for (const raw of Object.values(workspaces)) {
+    const workspace = eventObject(raw)
+    if (workspace && typeof workspace.path === 'string' && canonicalDshPath(workspace.path) === targetPath) {
+      target = workspace
+      break
+    }
+  }
+  if (!target)
+    throw new CodingAgentError('DSH 中没有与当前项目匹配的工作区，请先在 DSH Desktop 创建')
+  const title =
+    typeof target.title === 'string' && target.title.trim()
+      ? target.title.trim()
+      : basename(directory)
+  const sessionIds = Array.isArray(target.sessionIds)
+    ? target.sessionIds.filter((id): id is string => typeof id === 'string')
+    : []
+  const global = eventObject(root?.global)
+  const archived = global && Array.isArray(global.archivedSessionIds) ? global.archivedSessionIds : []
+  const wasArchived = archived.includes(sessionId)
+  if (sessionIds.includes(sessionId) && !wasArchived)
+    return { workspace: title, message: `该会话已在 DSH 工作区「${title}」中。` }
+
+  target.sessionIds = [sessionId, ...sessionIds.filter((id) => id !== sessionId)]
+  target.updatedAt = new Date().toISOString()
+  if (global && Array.isArray(global.archivedSessionIds))
+    global.archivedSessionIds = global.archivedSessionIds.filter((id) => id !== sessionId)
+  const backup = `${file}.toolbox-backup`
+  try {
+    await copyFile(file, backup)
+  } catch {
+    throw new CodingAgentError('无法备份 DSH 工作区数据，未写入；请先关闭 DSH Desktop 后重试')
+  }
+  const temporary = `${file}.toolbox-${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, `${JSON.stringify(root, null, 2)}\n`, 'utf8')
+    await rename(temporary, file)
+  } catch {
+    await rm(temporary, { force: true }).catch(() => undefined)
+    throw new CodingAgentError('无法写入 DSH 工作区数据；请先关闭 DSH Desktop 后重试')
+  }
+  return {
+    workspace: title,
+    message: `已归入 DSH 工作区「${title}」；重启或刷新 DSH Desktop 后可见。`
+  }
 }
 
 function commandOutput(command: string, args: string[], env = process.env): Promise<string> {

@@ -7,16 +7,20 @@ import { MoreIcon } from '../icons'
 export function OpenCodeMoreMenu({
   canSummarize,
   canSync,
+  canAttachWorkspace = false,
   advanced,
   onSummarize,
   onSync,
+  onAttachWorkspace,
   onAdvanced
 }: {
   canSummarize: boolean
   canSync: boolean
+  canAttachWorkspace?: boolean
   advanced: boolean
   onSummarize(): void
   onSync(): void
+  onAttachWorkspace?: () => void
   onAdvanced(): void
 }): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -100,6 +104,17 @@ export function OpenCodeMoreMenu({
             >
               同步模型
             </button>
+            {onAttachWorkspace ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-ghost"
+                disabled={!canAttachWorkspace}
+                onClick={() => choose(onAttachWorkspace)}
+              >
+                归入 DSH 工作区
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitemcheckbox"

@@ -42,6 +42,7 @@ export const IPC = {
   codingAgentConnect: 'coding-agent:runtime:connect',
   codingAgentDisconnect: 'coding-agent:runtime:disconnect',
   codingAgentSessions: 'coding-agent:session:list',
+  codingAgentWorkspace: 'coding-agent:session:workspace',
   codingAgentCreate: 'coding-agent:session:create',
   codingAgentResume: 'coding-agent:session:resume',
   codingAgentOption: 'coding-agent:session:configure',

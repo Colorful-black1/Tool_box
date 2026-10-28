@@ -15,7 +15,8 @@ import {
   type CodingAgentEvent,
   type CodingAgentId,
   type CodingAgentRuntimeView,
-  type CodingAgentSessionView
+  type CodingAgentSessionView,
+  type CodingAgentWorkspaceResult
 } from '../../../shared/coding-agents'
 import { IPC } from '../../../shared/ipc-contract'
 import { OpenCodeError } from '../opencode/opencode-error'
@@ -157,6 +158,19 @@ export class CodingAgentService {
   listSessions(id: CodingAgentId, owner: number) {
     const state = this.connected(id, owner)
     return state.adapter.listSessions()
+  }
+
+  /** 只把已打开会话归入 DSH Desktop 工作区；不创建、不恢复、不发送。 */
+  async attachWorkspace(
+    id: CodingAgentId,
+    owner: number,
+    ref: string
+  ): Promise<CodingAgentWorkspaceResult> {
+    const state = this.connected(id, owner)
+    const session = this.session(state, ref)
+    if (!state.adapter.attachWorkspace)
+      throw new CodingAgentError('当前 Agent 不支持 DSH 工作区归组')
+    return state.adapter.attachWorkspace(session.nativeSessionId, session.directory)
   }
 
   openSession(

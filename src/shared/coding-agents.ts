@@ -90,6 +90,12 @@ export interface CodingAgentSessionSummary {
   title: string
 }
 
+/** DSH 工作区归组结果；message 为界面可展示的说明。 */
+export interface CodingAgentWorkspaceResult {
+  workspace: string
+  message: string
+}
+
 /** revision 在一次连接内单调递增；只发送到拥有连接的窗口。 */
 export type CodingAgentEvent =
   | { kind: 'runtime'; runtime: CodingAgentRuntimeView; revision: number }

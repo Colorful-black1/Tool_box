@@ -61,7 +61,8 @@ import type {
   CodingAgentRuntimeView,
   CodingAgentSessionView,
   CodingAgentSessionSummary,
-  CodingAgentSessionInput
+  CodingAgentSessionInput,
+  CodingAgentWorkspaceResult
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
@@ -94,6 +95,7 @@ export interface ToolboxBridge {
     connect(input: { runtimeId: CodingAgentId; directory: string }): Promise<CodingAgentRuntimeView>
     disconnect(runtimeId: CodingAgentId): Promise<void>
     listSessions(runtimeId: CodingAgentId): Promise<CodingAgentSessionSummary[]>
+    attachWorkspace(input: CodingAgentSessionInput): Promise<CodingAgentWorkspaceResult>
     createSession(runtimeId: CodingAgentId): Promise<CodingAgentSessionView>
     resumeSession(input: CodingAgentSessionInput): Promise<CodingAgentSessionView>
     setOption(

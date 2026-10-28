@@ -64,6 +64,7 @@ const bridge: ToolboxBridge = {
     connect: (input) => ipcRenderer.invoke(IPC.codingAgentConnect, input),
     disconnect: (id) => ipcRenderer.invoke(IPC.codingAgentDisconnect, id),
     listSessions: (id) => ipcRenderer.invoke(IPC.codingAgentSessions, id),
+    attachWorkspace: (input) => ipcRenderer.invoke(IPC.codingAgentWorkspace, input),
     createSession: (id) => ipcRenderer.invoke(IPC.codingAgentCreate, id),
     resumeSession: (input) => ipcRenderer.invoke(IPC.codingAgentResume, input),
     setOption: (input) => ipcRenderer.invoke(IPC.codingAgentOption, input),

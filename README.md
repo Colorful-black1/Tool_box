@@ -210,7 +210,7 @@ Claude 已打开的历史在刷新列表或空闲时再次点选后会重读正�
 Windows 可从安装记录定位 `DeepSeek Harness.exe`，也可手动选择；通过固定程序与参数数组启动，不执行 shim 的任意 shell 内容。
 本机 Desktop **0.2.1-rc.3** 的初始化和历史摘要探针通过，无需先打开 Desktop 窗口。
 ACP 只推送已提交回复，**没有实时 Token 分片；可续接上下文，但暂不回放旧消息**。
-历史与 Desktop 共用 `~/.dsh/sessions`；Tool_box 读取 Desktop 单会话缓存中的标题，隐藏空白或无提问会话，断开重连后自动补读。Desktop 对尚未发送消息的空会话仍显示“未命名”，首条消息生成标题后可见；ACP 只恢复标题和续接，不在 Tool_box 回放旧正文。需要列举、resume、close 能力，旧版本缺失会明确报错。
+历史与 Desktop 共用 `~/.dsh/sessions`；Tool_box 读取 Desktop 单会话缓存中的标题，隐藏空白或无提问会话，断开重连后自动补读。打开历史时会只读解析 `~/.dsh/sessions/<cwd>/<id>/session.v4.jsonl.zstd`，恢复用户和助手文本（跳过注入消息、推理与工具块）；格式或版本不匹配时回退为空，不影响续接。若会话正在 Desktop 中使用，历史仍会加载并标记为已断开，提示关闭 Desktop 会话后重试。需要手动归组时，在会话「更多 → 归入 DSH 工作区」；Tool_box 按当前项目路径匹配工作区，备份 `workspace.json` 后原子追加会话 ID，并取消该会话归档；版本不支持、路径不匹配或文件被占用时拒绝写入。写入的是 DSH 私有工作区数据，需重启或刷新 DSH Desktop 后才可见。Desktop 对尚未发送消息的空会话仍显示“未命名”，首条消息生成标题后可见。需要列举、resume、close 能力，旧版本缺失会明确报错。
 模型／思考强度按原生选项展示，权限遵循原生规则，支持单次允许／拒绝和停止；只关闭 Tool_box 自己打开的会话。
 项目 `.env` 中的 `DEEPSEEK_BASE_URL`、`DEEPSEEK_SEARCH_BASE_URL`、代理、证书、`DSH_*` / `XDG_*` / `DYLD_*` 等启动变量会被 DSH 拒绝并导致原生进程退出。Tool_box 以独立空目录作为 DSH 宿主的启动 cwd，项目路径通过 ACP 的 `session/new` / `session/resume` / `session/list` cwd 传入；项目可以保留自己的 `.env` 供开发使用，宿主不会读取它。
 不提供 DSH 专有卡片、子任务详情、问答或额外目录能力，不读取私有 WebSocket 或伪造流式。

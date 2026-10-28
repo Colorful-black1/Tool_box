@@ -16,8 +16,10 @@ import {
 import { acpObject } from './stdio-rpc-connection'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
 import {
+  attachDshWorkspace,
   detectDshExecutable,
   dshLaunchDirectory,
+  dshSessionMessages,
   dshSessionMetadata,
   inspectDshExecutable,
   launchDsh
@@ -244,6 +246,11 @@ export class DshAdapter implements CodingAgentAdapter {
     }
     return result
   }
+
+  attachWorkspace(sessionId: string, directory: string) {
+    return attachDshWorkspace(sessionId, directory)
+  }
+
   async openSession(id?: string): Promise<NativeCodingSession> {
     const peer = this.connection()
     let title = 'DSH 新会话'
@@ -252,25 +259,46 @@ export class DshAdapter implements CodingAgentAdapter {
       if (!summary) throw new CodingAgentError('此 DSH 会话不属于当前项目或已失效，草稿仍可取回')
       title = summary.title
     }
-    const result = acpObject(
-      await peer.request(id ? 'session/resume' : 'session/new', {
-        ...(id ? { sessionId: id } : {}),
-        cwd: this.info.directory,
-        mcpServers: []
-      })
-    )
-    const sessionId = id ?? acpText(result?.sessionId, 200)
+    let response: Record<string, unknown> | null
+    try {
+      response = acpObject(
+        await peer.request(id ? 'session/resume' : 'session/new', {
+          ...(id ? { sessionId: id } : {}),
+          cwd: this.info.directory,
+          mcpServers: []
+        })
+      )
+    } catch (error) {
+      if (!id) throw error
+      const messages = await dshSessionMessages(id)
+      const detail = error instanceof CodingAgentError ? error.message : 'DSH 会话不可用'
+      const session: NativeCodingSession = {
+        id,
+        directory: this.info.directory,
+        title,
+        status: 'disconnected',
+        messages,
+        tools: [],
+        approvals: [],
+        options: [],
+        error: `${detail}；历史正文已加载，关闭 Desktop 会话后可重试`
+      }
+      this.sessions.set(id, session)
+      return structuredClone(session)
+    }
+    const sessionId = id ?? acpText(response?.sessionId, 200)
     if (!sessionId || this.peer !== peer)
       throw new CodingAgentError('DSH 未返回有效会话或连接已结束')
+    const messages = id ? await dshSessionMessages(sessionId) : []
     const session: NativeCodingSession = {
       id: sessionId,
       directory: this.info.directory,
       title,
       status: 'ready',
-      messages: [],
+      messages,
       tools: [],
       approvals: [],
-      options: acpOptions(result?.configOptions),
+      options: acpOptions(response?.configOptions),
       error: ''
     }
     this.sessions.set(sessionId, session)

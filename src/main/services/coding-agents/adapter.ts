@@ -2,7 +2,8 @@ import type {
   CodingAgentId,
   CodingAgentRuntimeView,
   CodingAgentSessionSummary,
-  CodingAgentSessionView
+  CodingAgentSessionView,
+  CodingAgentWorkspaceResult
 } from '../../../shared/coding-agents'
 import type { NativeAgentCatalog } from './agent-action-catalog'
 
@@ -34,6 +35,7 @@ export interface CodingAgentAdapter {
   connect(directory: string): Promise<Omit<CodingAgentRuntimeView, 'connectionId'>>
   disconnect(): void
   listSessions(): Promise<CodingAgentSessionSummary[]>
+  attachWorkspace?(sessionId: string, directory: string): Promise<CodingAgentWorkspaceResult>
   openSession(id?: string): Promise<NativeCodingSession>
   setOption(id: string, optionId: string, value: string): Promise<NativeCodingSession>
   send(id: string, content: string, context?: NativeSendContext): void | Promise<void>

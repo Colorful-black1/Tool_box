@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DshAdapter, type DshPeer } from './dsh-adapter'
-import { dshSessionMetadata, launchDsh } from './dsh-runtime'
+import {
+  attachDshWorkspace,
+  dshSessionMessages,
+  dshSessionMetadata,
+  launchDsh
+} from './dsh-runtime'
 import type { NativeCodingEvent } from './adapter'
 
 vi.mock('./dsh-runtime', () => ({
+  attachDshWorkspace: vi.fn(async () => ({ workspace: 'fixture', message: 'ok' })),
   detectDshExecutable: vi.fn(async () => '/fixture/dsh.exe'),
   dshLaunchDirectory: vi.fn(() => '/fixture/launch'),
+  dshSessionMessages: vi.fn(async () => []),
   dshSessionMetadata: vi.fn(async () => new Map()),
   inspectDshExecutable: vi.fn(async () => ({
     path: '/fixture/dsh.exe',
@@ -113,6 +120,46 @@ describe('DSH ACP 适配器', () => {
     await expect(f.adapter.listSessions()).resolves.toEqual([
       { id: 'history-native', title: '桌面历史标题' }
     ])
+  })
+  it('恢复历史时读取会话正文', async () => {
+    const f = await fixture()
+    vi.mocked(dshSessionMessages).mockResolvedValueOnce([
+      { id: 'u1', role: 'user', content: '历史问题' },
+      { id: 'a1', role: 'assistant', content: '历史回答' }
+    ])
+    const session = await f.adapter.openSession('history-native')
+    expect(session.messages).toEqual([
+      { id: 'u1', role: 'user', content: '历史问题' },
+      { id: 'a1', role: 'assistant', content: '历史回答' }
+    ])
+  })
+  it('恢复失败时仍返回历史正文并标记断开', async () => {
+    const f = await fixture()
+    vi.mocked(dshSessionMessages).mockResolvedValueOnce([
+      { id: 'u1', role: 'user', content: '历史问题' }
+    ])
+    f.calls.mockImplementation(async (method: string) => {
+      if (method === 'session/list')
+        return { sessions: [{ sessionId: 'history-native', cwd: process.cwd() }] }
+      if (method === 'session/resume') throw new Error('session busy')
+      return {}
+    })
+    const session = await f.adapter.openSession('history-native')
+    expect(session.status).toBe('disconnected')
+    expect(session.messages).toEqual([{ id: 'u1', role: 'user', content: '历史问题' }])
+    expect(session.error).toContain('历史正文已加载')
+  })
+  it('工作区归组委托给 DSH 写入，不创建会话', async () => {
+    const f = await fixture()
+    vi.mocked(attachDshWorkspace).mockResolvedValueOnce({
+      workspace: 'study_tool',
+      message: '已归入'
+    })
+    await expect(f.adapter.attachWorkspace('history-native', process.cwd())).resolves.toEqual({
+      workspace: 'study_tool',
+      message: '已归入'
+    })
+    expect(attachDshWorkspace).toHaveBeenCalledWith('history-native', process.cwd())
   })
   it('迟到的旧初始化失败不关闭新连接', async () => {
     const peers: DshPeer[] = []

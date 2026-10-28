@@ -50,6 +50,7 @@ interface CodingAgentState extends RuntimeWorkspace {
   newSession(): void
   openSession(nativeId: string, carryDraft?: boolean): Promise<void>
   listSessions(): Promise<void>
+  attachWorkspace(): Promise<string>
   setOption(id: string, value: string): Promise<void>
   send(extra?: Pick<AgentSendInput, 'references' | 'literal'>): Promise<void>
   summarize(): Promise<void>
@@ -508,6 +509,19 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           }
         }
       }),
+    attachWorkspace: async () => {
+      const id = get().runtimeId
+      const sessionId = read(id).activeId
+      if (id !== 'dsh' || !sessionId) return ''
+      try {
+        const result = await codingAgentClient().attachWorkspace({ runtimeId: id, sessionId })
+        update(id, { error: '' })
+        return result.message
+      } catch (error) {
+        update(id, { error: errorText(error) })
+        return ''
+      }
+    },
     setOption: (optionId, value) =>
       perform(async (id) => {
         const sessionId = read(id).activeId

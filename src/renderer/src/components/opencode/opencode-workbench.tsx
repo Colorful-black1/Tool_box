@@ -36,10 +36,12 @@ export function OpenCodeWorkbench(): JSX.Element {
   const setOption = useCodingAgentStore((state) => state.setOption)
   const summarize = useCodingAgentStore((state) => state.summarize)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
+  const attachWorkspace = useCodingAgentStore((state) => state.attachWorkspace)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const clearError = useCodingAgentStore((state) => state.clearError)
   const [advanced, setAdvanced] = useState(false)
   const [showHistory, setShowHistory] = useState(0)
+  const [workspaceStatus, setWorkspaceStatus] = useState('')
   const name = CODING_AGENT_NAMES[runtimeId]
   const session = activeId ? sessions[activeId] : undefined
   const visibleModels = new Set(info?.visibleModelIds ?? [])
@@ -71,6 +73,9 @@ export function OpenCodeWorkbench(): JSX.Element {
   useEffect(() => {
     void inspect()
   }, [inspect, runtimeId])
+  useEffect(() => {
+    setWorkspaceStatus('')
+  }, [activeId, runtimeId])
 
   return (
     <div className="opencode-page view-enter">
@@ -98,9 +103,21 @@ export function OpenCodeWorkbench(): JSX.Element {
                 session && !busy && !locked && info?.connected && !permissionNeedsSelection
               )}
               canSync={!busy && !locked}
+              canAttachWorkspace={Boolean(
+                session && info?.connected && !busy && !locked
+              )}
               advanced={advanced}
               onSummarize={() => void summarize()}
               onSync={() => void inspect(true)}
+              onAttachWorkspace={
+                runtimeId === 'dsh'
+                  ? () => {
+                      void attachWorkspace().then((message) => {
+                        if (message) setWorkspaceStatus(message)
+                      })
+                    }
+                  : undefined
+              }
               onAdvanced={() => setAdvanced(!advanced)}
             />
             <span className="chat-status opencode-session-state" data-status={session?.status}>
@@ -162,10 +179,17 @@ export function OpenCodeWorkbench(): JSX.Element {
             </p>
           )}
           {runtimeId === 'dsh' ? (
-            <p className="status-banner">
-              回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。历史属于独立 acp
-              profile。
-            </p>
+            <>
+              <p className="status-banner">
+                回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。历史属于独立 acp
+                profile。
+              </p>
+              {workspaceStatus ? (
+                <p className="status-banner success-banner" role="status">
+                  {workspaceStatus}
+                </p>
+              ) : null}
+            </>
           ) : null}
           {runtimeId === 'claude-desktop' ? (
             <p className="status-banner opencode-desktop-hint">

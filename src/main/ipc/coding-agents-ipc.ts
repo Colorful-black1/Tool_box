@@ -93,6 +93,10 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
   handle(IPC.codingAgentSessions, (owner, value) =>
     service.listSessions(validateCodingAgentId(value), owner)
   )
+  handle(IPC.codingAgentWorkspace, (owner, value) => {
+    const input = validateCodingAgentSession(value)
+    return service.attachWorkspace(input.runtimeId, owner, input.sessionId)
+  })
   handle(IPC.codingAgentCreate, (owner, value) =>
     service.openSession(validateCodingAgentId(value), owner)
   )
