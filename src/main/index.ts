@@ -19,6 +19,14 @@ import { createTray, showMainWindow } from './tray'
 import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
 
+// 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
+// 还会让数据库、AI 配置和密码箱状态混在一起。测试入口若已显式 setPath，则保留其隔离目录。
+if (!app.isPackaged) {
+  const defaultUserData = join(app.getPath('appData'), app.getName())
+  if (app.getPath('userData') === defaultUserData)
+    app.setPath('userData', `${defaultUserData}-dev`)
+}
+
 // 在初始化数据库、托盘和草稿退出监听之前取得锁；重复实例直接退出，不走草稿确认。
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) app.exit(0)
