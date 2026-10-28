@@ -5,7 +5,7 @@ import { CODING_AGENT_NAMES } from '@shared/coding-agents'
 import { Dropdown } from '../dropdown'
 import { OpenCodeConnection } from './opencode-connection'
 import { OpenCodeMessages } from './opencode-messages'
-import { SendIcon, StopIcon } from '../icons'
+import { AgentComposer } from './agent-composer'
 import { OpenCodeSessions, OPENCODE_STATUS } from './opencode-sessions'
 import { OpenCodeActivity } from './opencode-activity'
 import { AgentDraftRecovery } from './agent-draft-recovery'
@@ -34,17 +34,15 @@ export function OpenCodeWorkbench(): JSX.Element {
   const error = useCodingAgentStore((state) => state.error)
   const inspect = useCodingAgentStore((state) => state.inspect)
   const setOption = useCodingAgentStore((state) => state.setOption)
-  const setDraft = useCodingAgentStore((state) => state.setDraft)
-  const send = useCodingAgentStore((state) => state.send)
   const summarize = useCodingAgentStore((state) => state.summarize)
   const stop = useCodingAgentStore((state) => state.stop)
   const viewRunning = useCodingAgentStore((state) => state.viewRunning)
-  const cancelPreparation = useCodingAgentStore((state) => state.cancelPreparation)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const clearError = useCodingAgentStore((state) => state.clearError)
   const [advanced, setAdvanced] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showHistory, setShowHistory] = useState(0)
   const menu = useRef<HTMLDetailsElement>(null)
   const closeMenu = (): void => {
     setMenuOpen(false)
@@ -114,7 +112,11 @@ export function OpenCodeWorkbench(): JSX.Element {
         </div>
       ) : null}
       <div className="opencode-layout">
-        <OpenCodeSessions key={`${runtimeId}:${directory}`} />
+        <OpenCodeSessions
+          key={`${runtimeId}:${directory}`}
+          showHistory={showHistory}
+          onHistoryShown={() => setShowHistory(0)}
+        />
         <section className="glass chat-panel opencode-panel" aria-label={`${name} 工作台`}>
           <header className="chat-head">
             <h2 className="chat-title">{session?.title ?? '新对话'}</h2>
@@ -252,11 +254,23 @@ export function OpenCodeWorkbench(): JSX.Element {
               {session.error}
             </div>
           ) : null}
-          <form
-            className={`composer${transferred ? ' opencode-transferred' : ''}`}
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (canSend) void send()
+          <AgentComposer
+            key={`${runtimeId}:${directory}`}
+            canSend={canSend}
+            onLocalAction={(action) => {
+              if (action === 'history') setShowHistory((old) => old + 1)
+              else {
+                setAdvanced(true)
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      action === 'model'
+                        ? '.opencode-options [aria-label*="模型"]'
+                        : '.opencode-options [aria-label*="权限"], .opencode-options [aria-label*="模式"]'
+                    )
+                    ?.click()
+                )
+              }
             }}
           >
             {transferred ? (
@@ -279,55 +293,7 @@ export function OpenCodeWorkbench(): JSX.Element {
                 />
               </details>
             ) : null}
-            <label className="sr-only" htmlFor="opencode-draft">
-              编程任务草稿
-            </label>
-            <div className="composer-box">
-              <textarea
-                id="opencode-draft"
-                className="composer-input"
-                rows={3}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (
-                    event.key !== 'Enter' ||
-                    event.shiftKey ||
-                    event.nativeEvent.isComposing ||
-                    event.nativeEvent.keyCode === 229
-                  )
-                    return
-                  event.preventDefault()
-                  if (canSend && !event.repeat) event.currentTarget.form?.requestSubmit()
-                }}
-                placeholder="描述任务，Enter 发送，Shift + Enter 换行"
-              />
-              <div className="composer-actions">
-                <span className="field-hint">Enter 发送 · Shift + Enter 换行</span>
-                <span className="opencode-draft-count">{draft.length.toLocaleString()}/50,000</span>
-                {preparingRuntime ? (
-                  <button type="button" className="btn-ghost" onClick={cancelPreparation}>
-                    取消准备
-                  </button>
-                ) : runningRuntime === runtimeId && runningSession === activeId ? (
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={session?.status !== 'running'}
-                    onClick={() => void stop()}
-                  >
-                    <StopIcon />
-                    停止任务
-                  </button>
-                ) : (
-                  <button type="submit" className="btn-gold" disabled={!canSend}>
-                    <SendIcon />
-                    {busy ? '准备中…' : session ? `发送给 ${name}` : `开始对话 · ${name}`}
-                  </button>
-                )}
-              </div>
-            </div>
-          </form>
+          </AgentComposer>
           <AgentDraftRecovery />
         </section>
       </div>

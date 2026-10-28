@@ -126,6 +126,49 @@ async function fixture(
 }
 
 describe('Claude 官方 SDK 适配器', () => {
+  it('扩展发现失败仍返回开关状态，允许用户关闭出错的本机配置', async () => {
+    const f = await fixture()
+    f.adapter.setExtensions(process.cwd(), true)
+    const catalog = await f.adapter.catalog()
+    expect(catalog.extensionsEnabled).toBe(true)
+    expect(catalog.commands).toEqual([])
+    expect(catalog.notices.join('')).toContain('读取失败')
+    f.adapter.setExtensions(process.cwd(), false)
+    expect((await f.adapter.catalog()).extensionsEnabled).toBe(false)
+  })
+  it.each(['claude', 'claude-desktop'] as const)(
+    '本机扩展按 %s 入口和项目记录，关闭恢复隔离',
+    async (id) => {
+      const f = await fixture({ env: {} }, id)
+      f.adapter.setExtensions(process.cwd(), true)
+      await f.adapter.send(f.session.id, '合成任务')
+      expect(f.options.at(-1)?.settingSources).toEqual(
+        id === 'claude' ? ['user', 'project', 'local'] : ['project', 'local']
+      )
+      expect(f.options.at(-1)?.permissionMode).toBe('plan')
+      expect(f.options.at(-1)?.allowDangerouslySkipPermissions).not.toBe(true)
+      f.adapter.stop(f.session.id)
+      f.adapter.setExtensions(process.cwd(), false)
+      await f.adapter.send(f.session.id, '第二次任务')
+      expect(f.options.at(-1)?.settingSources).toEqual([])
+    }
+  )
+
+  it('命令在实际执行 query 初始化时复核，已失效命令不会 yield 用户输入', async () => {
+    const f = await fixture()
+    let firstInput: Promise<IteratorResult<unknown>> | undefined
+    vi.mocked(f.sdk.query).mockImplementationOnce((params) => {
+      if (typeof params.prompt !== 'string')
+        firstInput = params.prompt[Symbol.asyncIterator]().next()
+      const item = channel()
+      return item.query
+    })
+    await expect(
+      f.adapter.send(f.session.id, '/missing-command', { command: true })
+    ).rejects.toThrow('命令已失效')
+    expect(firstInput).toBeDefined()
+    expect((await firstInput)?.done).toBe(true)
+  })
   it.each(['auto', 'default', 'acceptEdits', 'plan'] as const)(
     '按用户选择传递原生 %s 模式，不开启 Bypass',
     async (mode) => {
@@ -347,11 +390,17 @@ describe('Claude 官方 SDK 适配器', () => {
       { sessionId: 'native-one', summary: 'Code 历史', lastModified: 1, cwd: process.cwd() },
       { sessionId: f.session.id, summary: 'Desktop 入口历史', lastModified: 2, cwd: process.cwd() }
     ])
-    const code = new ClaudeAdapter(f.store, async () => f.sdk, async () => ({ env: {} }))
+    const code = new ClaudeAdapter(
+      f.store,
+      async () => f.sdk,
+      async () => ({ env: {} })
+    )
     adapters.push(code)
     await code.connect(process.cwd())
     expect(await code.listSessions()).toEqual([{ id: 'native-one', title: 'Code 历史' }])
-    expect(await f.adapter.listSessions()).toEqual([{ id: f.session.id, title: 'Desktop 入口历史' }])
+    expect(await f.adapter.listSessions()).toEqual([
+      { id: f.session.id, title: 'Desktop 入口历史' }
+    ])
     await expect(code.openSession(f.session.id)).rejects.toThrow('不属于当前项目')
     await expect(f.adapter.openSession('native-one')).rejects.toThrow('不属于当前项目')
     expect(f.sdk.getSessionMessages).not.toHaveBeenCalled()

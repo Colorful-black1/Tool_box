@@ -1,4 +1,12 @@
 import type {
+  AgentCatalog,
+  AgentCatalogInput,
+  AgentCommandInput,
+  AgentFileSearchInput,
+  AgentFileSearchResult,
+  AgentSendInput
+} from './agent-actions'
+import type {
   AiOutputEvent,
   AgentPermission,
   AgentToolApprovalInput,
@@ -91,7 +99,15 @@ export interface ToolboxBridge {
     setOption(
       input: CodingAgentSessionInput & { optionId: string; value: string }
     ): Promise<CodingAgentSessionView>
-    send(input: CodingAgentSessionInput & { content: string }): Promise<void>
+    send(input: AgentSendInput): Promise<void>
+    readCatalog(input: AgentCatalogInput): Promise<AgentCatalog>
+    searchFiles(input: AgentFileSearchInput): Promise<AgentFileSearchResult>
+    executeCommand(input: AgentCommandInput): Promise<void>
+    setExtensions(input: {
+      runtimeId: CodingAgentId
+      directory: string
+      enabled: boolean
+    }): Promise<void>
     stop(input: CodingAgentSessionInput): Promise<void>
     approve(
       input: CodingAgentSessionInput & { approvalId: string; approved: boolean }

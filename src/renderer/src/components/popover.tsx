@@ -11,8 +11,11 @@ interface PopoverProps {
   onClose(): void
   onReady?(): void
   align?: 'left' | 'right'
+  placement?: 'auto' | 'top'
+  returnFocus?: RefObject<HTMLElement | null>
   className?: string
   maxPanelHeight?: number
+  matchAnchorWidth?: boolean
 }
 
 /** Portal 浮层统一处理滚动、窗口边界和外部点击，不被父容器裁切。 */
@@ -22,8 +25,11 @@ export function Popover({
   onClose,
   onReady,
   align = 'left',
+  placement = 'auto',
+  returnFocus,
   className = '',
-  maxPanelHeight = 400
+  maxPanelHeight = 400,
+  matchAnchorWidth = true
 }: PopoverProps): JSX.Element {
   const panel = useRef<HTMLDivElement>(null)
   const initialFocus = useRef(onReady)
@@ -36,7 +42,8 @@ export function Popover({
   })
   useOverlayEscape(() => {
     onClose()
-    anchor.current?.focus()
+    const target = returnFocus ?? anchor
+    target.current?.focus()
   })
   useLayoutEffect(() => {
     if (position.ready) initialFocus.current?.()
@@ -50,8 +57,12 @@ export function Popover({
       const box = element.getBoundingClientRect()
       const below = innerHeight - rect.bottom - 14,
         above = rect.top - 14
-      const flip = below < box.height && above > below
-      const maxHeight = Math.max(80, Math.min(maxPanelHeight, flip ? above : below))
+      const flip = placement === 'top' || (below < box.height && above > below)
+      const available = flip ? above : below
+      const maxHeight =
+        placement === 'top'
+          ? Math.max(0, Math.min(maxPanelHeight, available))
+          : Math.max(80, Math.min(maxPanelHeight, available))
       const left = Math.max(
         8,
         Math.min(align === 'right' ? rect.right - box.width : rect.left, innerWidth - box.width - 8)
@@ -63,7 +74,7 @@ export function Popover({
         top,
         left,
         maxHeight,
-        minWidth: Math.min(rect.width, innerWidth - 16),
+        minWidth: matchAnchorWidth ? Math.min(rect.width, innerWidth - 16) : 0,
         ready: true
       })
     }
@@ -85,6 +96,7 @@ export function Popover({
     update()
     const observer = new ResizeObserver(update)
     if (panel.current) observer.observe(panel.current)
+    if (anchor.current) observer.observe(anchor.current)
     window.addEventListener('resize', update)
     document.addEventListener('scroll', update, true)
     document.addEventListener('pointerdown', outside, true)
@@ -96,7 +108,7 @@ export function Popover({
       document.removeEventListener('pointerdown', outside, true)
       document.removeEventListener(MODAL_OPEN_EVENT, modalOpened)
     }
-  }, [anchor, align, onClose, maxPanelHeight])
+  }, [anchor, align, placement, onClose, maxPanelHeight, matchAnchorWidth])
   const owner = anchor.current?.closest('[data-modal-owner]')?.getAttribute('data-modal-owner')
   return createPortal(
     <div

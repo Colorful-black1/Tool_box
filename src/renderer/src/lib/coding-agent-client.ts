@@ -53,8 +53,32 @@ function session(view: OpenCodeSession): CodingAgentSessionView {
 
 /** 新旧桥接共用一个 renderer 入口，只订阅当前可用的一条事件流。 */
 export function codingAgentClient(): ToolboxBridge['codingAgents'] {
-  if (window.toolbox?.codingAgents) return window.toolbox.codingAgents
+  if (window.toolbox?.codingAgents) {
+    const api = window.toolbox.codingAgents
+    const unavailable = async (): Promise<never> => {
+      throw new Error('请重启更新后的桌面应用以使用 Agent 快捷操作')
+    }
+    return {
+      ...api,
+      readCatalog: api.readCatalog ?? unavailable,
+      searchFiles: api.searchFiles ?? unavailable,
+      executeCommand: api.executeCommand ?? unavailable,
+      setExtensions: api.setExtensions ?? unavailable
+    }
+  }
   return {
+    readCatalog: async () => {
+      throw new Error('请重启更新后的桌面应用以使用 Agent 快捷操作')
+    },
+    searchFiles: async () => {
+      throw new Error('请重启更新后的桌面应用以选择项目文件')
+    },
+    executeCommand: async () => {
+      throw new Error('请重启更新后的桌面应用以执行 Agent 命令')
+    },
+    setExtensions: async () => {
+      throw new Error('请重启更新后的桌面应用以选择扩展配置')
+    },
     listRuntimes: async () => [runtime(await legacyApi('opencode').inspect())],
     inspect: async (id) => runtime(await legacyApi(id).inspect()),
     chooseExecutable: async (id) => {

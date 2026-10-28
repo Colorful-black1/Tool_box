@@ -117,6 +117,39 @@ afterEach(() => {
 })
 
 describe('OpenCode 会话业务', () => {
+  it('提前缓存建会话响应前的命令；显示已满仍可压缩，不把摘要塞进显示缓存', async () => {
+    const f = setup()
+    await f.service.connect(process.cwd())
+    f.notify({
+      sessionId: 's1',
+      update: {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [{ name: 'compact', description: '压缩' }]
+      }
+    })
+    const session = await f.service.openSession()
+    expect(f.service.commands(session.id).map((item) => item.name)).toEqual(['compact'])
+    session.messages = Array.from({ length: 200 }, (_, index) => ({
+      id: `old-${index}`,
+      role: 'assistant',
+      content: '历史'
+    }))
+    f.service.send(session.id, '/compact', { command: true })
+    f.notify({
+      sessionId: session.id,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'x'.repeat(210_000) }
+      }
+    })
+    expect(session.status).toBe('running')
+    expect(session.messages.length).toBe(200)
+    f.finish()
+    await vi.waitFor(() =>
+      expect(session.tools[0]).toMatchObject({ title: '压缩上下文', status: 'completed' })
+    )
+    f.service.disconnect()
+  })
   it('恢复不同原生会话时保留各自名称，重新读取历史同步已经打开的会话', async () => {
     const { service, setHistory } = setup()
     await service.connect(process.cwd())
@@ -192,7 +225,9 @@ describe('OpenCode 会话业务', () => {
       sessionId: session.id,
       update: { sessionUpdate: 'session_info_update', title: '最新名称' }
     })
-    const snapshot = { sessions: [{ sessionId: session.id, cwd: process.cwd(), title: '旧快照名称' }] }
+    const snapshot = {
+      sessions: [{ sessionId: session.id, cwd: process.cwd(), title: '旧快照名称' }]
+    }
     resolveList?.(snapshot)
     expect((await reading)[0].title).toBe('最新名称')
     expect(session.title).toBe('最新名称')

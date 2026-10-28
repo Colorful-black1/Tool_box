@@ -145,9 +145,78 @@ module.exports = function codingAgentsFixture() {
       },
       setOption: async ({ runtimeId: id, sessionId }) =>
         copy(states.get(id).sessions.get(sessionId)),
-      send: async ({ runtimeId: id, sessionId, content }) => {
+      readCatalog: async ({ runtimeId: id, sessionId = '' }) => ({
+        connectionId: states.get(id)?.info.connectionId ?? '',
+        sessionId,
+        commands:
+          id === 'dsh'
+            ? []
+            : [
+                {
+                  id: 'compact',
+                  name: 'compact',
+                  kind: 'native',
+                  description: '压缩上下文',
+                  argumentHint: ''
+                },
+                {
+                  id: 'init',
+                  name: 'init',
+                  kind: 'workflow',
+                  description: '生成项目说明建议',
+                  argumentHint: '',
+                  targetFile: 'AGENTS.md'
+                }
+              ],
+        skills:
+          id === 'dsh'
+            ? []
+            : [
+                {
+                  id: 'fixture-skill',
+                  kind: 'skill',
+                  label: 'fixture-verify',
+                  description: '项目校验 Skill'
+                }
+              ],
+        mcp:
+          id === 'dsh'
+            ? []
+            : [
+                {
+                  name: 'fixture-mcp',
+                  status: 'connected',
+                  tools: [
+                    {
+                      id: 'fixture-tool',
+                      kind: 'tool',
+                      label: 'search_docs',
+                      description: '检索合成文档'
+                    }
+                  ]
+                }
+              ],
+        notices: id === 'dsh' ? ['官方 DSH ACP 未提供命令与 MCP 状态查询'] : [],
+        extensionsEnabled: states.get(id)?.extensionsEnabled ?? false
+      }),
+      searchFiles: async () => ({
+        files: [
+          { id: 'fixture-file', kind: 'file', label: 'src/中文 file.ts' },
+          { id: 'fixture-file-2', kind: 'file', label: 'README.md' }
+        ],
+        limited: false
+      }),
+      setExtensions: async ({ runtimeId: id, enabled }) => {
+        states.get(id).extensionsEnabled = enabled
+      },
+      executeCommand: async () => {
+        throw new Error('合成界面通过发送路径执行命令')
+      },
+      send: async ({ runtimeId: id, sessionId, content, references, literal }) => {
         if (active) throw new Error('已有编程任务')
-        calls.push({ action: 'send', id, content })
+        if (content.startsWith('/') && !literal && !/^\/(compact|init)(\s|$)/.test(content))
+          throw new Error('未识别为可用命令；可明确选择“作为普通文字发送”')
+        calls.push({ action: 'send', id, content, references, literal })
         const view = states.get(id).sessions.get(sessionId)
         active = view
         view.status = 'running'

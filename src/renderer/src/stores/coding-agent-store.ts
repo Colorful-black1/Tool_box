@@ -12,6 +12,7 @@ import { codingAgentClient } from '../lib/coding-agent-client'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-agents'
 import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../shared/agent-drafts'
 import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
+import type { AgentSendInput } from '@shared/agent-actions'
 
 /** 正文只留在内存；未发送草稿由独立协调器加密保存。 */
 interface RuntimeWorkspace {
@@ -48,7 +49,7 @@ interface CodingAgentState extends RuntimeWorkspace {
   openSession(nativeId: string, carryDraft?: boolean): Promise<void>
   listSessions(): Promise<void>
   setOption(id: string, value: string): Promise<void>
-  send(): Promise<void>
+  send(extra?: Pick<AgentSendInput, 'references' | 'literal'>): Promise<void>
   summarize(): Promise<void>
   cancelPreparation(): void
   viewRunning(): void
@@ -269,7 +270,10 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       transferred: carryDraft && state.transferred
     })
   }
-  const submit = async (summary = false): Promise<void> => {
+  const submit = async (
+    summary = false,
+    extra: Pick<AgentSendInput, 'references' | 'literal'> = {}
+  ): Promise<void> => {
     const id = get().runtimeId
     const before = read(id)
     if (before.busy || submission || get().runningRuntime) return
@@ -278,6 +282,10 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       : before.draft.trim()
     if (!content || content.length > 50_000) {
       update(id, { error: '任务需在 1 至 50,000 字以内' })
+      return
+    }
+    if (!before.activeId && /^\/compact(?:\s|$)/.test(content) && !extra.literal) {
+      update(id, { error: '请先打开已有会话，再压缩上下文；未创建新会话' })
       return
     }
     if (summary && !before.activeId) return
@@ -328,7 +336,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         const key = draftKey(state)
         attempt.sending = true
         set({ preparingRuntime: null })
-        await codingAgentClient().send({ runtimeId: id, sessionId: ref, content })
+        await codingAgentClient().send({ runtimeId: id, sessionId: ref, content, ...extra })
         if (summary) return
         update(id, (current) => {
           const drafts = { ...current.drafts }
@@ -467,7 +475,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         if (sessionId)
           upsert(await codingAgentClient().setOption({ runtimeId: id, sessionId, optionId, value }))
       }),
-    send: () => submit(),
+    send: (extra) => submit(false, extra),
     summarize: () => submit(true),
     cancelPreparation: () => {
       if (submission && !submission.sending) submission.cancelled = true

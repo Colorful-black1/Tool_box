@@ -6452,3 +6452,91 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   flex: 1;
   min-width: 0;
 }
+
+/* 编程输入区候选：在输入框上方展开，列表独立滚动，完整路径通过悬停查看。 */
+.agent-actions-popover {
+  width: min(640px, calc(100vw - 16px));
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+.agent-actions-head,
+.agent-composer-shortcuts,
+.agent-reference-list,
+.agent-extension-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agent-actions-head {
+  justify-content: space-between;
+  flex: none;
+  padding: 0 4px;
+}
+.agent-actions-keyboard {
+  flex: 1;
+  text-align: right;
+}
+.agent-actions-popover > .field-input {
+  flex: none;
+}
+.agent-actions-list {
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+}
+.agent-actions-list .ui-dropdown-item {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.agent-action-label,
+.agent-action-description {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.agent-action-label {
+  font-family: var(--mono);
+  color: var(--text-hi);
+}
+.agent-action-notice {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.agent-actions-notices {
+  flex: 0 1 auto;
+  max-height: 56px;
+  overflow-y: auto;
+  padding: 6px 4px 0;
+  border-top: 1px solid var(--gold-line);
+}
+.agent-composer-shortcuts {
+  padding: 0 12px 8px;
+}
+.opencode-panel .composer-actions {
+  justify-content: flex-end;
+}
+.agent-reference-list {
+  padding: 8px 12px 0;
+}
+.agent-reference-list .btn-ghost {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--gold);
+  text-align: left;
+}
+.agent-extension-settings {
+  margin-top: 8px;
+}

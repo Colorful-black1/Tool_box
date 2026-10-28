@@ -239,6 +239,33 @@ ACP 只推送已提交回复，**没有实时 Token 分片；可续接上下文�
 专项合成验收：`node verify/desktop-ui/run.cjs --coding-agents-only --screenshots`（先构建）。
 连接探针：`node verify/codex-connect-smoke.cjs`，只读取运行时元数据，不创建或发送会话。
 
+#### 文件引用与快捷命令
+
+在编程任务输入区键入 `@`，或点击「@ 文件」，可按名称 / 路径搜索当前项目文件。
+方向键选择，Enter / Tab 插入，Esc 关闭候选；候选关闭后 Enter 发送、Shift + Enter 换行。
+一次最多 20 个引用，单文件上限 2 MB；依赖、构建目录和明显的密钥文件默认不列出。
+发送前重新检查路径归属和文件状态，正文由原生 Agent 按其权限读取。
+
+键入 `/` 或点击「/ 命令」可搜索快捷操作。`/skills` 选择 Skill，`/mcp` 查看能查询的服务及工具；
+Codex 使用结构化 Skill 引用，Claude SDK 的 Skill 与命令统一显示。
+MCP 工具选择仅填入使用意图，实际调用以原生工具事件为准，不绕过原生权限。
+`/new`、`/history`、`/model`、`/permissions` 复用工作台已有入口，不发送模型任务。
+未识别的命令会保留草稿；确需发送斜杠文本时点击「作为普通文字发送」。
+
+`/compact` 使用当前 Agent 的原生压缩能力；仅压缩已有会话，受理后等待原生终态。
+OpenCode 以 ACP 公布的命令为准，Codex 使用专门 RPC，两个 Claude 入口在执行前复核 SDK 命令。
+DSH 官方 ACP 未提供手动压缩、Skill 列表和 MCP 状态查询，界面会说明限制。
+`/init` 标明目标文件；Claude 原生为 `CLAUDE.md`，工具箱工作流和 `/agents` 为 `AGENTS.md`。
+目标文件存在时拒绝覆盖；计划 / 只读模式只给建议，写入仍遵守当前原生权限与审批。
+
+Claude「连接设置」可按入口和项目开启本机扩展配置，默认关闭。开启可能加载 hooks、插件、MCP
+及原生权限规则；Desktop 入口仅加载项目 / 本地配置，不加载 CLI 用户设置或账户连接器。
+不会自动安装扩展或修改原生配置。重启恢复的草稿保留引用文字，临时引用需要重新选择。
+
+接入范围、限制与验证见 [快捷操作交付记录](docs/coding-agent-commands-verification.md)。
+无模型能力探针：`node verify/agent-actions-connect-smoke.cjs`；隔离交互验收：
+`node verify/desktop-ui/run.cjs --agent-actions-only --screenshots`（构建前遵守仓库验证门槛）。
+
 #### 消息转用与交接说明
 
 在完整助手回复下点击「用于 Codex / OpenCode」，或从「其他 Agent」选择 Claude / DSH 等目标，内容直接进入同项目的目标新对话草稿；

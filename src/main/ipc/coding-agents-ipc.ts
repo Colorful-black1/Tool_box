@@ -13,6 +13,12 @@ import {
   validateCodingAgentSend,
   validateCodingAgentSession
 } from './validation'
+import {
+  validateAgentCatalog,
+  validateAgentCommand,
+  validateAgentExtensions,
+  validateAgentFileSearch
+} from './validation'
 
 /** 新通道保留窗口 / frame 检查，原生事件只投递连接所有者。 */
 export function registerCodingAgentsIpc(service: CodingAgentService): void {
@@ -68,12 +74,14 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
       ? null
       : service.selectExecutable(id, owner, result.filePaths[0])
   })
-  handle(IPC.codingAgentDirectory, async () => {
+  handle(IPC.codingAgentDirectory, async (owner) => {
     const result = await dialog.showOpenDialog({
       title: '选择编程项目目录',
       properties: ['openDirectory']
     })
-    return result.canceled ? null : (result.filePaths[0] ?? null)
+    const directory = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (directory) await service.allowDirectory(owner, directory)
+    return directory
   })
   handle(IPC.codingAgentConnect, (owner, value) => {
     const input = validateCodingAgentConnect(value)
@@ -98,7 +106,27 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
   })
   handle(IPC.codingAgentSend, (owner, value) => {
     const input = validateCodingAgentSend(value)
-    return service.send(input.runtimeId, owner, input.sessionId, input.content)
+    if (input.references === undefined && input.literal === undefined)
+      return service.send(input.runtimeId, owner, input.sessionId, input.content)
+    return service.send(input.runtimeId, owner, input.sessionId, input.content, {
+      references: input.references,
+      literal: input.literal
+    })
+  })
+  handle(IPC.codingAgentCatalog, (owner, value) => {
+    const input = validateAgentCatalog(value)
+    return service.readCatalog(input.runtimeId, owner, input.sessionId)
+  })
+  handle(IPC.codingAgentFiles, (owner, value) => {
+    const input = validateAgentFileSearch(value)
+    return service.searchFiles(input.runtimeId, owner, input.directory, input.query)
+  })
+  handle(IPC.codingAgentCommand, (owner, value) =>
+    service.executeCommand(owner, validateAgentCommand(value))
+  )
+  handle(IPC.codingAgentExtensions, (owner, value) => {
+    const input = validateAgentExtensions(value)
+    return service.setExtensions(input.runtimeId, owner, input.directory, input.enabled)
   })
   handle(IPC.codingAgentStop, (owner, value) => {
     const input = validateCodingAgentSession(value)

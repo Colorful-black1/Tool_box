@@ -12,7 +12,13 @@ export const OPENCODE_STATUS = {
 }
 
 /** 原生历史与已打开会话共用一份列表，只有明确打开历史时才连接读取。 */
-export function OpenCodeSessions(): JSX.Element {
+export function OpenCodeSessions({
+  showHistory = 0,
+  onHistoryShown
+}: {
+  showHistory?: number
+  onHistoryShown?(): void
+}): JSX.Element {
   const info = useCodingAgentStore((state) => state.info)
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const directory = useCodingAgentStore((state) => state.directory)
@@ -28,6 +34,13 @@ export function OpenCodeSessions(): JSX.Element {
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [query, setQuery] = useState('')
+  useEffect(() => {
+    if (showHistory) {
+      setHistoryOpen(true)
+      onHistoryShown?.()
+      void listSessions()
+    }
+  }, [showHistory, listSessions, onHistoryShown])
   useEffect(() => {
     const refresh = (): void => {
       if (

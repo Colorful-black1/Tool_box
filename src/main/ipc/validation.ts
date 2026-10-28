@@ -3,6 +3,13 @@ import type { TodoInput, TodoQuery } from '../../shared/types'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../shared/coding-agents'
+import type {
+  AgentCatalogInput,
+  AgentCommandInput,
+  AgentFileSearchInput,
+  AgentReference,
+  AgentSendInput
+} from '../../shared/agent-actions'
 import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
 import { validateAgentRoles } from '../../shared/agent-handoff'
 import { MAX_TOOL_FAVORITES, MAX_TOOL_RECENT, validateToolIds } from '../../shared/tool-shortcuts'
@@ -134,14 +141,73 @@ export function validateCodingAgentConnect(value: unknown): {
   }
 }
 
-export function validateCodingAgentSend(
-  value: unknown
-): CodingAgentSessionInput & { content: string } {
+export function validateCodingAgentSend(value: unknown): AgentSendInput {
   const input = codingAgentObject(value)
+  if (input.literal !== undefined && typeof input.literal !== 'boolean')
+    throw new CodingAgentValidationError('文字发送选项无效')
+  let references: AgentReference[] | undefined
+  if (input.references !== undefined) {
+    if (!Array.isArray(input.references) || input.references.length > 20)
+      throw new CodingAgentValidationError('最多选择 20 个引用')
+    references = input.references.map((value: unknown) => {
+      const item = codingAgentObject(value)
+      if (item.kind !== 'file' && item.kind !== 'skill' && item.kind !== 'tool')
+        throw new CodingAgentValidationError('引用类型无效')
+      return {
+        id: requireCodingAgentText(item.id, '引用标识', 200),
+        kind: item.kind,
+        label: requireCodingAgentText(item.label, '引用标签', 4096)
+      }
+    })
+    if (new Set(references.map((item) => item.id)).size !== references.length)
+      throw new CodingAgentValidationError('引用不能重复')
+  }
   return {
     ...validateCodingAgentSession(input),
-    content: requireCodingAgentText(input.content, '编程任务', 50_000)
+    content: requireCodingAgentText(input.content, '编程任务', 50_000),
+    references,
+    literal: input.literal as boolean | undefined
   }
+}
+
+export function validateAgentCatalog(value: unknown): AgentCatalogInput {
+  const input = codingAgentObject(value)
+  return {
+    runtimeId: validateCodingAgentId(input.runtimeId),
+    ...(input.sessionId === undefined
+      ? {}
+      : {
+          sessionId: requireCodingAgentText(input.sessionId, '编程会话', 200)
+        })
+  }
+}
+
+export function validateAgentFileSearch(value: unknown): AgentFileSearchInput {
+  const input = codingAgentObject(value)
+  if (typeof input.query !== 'string' || input.query.length > 200 || /[\0\r\n]/.test(input.query))
+    throw new CodingAgentValidationError('文件搜索条件无效')
+  return { ...validateCodingAgentConnect(input), query: input.query.trim() }
+}
+
+export function validateAgentCommand(value: unknown): AgentCommandInput {
+  const input = codingAgentObject(value)
+  if (typeof input.arguments !== 'string' || input.arguments.length > 10_000)
+    throw new CodingAgentValidationError('命令参数最多 10,000 字符')
+  return {
+    ...validateCodingAgentSession(input),
+    commandId: requireCodingAgentText(input.commandId, '命令标识', 200),
+    arguments: input.arguments.trim()
+  }
+}
+
+export function validateAgentExtensions(value: unknown): {
+  runtimeId: CodingAgentId
+  directory: string
+  enabled: boolean
+} {
+  const input = codingAgentObject(value)
+  if (typeof input.enabled !== 'boolean') throw new CodingAgentValidationError('扩展配置选项无效')
+  return { ...validateCodingAgentConnect(input), enabled: input.enabled }
 }
 
 export function validateCodingAgentOption(

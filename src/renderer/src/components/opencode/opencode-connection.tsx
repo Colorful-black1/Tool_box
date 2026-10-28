@@ -4,6 +4,7 @@ import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
 import { AgentIcon, RefreshIcon, SettingsIcon } from '../icons'
 import { AgentIdentity } from '../agent-identity'
+import { AgentExtensionSettings } from './agent-extension-settings'
 
 /** 正常操作只选择 Agent 和项目，程序诊断收进连接设置。 */
 export function OpenCodeConnection(): JSX.Element {
@@ -132,6 +133,7 @@ export function OpenCodeConnection(): JSX.Element {
           <p className="field-hint">
             {info?.detail || '无需先打开桌面窗口；运行时沿用自己的登录和配置。'}
           </p>
+          <AgentExtensionSettings key={`${runtimeId}:${directory}`} />
         </div>
       ) : null}
     </section>

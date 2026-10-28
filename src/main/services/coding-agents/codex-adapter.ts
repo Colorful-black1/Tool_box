@@ -12,6 +12,8 @@ import {
   type NativeCodingEvent,
   type NativeCodingSession
 } from './adapter'
+import type { NativeSendContext } from './adapter'
+import { nativeCommands, type NativeAgentCatalog } from './agent-action-catalog'
 import { codexObject, codexText } from './codex-connection'
 import {
   applyCodexItem,
@@ -33,6 +35,7 @@ export interface CodexPeer {
 
 /** 一次原生 turn 的身份及停止看门狗；终态后拒绝迟到消息。 */
 interface CodexRun {
+  compacting?: boolean
   session: NativeCodingSession
   turnId: string | null
   clientId: string
@@ -321,7 +324,103 @@ export class CodexAdapter implements CodingAgentAdapter {
     return structuredClone(session)
   }
 
-  async send(id: string, content: string): Promise<void> {
+  async catalog(id?: string): Promise<NativeAgentCatalog> {
+    const peer = this.requirePeer()
+    if (id) this.requireSession(id)
+    const result: NativeAgentCatalog = {
+      commands: nativeCommands([{ name: 'compact', description: '原生压缩上下文 · 需要已有对话' }]),
+      skills: [],
+      mcp: [],
+      notices: []
+    }
+    const [skills, mcp] = await Promise.allSettled([
+      peer.request('skills/list', { cwds: [this.info.directory], forceReload: true }, 15_000),
+      peer.request('mcpServerStatus/list', { limit: 100, ...(id ? { threadId: id } : {}) }, 15_000)
+    ])
+    this.checkPeer(peer)
+    if (skills.status === 'fulfilled') {
+      const data = codexObject(skills.value)?.data
+      for (const raw of Array.isArray(data) ? data.slice(0, 10) : []) {
+        const group = codexObject(raw)
+        if (!this.sameDirectory(group?.cwd)) continue
+        for (const value of Array.isArray(group?.skills) ? group.skills.slice(0, 300) : []) {
+          const item = codexObject(value)
+          const path = codexText(item?.path, 4096)
+          const name = codexText(item?.name, 120)
+          if (name && isAbsolute(path) && item?.enabled !== false)
+            result.skills.push({ name, path, description: codexText(item?.description, 500) })
+        }
+        if (Array.isArray(group?.errors) && group.errors.length)
+          result.notices.push('部分 Skill 无法读取，请在原生程序检查配置')
+      }
+    } else result.notices.push('当前 Codex 未提供可读取的 Skill 列表，或读取失败')
+    if (mcp.status === 'fulfilled') {
+      const response = codexObject(mcp.value)
+      for (const value of Array.isArray(response?.data) ? response.data.slice(0, 100) : []) {
+        const item = codexObject(value)
+        const name = codexText(item?.name, 120)
+        if (!name) continue
+        const entries = codexObject(item?.tools)
+        result.mcp.push({
+          name,
+          status: codexText(item?.authStatus, 40) || '已发现 · 连接状态未知',
+          tools: Object.entries(entries ?? {})
+            .slice(0, 200)
+            .map(([name, raw]) => ({
+              name: name.slice(0, 120),
+              description: codexText(codexObject(raw)?.description, 500)
+            }))
+        })
+      }
+      if (response?.nextCursor)
+        result.notices.push('MCP 列表超过首批 100 项，请在原生程序查看其余服务')
+    } else result.notices.push('当前 Codex 未提供可读取的 MCP 状态，或读取失败')
+    return result
+  }
+
+  /** compact 的 RPC 只表示受理，完成仍由原生 turn / contextCompaction 事件结算。 */
+  async compact(id: string): Promise<void> {
+    const peer = this.requirePeer()
+    const session = this.requireSession(id)
+    if (this.run) throw new CodingAgentError('Codex 已有正在执行的任务')
+    let resolveReady!: (id: string | null) => void
+    const ready = new Promise<string | null>((resolve) => {
+      resolveReady = resolve
+    })
+    const run: CodexRun = {
+      session,
+      turnId: null,
+      clientId: randomUUID(),
+      compacting: true,
+      pending: [],
+      ready,
+      resolveReady,
+      timer: setTimeout(() => this.disconnect(), 10 * 60_000)
+    }
+    this.run = run
+    session.status = 'running'
+    session.outcome = null
+    session.error = ''
+    session.tools = [{ id: run.clientId, title: '压缩上下文', status: 'running' }]
+    this.publish(session, true)
+    try {
+      await peer.request('thread/compact/start', { threadId: id }, 30_000)
+      this.checkPeer(peer)
+    } catch {
+      if (this.run === run) {
+        clearTimeout(run.timer)
+        run.resolveReady(null)
+        this.run = null
+        session.status = 'error'
+        session.outcome = 'unknown'
+        session.error = '原生压缩未能确认，请检查 Codex 版本及原会话；未自动重试'
+        this.publish(session, true)
+      }
+      throw new CodingAgentError('原生压缩未能确认，请核对 Codex 原会话后再操作')
+    }
+  }
+
+  async send(id: string, content: string, context?: NativeSendContext): Promise<void> {
     const peer = this.requirePeer()
     const session = this.requireSession(id)
     if (this.run) throw new CodingAgentError('Codex 已有正在执行的任务')
@@ -360,7 +459,14 @@ export class CodexAdapter implements CodingAgentAdapter {
         await peer.request('turn/start', {
           threadId: id,
           clientUserMessageId: clientId,
-          input: [{ type: 'text', text: content }],
+          input: [
+            { type: 'text', text: content },
+            ...(context?.skills ?? []).map((skill) => ({
+              type: 'skill',
+              name: skill.name,
+              path: skill.path
+            }))
+          ],
           cwd: this.info.directory,
           model: option('model'),
           effort: option('effort'),
@@ -399,7 +505,14 @@ export class CodexAdapter implements CodingAgentAdapter {
   async stop(id: string): Promise<void> {
     const run = this.run
     if (!run || run.session.id !== id) return
-    if (!run.turnId) throw new CodingAgentError('Codex 正在确认任务，请稍后再停止')
+    if (!run.turnId) {
+      if (run.compacting) {
+        // 压缩 RPC 不返回 turnId；尚未收到事件时只关闭自有连接，结果保持未知。
+        this.disconnect()
+        return
+      }
+      throw new CodingAgentError('Codex 正在确认任务，请稍后再停止')
+    }
     run.session.status = 'stopping'
     this.clearApprovals(id)
     clearTimeout(run.timer)
@@ -446,6 +559,15 @@ export class CodexAdapter implements CodingAgentAdapter {
     const turn = codexObject(params.turn)
     const turnId = codexText(params.turnId) || codexText(turn?.id)
     if (!turnId) return
+    if (
+      run.compacting &&
+      !run.turnId &&
+      (method === 'turn/started' ||
+        (method === 'item/started' && codexObject(params.item)?.type === 'contextCompaction'))
+    ) {
+      run.turnId = turnId
+      run.resolveReady(turnId)
+    }
     if (!run.turnId) {
       // turn/start 响应之前的事件暂存；只能由响应 ID 认领，不能被上一轮迟到终态抢占。
       if (run.pending.length >= 100) {
@@ -460,7 +582,10 @@ export class CodexAdapter implements CodingAgentAdapter {
       if (method === 'turn/completed' && turn) this.finish(run, turn)
       else if (method === 'error' && params.willRetry === false)
         this.finish(run, { status: 'failed' })
-      else if (method === 'item/agentMessage/delta') {
+      else if (run.compacting) {
+        // 控制操作不向已满的显示缓存追加原生摘要；只等待原生终态。
+        return
+      } else if (method === 'item/agentMessage/delta') {
         const itemId = codexText(params.itemId)
         if (itemId)
           codexMessage(run.session, itemId, 'assistant', codexText(params.delta, 200_000), true)
@@ -526,7 +651,7 @@ export class CodexAdapter implements CodingAgentAdapter {
 
   private finish(run: CodexRun, turn: Record<string, unknown>): void {
     if (this.run !== run) return
-    if (Array.isArray(turn.items))
+    if (!run.compacting && Array.isArray(turn.items))
       for (const item of turn.items.slice(-200)) applyCodexItem(run.session, item, run.clientId)
     clearTimeout(run.timer)
     run.resolveReady(null)
@@ -535,6 +660,15 @@ export class CodexAdapter implements CodingAgentAdapter {
     const failed = turn.status === 'failed'
     const interrupted = turn.status === 'interrupted'
     const known = failed || interrupted || turn.status === 'completed'
+    if (run.compacting) {
+      run.session.tools = [
+        {
+          id: run.clientId,
+          title: '压缩上下文',
+          status: known && !failed && !interrupted ? 'completed' : 'failed'
+        }
+      ]
+    }
     run.session.status = known && !failed ? 'ready' : 'error'
     run.session.outcome = failed
       ? 'failed'

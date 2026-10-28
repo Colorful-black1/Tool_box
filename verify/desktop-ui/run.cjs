@@ -31,7 +31,11 @@ async function main() {
     env.TOOLBOX_CHAT_TOOLS_VERIFY = '1'
     env.TOOLBOX_USAGE_VERIFY = '1'
   }
-  if (process.argv.includes('--coding-agents-only')) env.TOOLBOX_CODING_AGENT_VERIFY = '1'
+  if (
+    process.argv.includes('--coding-agents-only') ||
+    process.argv.includes('--agent-actions-only')
+  )
+    env.TOOLBOX_CODING_AGENT_VERIFY = '1'
   if (process.argv.includes('--convenience-only')) env.TOOLBOX_CONVENIENCE_VERIFY = '1'
   delete env.ELECTRON_RUN_AS_NODE
   let app
@@ -113,6 +117,12 @@ async function main() {
       await verifyAgentUsage({ page, app, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`Token 统计验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--agent-actions-only')) {
+      await require('./agent-actions.cjs')({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`Agent 快捷操作验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
     if (process.argv.includes('--coding-agents-only')) {

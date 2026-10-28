@@ -16,6 +16,7 @@ import {
 import { acpObject } from './stdio-rpc-connection'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
 import { detectDshExecutable, inspectDshExecutable, launchDsh } from './dsh-runtime'
+import { unavailableCatalog, type NativeAgentCatalog } from './agent-action-catalog'
 
 /** 合成协议测试与本机 ACP 共用的最小传输契约。 */
 export interface DshPeer {
@@ -33,6 +34,11 @@ interface DshRun {
 
 /** 官方 ACP 提交后更新；续接上下文与回放旧消息是分别声明的能力。 */
 export class DshAdapter implements CodingAgentAdapter {
+  async catalog(): Promise<NativeAgentCatalog> {
+    return unavailableCatalog(
+      '官方 DSH ACP 未提供命令 / Skill 列表及 MCP 状态查询；不支持手动压缩。项目文件通过路径引用交由 Agent 按权限读取。'
+    )
+  }
   readonly id = 'dsh' as const
   private peer: DshPeer | null = null
   private generation = 0

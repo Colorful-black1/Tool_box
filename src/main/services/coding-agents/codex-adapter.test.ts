@@ -100,6 +100,32 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.useRealTimers())
 
 describe('Codex 原生 App Server 适配', () => {
+  it('压缩受理不结算；绑定原生压缩 turn，显示缓存满时仍等到原生完成', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    await f.service.openSession()
+    await f.service.compact('t1')
+    expect(f.latest().status).toBe('running')
+    expect(f.calls).toHaveBeenCalledWith('thread/compact/start', { threadId: 't1' }, 30_000)
+    f.notify('turn/started', { threadId: 't1', turn: { id: 'compact-turn' } })
+    f.notify('item/agentMessage/delta', {
+      threadId: 't1',
+      turnId: 'compact-turn',
+      itemId: 'summary',
+      delta: 'x'.repeat(210_000)
+    })
+    expect(f.latest().status).toBe('running')
+    f.notify('turn/completed', {
+      threadId: 't1',
+      turn: { id: 'compact-turn', status: 'completed', items: [] }
+    })
+    expect(f.latest()).toMatchObject({
+      status: 'ready',
+      outcome: 'completed',
+      tools: [{ title: '压缩上下文', status: 'completed' }]
+    })
+    f.service.disconnect()
+  })
   it('检测与连接只握手；模型过滤、项目历史与手动恢复保持原生身份', async () => {
     const f = fixture()
     const info = await f.service.connect(f.directory)

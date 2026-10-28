@@ -25,6 +25,8 @@ import { bundledClaudeExecutable, inspectClaudeExecutable } from './claude-runti
 import { readClaudeProviderSettings } from './claude-provider-settings'
 import type { ClaudeProviderSettings } from './claude-provider-settings'
 import { assertDesktopCodeIdle, readDesktopCodeSessions } from './claude-desktop-history'
+import type { NativeSendContext } from './adapter'
+import { nativeCommands, type NativeAgentCatalog } from './agent-action-catalog'
 import type { DesktopCodeSession } from './claude-desktop-history'
 
 export type ClaudeSdk = Pick<
@@ -47,11 +49,21 @@ const CLAUDE_PERMISSION_OPTIONS = [
 ] as const
 
 /** 保持 stdin 打开，空输入只做初始化；只有显式发送才 yield 用户消息。 */
-function inputFeed(content?: string): { input: AsyncIterable<SDKUserMessage>; close(): void } {
+function inputFeed(
+  content?: string,
+  paused = false
+): { input: AsyncIterable<SDKUserMessage>; close(): void; start(): void } {
   let release: (() => void) | null = null
+  let start: (() => void) | null = null
+  const admitted = paused
+    ? new Promise<void>((resolve) => {
+        start = resolve
+      })
+    : Promise.resolve()
   let closed = false
   return {
     input: (async function* () {
+      await admitted
       if (!closed && content !== undefined)
         yield {
           type: 'user' as const,
@@ -65,13 +77,16 @@ function inputFeed(content?: string): { input: AsyncIterable<SDKUserMessage>; cl
     })(),
     close: () => {
       closed = true
+      start?.()
       release?.()
-    }
+    },
+    start: () => start?.()
   }
 }
 
 /** 一个自有 SDK query 的生命周期，终态后忽略迟到事件及审批。 */
 interface ClaudeRun {
+  compacting?: boolean
   session: NativeCodingSession
   controller: AbortController
   query: Query
@@ -84,6 +99,7 @@ interface ClaudeRun {
 
 /** 官方 SDK 独立运行时；供应商凭据只用于子进程，不把初始化成功当作推理可用保证。 */
 export class ClaudeAdapter implements CodingAgentAdapter {
+  private readonly commandLists = new Map<string, NativeAgentCatalog['commands']>()
   private generation = 0
   private sdk: ClaudeSdk | null = null
   private models: ModelInfo[] = []
@@ -150,6 +166,34 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     this.store.configSet({
       [this.configKey]: { ...object(this.store.configGet()?.[this.configKey]), ...patch }
     })
+  }
+
+  private extensionsEnabled(directory: string): boolean {
+    const roots = object(this.store.configGet()?.[this.configKey])?.extensionDirectories
+    return (
+      Array.isArray(roots) &&
+      roots
+        .slice(0, 100)
+        .some(
+          (root) =>
+            typeof root === 'string' &&
+            normalizeDraftDirectory(root) === normalizeDraftDirectory(directory)
+        )
+    )
+  }
+
+  setExtensions(directory: string, enabled: boolean): void {
+    const raw = object(this.store.configGet()?.[this.configKey])?.extensionDirectories
+    const roots = (Array.isArray(raw) ? raw : []).filter(
+      (item): item is string =>
+        typeof item === 'string' &&
+        item.length <= 4096 &&
+        normalizeDraftDirectory(item) !== normalizeDraftDirectory(directory)
+    )
+    this.savePreferences({
+      extensionDirectories: [...roots.slice(-99), ...(enabled ? [directory] : [])]
+    })
+    this.commandLists.clear()
   }
 
   /** 只记录本入口的原生 ID，不保存正文或认证；损坏时拒绝混合两个来源的历史。 */
@@ -263,7 +307,12 @@ export class ClaudeAdapter implements CodingAgentAdapter {
         model: env.ANTHROPIC_MODEL || provider.model,
         abortController: controller,
         pathToClaudeCodeExecutable: this.info.executablePath!,
-        settingSources: [],
+        // Desktop 不加载 CLI 的用户设置，避免把 CC Switch CLI 路由带入另一入口。
+        settingSources: this.extensionsEnabled(directory)
+          ? this.id === 'claude-desktop'
+            ? ['project', 'local']
+            : ['user', 'project', 'local']
+          : [],
         permissionMode: 'plan',
         includePartialMessages: true,
         systemPrompt: { type: 'preset', preset: 'claude_code' },
@@ -353,6 +402,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   }
 
   disconnect(): void {
+    this.commandLists.clear()
     this.generation++
     this.preparing?.controller.abort()
     this.preparing = null
@@ -514,15 +564,82 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     return structuredClone(session)
   }
 
-  async send(id: string, content: string): Promise<void> {
+  async catalog(id?: string): Promise<NativeAgentCatalog> {
+    if (!this.sdk || !this.info.connected) throw new CodingAgentError('请先连接 Claude')
+    if (this.run || this.preparing) throw new CodingAgentError('请在当前 Claude 任务结束后读取扩展')
+    const generation = this.generation
+    const controller = new AbortController()
+    const feed = inputFeed()
+    const prepared = await this.options(this.info.directory, controller)
+    const query = this.sdk.query({ prompt: feed.input, options: prepared.options })
+    const dispose = (): void => {
+      controller.abort()
+      query.close()
+      feed.close()
+    }
+    this.probes.add(dispose)
+    const timer = setTimeout(dispose, 20_000)
+    try {
+      // 只发 SDK 控制请求，不 yield 用户消息，也不为发现恢复 / 新建会话。
+      const [initial, skills, servers] = await Promise.all([
+        query.initializationResult(),
+        query.supportedCommands(),
+        query.mcpServerStatus()
+      ])
+      if (generation !== this.generation) throw new CodingAgentError('Claude 连接已变化')
+      const commands = nativeCommands([
+        ...initial.commands,
+        ...skills,
+        ...(id ? (this.commandLists.get(id) ?? []) : [])
+      ])
+      return {
+        commands,
+        // SDK 混合返回内置命令与 Skill，不能把 compact/init 误标成 Skill。
+        skills: [],
+        mcp: servers.slice(0, 100).map((server) => ({
+          name: server.name,
+          status: server.status,
+          tools: (server.tools ?? [])
+            .slice(0, 200)
+            .map((tool) => ({ name: tool.name, description: '' }))
+        })),
+        extensionsEnabled: this.extensionsEnabled(this.info.directory),
+        notices: [
+          this.extensionsEnabled(this.info.directory)
+            ? this.id === 'claude-desktop'
+              ? '已加载项目 / 本地扩展；Desktop 入口不加载 CLI 用户设置或账户连接器。'
+              : '已加载用户 / 项目 / 本地扩展；配置可能包含 hooks、插件、MCP 与原生权限规则。'
+            : '本机扩展配置未开启；可在连接设置中为此项目开启。',
+          'SDK 将 Skill 和命令统一列出，可按名称搜索调用；终端专属命令不可用。'
+        ]
+      }
+    } catch {
+      return {
+        commands: [],
+        skills: [],
+        mcp: [],
+        extensionsEnabled: this.extensionsEnabled(this.info.directory),
+        notices: [
+          'Claude 扩展读取失败，请检查原生配置，或在连接设置中关闭扩展后重试；未发送模型任务'
+        ]
+      }
+    } finally {
+      clearTimeout(timer)
+      this.probes.delete(dispose)
+      dispose()
+    }
+  }
+
+  async send(id: string, content: string, context?: NativeSendContext): Promise<void> {
     const session = this.session(id)
     if (this.run || this.preparing || !this.sdk)
       throw new CodingAgentError('Claude 正在执行任务或已断开')
     if (
-      session.messages.length >= 200 ||
-      session.messages.reduce((total, message) => total + message.content.length, 0) +
-        content.length >
-        200_000
+      !context?.command &&
+      (session.messages.length >= 200 ||
+        session.messages.reduce((total, message) => total + message.content.length, 0) +
+          content.length >
+          200_000)
     )
       throw new CodingAgentError('会话达到显示上限，请开始新对话或在原生客户端继续')
     const controller = new AbortController()
@@ -579,7 +696,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
       return { behavior: 'cancelled' }
     }
     this.rememberDesktopSession(id)
-    const feed = inputFeed(content)
+    const feed = inputFeed(content, context?.command === true)
     const query = this.sdk.query({ prompt: feed.input, options })
     const run: ClaudeRun = {
       session,
@@ -603,20 +720,31 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     session.error = ''
     session.outcome = null
     session.tools = []
-    session.messages.push({ id: randomUUID(), role: 'user', content })
+    run.compacting = Boolean(context?.command && /^\/compact(?:\s|$)/.test(content))
+    if (!run.compacting) session.messages.push({ id: randomUUID(), role: 'user', content })
     this.emit(session)
     void this.consume(run)
     let timeout: NodeJS.Timeout | undefined
     try {
-      await Promise.race([
+      const initialized = await Promise.race([
         query.initializationResult(),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => reject(new CodingAgentError('Claude 初始化超时')), 20_000)
         })
       ])
+      if (context?.command) {
+        const name = /^\/([\w:.-]+)/.exec(content)?.[1]
+        if (!nativeCommands(initialized.commands).some((item) => item.name === name))
+          throw new CodingAgentError('当前命令已失效或不适用于 SDK，本次未发送模型任务')
+        feed.start()
+      }
       if (run.stopped || (this.run !== run && session.outcome !== 'completed'))
         throw new CodingAgentError('Claude 尚未确认开始')
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof CodingAgentError
+          ? error.message
+          : 'Claude 任务未确认开始，草稿已保留；请核对原生会话后再操作'
       if (this.run === run) {
         this.run = null
         clearTimeout(run.timer)
@@ -626,14 +754,10 @@ export class ClaudeAdapter implements CodingAgentAdapter {
         run.query.close()
         session.status = 'error'
         session.outcome = 'failed'
-        session.error = 'Claude 任务未确认开始，请检查官方程序和认证；草稿已保留'
+        session.error = message
         this.emit(session)
       }
-      throw new CodingAgentError(
-        run.stopped
-          ? '已停止准备，草稿已保留'
-          : 'Claude 任务未确认开始，草稿已保留；请核对原生会话后再操作'
-      )
+      throw new CodingAgentError(run.stopped ? '已停止准备，草稿已保留' : message)
     } finally {
       if (timeout) clearTimeout(timeout)
     }
@@ -742,7 +866,36 @@ export class ClaudeAdapter implements CodingAgentAdapter {
         if (!message || message.parent_tool_use_id) continue
         if (typeof message.session_id === 'string' && message.session_id !== session.id)
           throw new CodingAgentError('Claude 返回了不同会话，已停止以保护草稿归属')
-        if (message.type === 'system' && message.subtype === 'init') this.persisted.add(session.id)
+        if (message.type === 'system' && message.subtype === 'init') {
+          this.persisted.add(session.id)
+          this.commandLists.set(
+            session.id,
+            nativeCommands(
+              Array.isArray(message.slash_commands)
+                ? message.slash_commands
+                    .filter(
+                      (name: unknown) =>
+                        typeof name === 'string' &&
+                        !(
+                          Array.isArray(message.terminal_slash_commands) &&
+                          message.terminal_slash_commands.includes(name)
+                        )
+                    )
+                    .map((name: string) => ({ name }))
+                : []
+            )
+          )
+        }
+        if (message.type === 'system' && message.subtype === 'compact_boundary') {
+          session.tools.push({
+            id: randomUUID(),
+            title: '原生上下文压缩已完成',
+            status: 'completed'
+          })
+        }
+        // 压缩的摘要保留在原生日志；显示缓存已满时仍消费控制与终态，避免误停压缩。
+        if (run.compacting && (message.type === 'assistant' || message.type === 'stream_event'))
+          continue
         if (
           message.type === 'system' &&
           (message.subtype === 'init' || message.subtype === 'status') &&

@@ -4,6 +4,14 @@ import type {
   CodingAgentSessionSummary,
   CodingAgentSessionView
 } from '../../../shared/coding-agents'
+import type { NativeAgentCatalog } from './agent-action-catalog'
+
+/** 引用由统一服务校验后转换；不接受 renderer 提交的原生路径。 */
+export interface NativeSendContext {
+  files?: string[]
+  skills?: Array<{ name: string; path: string }>
+  command?: boolean
+}
 
 /** 适配器使用原生 ID；本地引用、连接所有权和顶层运行由统一服务管理。 */
 export type NativeCodingSession = Omit<
@@ -28,7 +36,10 @@ export interface CodingAgentAdapter {
   listSessions(): Promise<CodingAgentSessionSummary[]>
   openSession(id?: string): Promise<NativeCodingSession>
   setOption(id: string, optionId: string, value: string): Promise<NativeCodingSession>
-  send(id: string, content: string): void | Promise<void>
+  send(id: string, content: string, context?: NativeSendContext): void | Promise<void>
+  catalog?(id?: string): Promise<NativeAgentCatalog>
+  compact?(id: string): Promise<void>
+  setExtensions?(directory: string, enabled: boolean): void
   stop(id: string): void | Promise<void>
   approve(id: string, approvalId: string, approved: boolean): void
   subscribe(listener: (event: NativeCodingEvent) => void): () => void

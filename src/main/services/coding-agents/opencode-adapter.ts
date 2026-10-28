@@ -2,6 +2,8 @@ import type { OpenCodeInfo } from '../../../shared/types'
 import type { CodingAgentRuntimeView } from '../../../shared/coding-agents'
 import type { OpenCodeService } from '../opencode/opencode-service'
 import type { CodingAgentAdapter, NativeCodingEvent, NativeCodingSession } from './adapter'
+import type { NativeSendContext } from './adapter'
+import type { NativeAgentCatalog } from './agent-action-catalog'
 
 /** 兼容包装：继续使用现有服务、子进程、Plan 和 Desktop 可见模型规则。 */
 export class OpenCodeAdapter implements CodingAgentAdapter {
@@ -55,8 +57,21 @@ export class OpenCodeAdapter implements CodingAgentAdapter {
     return this.service.setOption(id, optionId, value)
   }
 
-  send(id: string, content: string): void {
-    this.service.send(id, content)
+  async catalog(id?: string): Promise<NativeAgentCatalog> {
+    return {
+      commands: this.service.commands(id),
+      skills: [],
+      mcp: [],
+      notices: [
+        id
+          ? '命令来自当前 ACP 会话；未公布的 Skill 不显示为可调用。ACP 未提供 MCP 状态查询。'
+          : '原生命令在首次对话建立后读取；本次未创建会话。ACP 未提供 MCP 状态查询。'
+      ]
+    }
+  }
+
+  send(id: string, content: string, context?: NativeSendContext): void {
+    this.service.send(id, content, context)
   }
 
   stop(id: string): void {

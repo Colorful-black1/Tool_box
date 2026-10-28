@@ -12,6 +12,9 @@ import type { ToolboxStore } from '../chat-store/chat-store'
 import { acpObject } from './acp-connection'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
 import { readOpenCodeVisibleModels } from './opencode-models'
+import { nativeCommands, type NativeAgentCatalog } from '../coding-agents/agent-action-catalog'
+import type { NativeSendContext } from '../coding-agents/adapter'
+import { pathToFileURL } from 'node:url'
 import {
   detectOpenCodeExecutable,
   inspectOpenCodeExecutable,
@@ -29,6 +32,8 @@ export type OpenCodeLauncher = (...args: Parameters<typeof launchOpenCode>) => A
 
 /** 独立管理外部编程会话，不向 OpenCode 提供百宝箱内部工具或数据库。 */
 export class OpenCodeService {
+  private readonly compacting = new Set<string>()
+  private readonly commandLists = new Map<string, NativeAgentCatalog['commands']>()
   private peer: AcpPeer | null = null
   private generation = 0
   private connecting = false
@@ -155,6 +160,8 @@ export class OpenCodeService {
   }
 
   disconnect(): void {
+    this.compacting.clear()
+    this.commandLists.clear()
     ++this.generation
     const peer = this.peer
     for (const session of this.sessions.values()) {
@@ -275,32 +282,68 @@ export class OpenCodeService {
     return session
   }
 
-  send(id: string, text: string): void {
+  commands(id?: string): NativeAgentCatalog['commands'] {
+    return id ? structuredClone(this.commandLists.get(id) ?? []) : []
+  }
+
+  send(id: string, text: string, context?: NativeSendContext): void {
     const session = this.requireSession(id)
     const peer = this.requirePeer()
+    if (
+      context?.command &&
+      !this.commands(id).some((item) => item.name === /^\/([\w:.-]+)/.exec(text)?.[1])
+    )
+      throw new OpenCodeError('原生命令已失效，请刷新命令后重新选择')
     const model = session.options.find((option) => option.category === 'model')
     if (model && !this.info.visibleModelIds.includes(model.currentValue))
       throw new OpenCodeError('当前会话模型未在 Desktop 启用，请先选择已启用模型')
     if (session.status !== 'ready' && session.status !== 'error')
       throw new OpenCodeError('该会话暂时不能发送，请等待或重新连接')
     if (this.hasRunning()) throw new OpenCodeError('首版一次运行一个编程任务，请等待当前任务结束')
-    if (session.messages.length >= 198) throw new OpenCodeError('会话消息较多，请新建会话')
+    if (!context?.command && session.messages.length >= 198)
+      throw new OpenCodeError('会话消息较多，请新建会话')
     if (
+      !context?.command &&
       session.messages.reduce((sum, message) => sum + message.content.length, 0) + text.length >
       180_000
     )
       throw new OpenCodeError('会话内容较多，请新建会话')
-    session.messages.push({ id: randomUUID(), role: 'user', content: text })
+    const compacting = Boolean(context?.command && /^\/compact(?:\s|$)/.test(text))
+    let cancelled = false
+    if (compacting) this.compacting.add(id)
+    else session.messages.push({ id: randomUUID(), role: 'user', content: text })
     session.title = session.title === '新编程会话' ? text.slice(0, 32) : session.title
     session.status = 'running'
+    session.outcome = null
     session.error = ''
     session.tools = []
+    if (compacting)
+      session.tools.push({ id: 'context-compaction', title: '压缩上下文', status: 'running' })
     this.publish(session, true)
     const traceId = randomUUID()
     console.info('[OpenCode] 编程任务开始', { traceId })
     void peer
-      .request('session/prompt', { sessionId: id, prompt: [{ type: 'text', text }] }, 15 * 60_000)
-      .then(() => {
+      .request(
+        'session/prompt',
+        {
+          sessionId: id,
+          prompt: [
+            { type: 'text', text },
+            ...(context?.files ?? []).map((path) => ({
+              type: 'resource_link',
+              uri: pathToFileURL(path).href,
+              name: path
+            }))
+          ]
+        },
+        15 * 60_000
+      )
+      .then((value) => {
+        cancelled = session.status === 'stopping' || acpObject(value)?.stopReason === 'cancelled'
+        if (peer !== this.peer) return
+        if (compacting && !cancelled && acpObject(value)?.stopReason !== 'end_turn')
+          session.error = '原生压缩未返回可确认终态，请核对原会话；不会自动重试'
+        session.outcome = cancelled ? 'stopped' : session.error ? 'unknown' : 'completed'
         if (peer === this.peer && session.status !== 'disconnected')
           session.status = session.error ? 'error' : 'ready'
         console.info('[OpenCode] 编程任务已结算', { traceId })
@@ -308,17 +351,33 @@ export class OpenCodeService {
       .catch((error: unknown) => {
         if (peer !== this.peer) return
         if (session.status === 'stopping') {
+          cancelled = true
+          session.outcome = 'stopped'
           session.status = session.error ? 'error' : 'ready'
           console.info('[OpenCode] 编程任务已停止', { traceId })
           return
         }
         console.warn('[OpenCode] 编程任务失败', { traceId })
         session.status = 'error'
+        session.outcome = 'unknown'
         session.error =
           error instanceof OpenCodeError ? error.message : 'OpenCode 任务失败，请检查模型与登录配置'
       })
       .finally(() => {
+        this.compacting.delete(id)
         if (peer !== this.peer) return
+        if (compacting)
+          session.tools = [
+            {
+              id: 'context-compaction',
+              title: '压缩上下文',
+              status: cancelled
+                ? 'cancelled'
+                : session.status === 'ready' && !session.error
+                  ? 'completed'
+                  : 'failed'
+            }
+          ]
         this.clearApprovals(id)
         const timer = this.stopTimers.get(id)
         if (timer) clearTimeout(timer)
@@ -376,6 +435,23 @@ export class OpenCodeService {
   private notification(method: string, params: unknown): void {
     if (method !== 'session/update') return
     const body = acpObject(params)
+    const update = acpObject(body?.update)
+    if (update?.sessionUpdate === 'available_commands_update') {
+      const id = acpText(body?.sessionId, 200)
+      if (id) {
+        if (this.commandLists.size >= 40 && !this.commandLists.has(id)) return
+        this.commandLists.set(id, nativeCommands(update.availableCommands))
+      }
+      // 命令推送可早于 session/new 响应，先记录，后由目录查询消费。
+      return
+    }
+    if (
+      this.compacting.has(acpText(body?.sessionId, 200)) &&
+      ['agent_message_chunk', 'agent_thought_chunk', 'user_message_chunk'].includes(
+        acpText(update?.sessionUpdate)
+      )
+    )
+      return
     const session = this.sessions.get(acpText(body?.sessionId, 200))
     if (
       !session ||
