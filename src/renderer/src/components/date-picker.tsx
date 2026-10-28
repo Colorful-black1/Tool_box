@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { calendarDays, localDateValue, validCalendarValue } from '../lib/calendar'
 import { Popover } from './popover'
 import { CalendarIcon } from './icons'
+import { TimePicker } from './time-picker'
 
 /** 墙上日期与时刻输入，时区转换由调用方处理。 */
 interface DatePickerProps {
@@ -10,6 +11,8 @@ interface DatePickerProps {
   onChange(value: string): void
   label: string
   withTime?: boolean
+  /** 启用先选日期、再点选时分、确认提交的交互。 */
+  selectTime?: boolean
   seconds?: boolean
   min?: string
   max?: string
@@ -23,6 +26,7 @@ export function DatePicker({
   onChange,
   label,
   withTime = false,
+  selectTime = false,
   seconds = false,
   min,
   max,
@@ -35,6 +39,8 @@ export function DatePicker({
   const [time, setTime] = useState(() => value.slice(11) || (seconds ? '09:00:00' : '09:00'))
   const [error, setError] = useState('')
   const [calendarDate, setCalendarDate] = useState('')
+  const [view, setView] = useState<'date' | 'time'>('date')
+  const pickingTime = withTime && selectTime
   const anchor = useRef<HTMLButtonElement>(null)
   const grid = useRef<HTMLDivElement>(null)
   const validity = useRef(onValidityChange)
@@ -51,6 +57,9 @@ export function DatePicker({
   }, [disabled])
   const permitted = (candidate: string): boolean =>
     (!min || candidate >= min) && (!max || candidate <= max)
+  const canConfirmTime =
+    validCalendarValue(`${calendarDate}T${time}`, true, seconds) &&
+    permitted(`${calendarDate}T${time}`)
   const submit = (candidate: string): boolean => {
     if (!candidate) {
       setError('')
@@ -73,7 +82,13 @@ export function DatePicker({
     onChange(candidate.replace(' ', 'T'))
     return true
   }
-  const commitDay = (day: string): void => {
+  const commitDay = (day: string, confirm = false): void => {
+    if (pickingTime && !confirm) {
+      setCalendarDate(day)
+      setMonth(day.slice(0, 7))
+      setView('time')
+      return
+    }
     const candidate = day + (withTime ? `T${time}` : '')
     if (submit(candidate)) {
       setText(candidate.replace('T', ' '))
@@ -140,6 +155,7 @@ export function DatePicker({
           disabled={disabled}
           onClick={() => {
             if (!open) {
+              setView('date')
               setMonth((value || localDateValue()).slice(0, 7))
               setTime(value.slice(11) || (seconds ? '09:00:00' : '09:00'))
               setCalendarDate(value.slice(0, 10) || localDateValue())
@@ -178,7 +194,7 @@ export function DatePicker({
                   ...event.currentTarget.querySelectorAll<HTMLElement>(
                     'button:not(:disabled):not([tabindex="-1"]), input:not(:disabled)'
                   )
-                ]
+                ].filter((element) => element.getClientRects().length > 0)
                 if (event.shiftKey && document.activeElement === controls[0]) {
                   event.preventDefault()
                   controls[controls.length - 1]?.focus()
@@ -190,94 +206,138 @@ export function DatePicker({
                   controls[0]?.focus()
                 }
               }
-              if (event.key === 'PageUp' || event.key === 'PageDown') {
+              if (
+                (!pickingTime || view === 'date') &&
+                (event.key === 'PageUp' || event.key === 'PageDown')
+              ) {
                 event.preventDefault()
                 moveMonth(event.key === 'PageUp' ? -1 : 1, true)
               }
             }}
           >
-            <header className="calendar-head">
-              <button
-                type="button"
-                className="btn-ghost btn-mini"
-                aria-label="上个月"
-                onClick={() => moveMonth(-1)}
-              >
-                上一月
-              </button>
-              <strong>
-                {year} 年 {currentMonth} 月
-              </strong>
-              <button
-                type="button"
-                className="btn-ghost btn-mini"
-                aria-label="下个月"
-                onClick={() => moveMonth(1)}
-              >
-                下一月
-              </button>
-            </header>
-            <div
-              className="calendar-grid"
-              ref={grid}
-              role="grid"
-              aria-label="日期"
-              onKeyDown={(event) => {
-                const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key]
-                if (delta === undefined || !(event.target instanceof HTMLElement)) return
-                const day = event.target.dataset.date
-                if (!day) return
-                event.preventDefault()
-                const date = new Date(`${day}T00:00:00Z`)
-                date.setUTCDate(date.getUTCDate() + delta)
-                const next = date.toISOString().slice(0, 10)
-                if (
-                  !validCalendarValue(next) ||
-                  (min && next < min.slice(0, 10)) ||
-                  (max && next > max.slice(0, 10))
-                )
-                  return
-                setCalendarDate(next)
-                setMonth(next.slice(0, 7))
-                requestAnimationFrame(() =>
-                  grid.current?.querySelector<HTMLElement>(`[data-date="${next}"]`)?.focus()
-                )
-              }}
-            >
-              <div role="row">
-                {['一', '二', '三', '四', '五', '六', '日'].map((day) => (
-                  <span key={day} role="columnheader">
-                    {day}
-                  </span>
-                ))}
+            {pickingTime ? (
+              <div className="calendar-mode-switch" role="group" aria-label="选择日期或时间">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  aria-pressed={view === 'date'}
+                  onClick={() => setView('date')}
+                >
+                  日期 {calendarDate}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  aria-pressed={view === 'time'}
+                  onClick={() => setView('time')}
+                >
+                  时间 {time}
+                </button>
               </div>
-              {Array.from({ length: 6 }, (_, week) => (
-                <div role="row" key={week}>
-                  {days.slice(week * 7, week * 7 + 7).map((day) => (
-                    <button
-                      type="button"
-                      role="gridcell"
-                      key={day.value}
-                      data-date={day.value}
-                      aria-label={day.value}
-                      aria-selected={day.value === value.slice(0, 10)}
-                      className={`btn-ghost calendar-day${day.current ? '' : ' muted'}${day.value === value.slice(0, 10) ? ' selected' : ''}${day.value === localDateValue() ? ' today' : ''}`}
-                      tabIndex={day.value === calendarDate ? 0 : -1}
-                      disabled={
-                        !validCalendarValue(day.value) ||
-                        (!!min && day.value < min.slice(0, 10)) ||
-                        (!!max && day.value > max.slice(0, 10))
-                      }
-                      onFocus={() => setCalendarDate(day.value)}
-                      onClick={() => commitDay(day.value)}
-                    >
-                      {day.day}
-                    </button>
+            ) : null}
+            <div hidden={pickingTime && view === 'time'}>
+              <header className="calendar-head">
+                <button
+                  type="button"
+                  className="btn-ghost btn-mini"
+                  aria-label="上个月"
+                  onClick={() => moveMonth(-1)}
+                >
+                  上一月
+                </button>
+                <strong>
+                  {year} 年 {currentMonth} 月
+                </strong>
+                <button
+                  type="button"
+                  className="btn-ghost btn-mini"
+                  aria-label="下个月"
+                  onClick={() => moveMonth(1)}
+                >
+                  下一月
+                </button>
+              </header>
+              <div
+                className="calendar-grid"
+                ref={grid}
+                role="grid"
+                aria-label="日期"
+                onKeyDown={(event) => {
+                  const steps: Record<string, number> = {
+                    ArrowLeft: -1,
+                    ArrowRight: 1,
+                    ArrowUp: -7,
+                    ArrowDown: 7
+                  }
+                  const delta = steps[event.key]
+                  if (delta === undefined || !(event.target instanceof HTMLElement)) return
+                  const day = event.target.dataset.date
+                  if (!day) return
+                  event.preventDefault()
+                  const date = new Date(`${day}T00:00:00Z`)
+                  date.setUTCDate(date.getUTCDate() + delta)
+                  const next = date.toISOString().slice(0, 10)
+                  if (
+                    !validCalendarValue(next) ||
+                    (min && next < min.slice(0, 10)) ||
+                    (max && next > max.slice(0, 10))
+                  )
+                    return
+                  setCalendarDate(next)
+                  setMonth(next.slice(0, 7))
+                  requestAnimationFrame(() =>
+                    grid.current?.querySelector<HTMLElement>(`[data-date="${next}"]`)?.focus()
+                  )
+                }}
+              >
+                <div role="row">
+                  {['一', '二', '三', '四', '五', '六', '日'].map((day) => (
+                    <span key={day} role="columnheader">
+                      {day}
+                    </span>
                   ))}
                 </div>
-              ))}
+                {Array.from({ length: 6 }, (_, week) => (
+                  <div role="row" key={week}>
+                    {days.slice(week * 7, week * 7 + 7).map((day) => (
+                      <button
+                        type="button"
+                        role="gridcell"
+                        key={day.value}
+                        data-date={day.value}
+                        aria-label={day.value}
+                        aria-selected={
+                          day.value === (pickingTime ? calendarDate : value.slice(0, 10))
+                        }
+                        className={`btn-ghost calendar-day${day.current ? '' : ' muted'}${day.value === (pickingTime ? calendarDate : value.slice(0, 10)) ? ' selected' : ''}${day.value === localDateValue() ? ' today' : ''}`}
+                        tabIndex={day.value === calendarDate ? 0 : -1}
+                        disabled={
+                          !validCalendarValue(day.value) ||
+                          (!!min && day.value < min.slice(0, 10)) ||
+                          (!!max && day.value > max.slice(0, 10))
+                        }
+                        onFocus={() => setCalendarDate(day.value)}
+                        onClick={() => commitDay(day.value)}
+                      >
+                        {day.day}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-            {withTime ? (
+            {pickingTime && view === 'time' ? (
+              <TimePicker
+                value={time}
+                label={label}
+                seconds={seconds}
+                onChange={setTime}
+                onConfirm={() => {
+                  if (canConfirmTime) commitDay(calendarDate, true)
+                }}
+              />
+            ) : null}
+            {withTime && !pickingTime ? (
               <div className="calendar-time">
                 时间
                 <input
@@ -319,11 +379,24 @@ export function DatePicker({
               >
                 清空
               </button>
+              {pickingTime ? (
+                <button
+                  type="button"
+                  className="btn-gold btn-mini"
+                  aria-label={`确认${label}`}
+                  disabled={!canConfirmTime}
+                  onClick={() => commitDay(calendarDate, true)}
+                >
+                  确认
+                </button>
+              ) : null}
             </footer>
             <p className="field-hint">
-              {withTime
-                ? '先填时间，再选日期；也可直接键入完整日期时间。'
-                : '支持直接键入日期，方向键移动，Enter 选择。'}
+              {pickingTime
+                ? '选日期后点选时、分，再确认；也可直接输入时间。'
+                : withTime
+                  ? '先填时间，再选日期；也可直接键入完整日期时间。'
+                  : '支持直接键入日期，方向键移动，Enter 选择。'}
             </p>
           </section>
         </Popover>

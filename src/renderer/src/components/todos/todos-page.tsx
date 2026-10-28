@@ -187,6 +187,7 @@ export function TodosPage(): JSX.Element {
               key={`start-${dateRevision}-${draft.id ?? 'new'}`}
               label="待办开始时间"
               withTime
+              selectTime
               min="1970-01-01T00:00"
               max="9999-12-31T23:59"
               value={localInput(draft.startAtMs)}
@@ -203,6 +204,7 @@ export function TodosPage(): JSX.Element {
               key={`due-${dateRevision}-${draft.id ?? 'new'}`}
               label="待办截止时间"
               withTime
+              selectTime
               min="1970-01-01T00:00"
               max="9999-12-31T23:59"
               value={localInput(draft.dueAtMs)}
