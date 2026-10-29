@@ -2,7 +2,8 @@ import { APP_THEMES } from '../../shared/appearance'
 import type { TodoInput, TodoQuery } from '../../shared/types'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
-import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../shared/coding-agents'
+import { CODING_AGENT_IDS } from '../../shared/coding-agents'
+import { AGENT_CONFIG_KEYS } from '../../shared/agent-projects'
 import type {
   AgentCatalogInput,
   AgentCommandInput,
@@ -371,19 +372,26 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
     validated.toolFavorites = validateToolIds(patch.toolFavorites, MAX_TOOL_FAVORITES)
   if (Object.hasOwn(patch, 'toolRecent'))
     validated.toolRecent = validateToolIds(patch.toolRecent, MAX_TOOL_RECENT)
-  for (const runtime of WORKBENCH_AGENT_IDS) {
-    if (!Object.hasOwn(patch, runtime)) continue
-    const preferences = assertObject(patch[runtime], '编程 Agent 配置')
-    validated[runtime] = {
-      executablePath:
+  for (const runtime of CODING_AGENT_IDS) {
+    const key = AGENT_CONFIG_KEYS[runtime]
+    const alias = runtime === 'claude-desktop' && Object.hasOwn(patch, runtime)
+    if (alias && Object.hasOwn(patch, key)) throw new Error('Claude Desktop 配置不能同时提供新旧键')
+    if (!alias && !Object.hasOwn(patch, key)) continue
+    const preferences = assertObject(patch[alias ? runtime : key], '编程 Agent 配置')
+    const fields: Record<string, unknown> = {}
+    if (Object.hasOwn(preferences, 'executablePath'))
+      fields.executablePath =
         preferences.executablePath === null
           ? null
-          : requireString(preferences.executablePath, 'Agent 程序路径', { maxLength: 4096 }),
-      directory: requireString(preferences.directory, '项目目录', {
+          : requireString(preferences.executablePath, 'Agent 程序路径', { maxLength: 4096 })
+    if (Object.hasOwn(preferences, 'directory'))
+      fields.directory = requireString(preferences.directory, '项目目录', {
         maxLength: 4096,
         allowEmpty: true
       })
-    }
+    if (!Object.keys(fields).length) throw new Error('编程 Agent 配置没有可更新字段')
+    if (alias) delete validated[runtime]
+    validated[key] = fields
   }
   return validated
 }

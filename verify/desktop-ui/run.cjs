@@ -34,7 +34,8 @@ async function main() {
   if (
     process.argv.includes('--coding-agents-only') ||
     process.argv.includes('--agent-actions-only') ||
-    process.argv.includes('--agent-parallel-only')
+    process.argv.includes('--agent-parallel-only') ||
+    process.argv.includes('--agent-projects-only')
   )
     env.TOOLBOX_CODING_AGENT_VERIFY = '1'
   if (process.argv.includes('--convenience-only')) env.TOOLBOX_CONVENIENCE_VERIFY = '1'
@@ -124,6 +125,12 @@ async function main() {
       await require('./agent-actions.cjs')({ page, app, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`Agent 快捷操作验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--agent-projects-only')) {
+      await require('./agent-projects.cjs')({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`Agent 项目记忆与转用验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
     if (process.argv.includes('--agent-parallel-only')) {

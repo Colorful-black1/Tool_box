@@ -2,6 +2,7 @@
 module.exports = function codingAgentsFixture() {
   const listeners = new Set()
   const states = new Map()
+  const projects = new Map()
   const addedHistory = new Map()
   const externalReplies = new Map()
   const active = new Map()
@@ -110,14 +111,25 @@ module.exports = function codingAgentsFixture() {
   return {
     bridge: {
       listRuntimes: async () => Object.keys(names).map((id) => copy(info(id))),
-      inspect: async (id) => copy(info(id)),
-      chooseDirectory: async () => nextDirectory,
+      inspect: async (id) =>
+        copy({ ...info(id), projectDirectory: projects.get(id) ?? info(id).directory }),
+      chooseDirectory: async (id) => {
+        if (id) projects.set(id, nextDirectory)
+        return nextDirectory
+      },
+      selectProject: async ({ runtimeId: id, directory }) => {
+        calls.push({ action: 'project', id, directory })
+        projects.set(id, directory)
+        return directory
+      },
       chooseExecutable: async (id) => copy(info(id)),
       connect: async ({ runtimeId: id, directory }) => {
-        calls.push({ action: 'connect', id })
+        calls.push({ action: 'connect', id, directory })
+        projects.set(id, directory)
         const view = {
           ...info(id),
           directory,
+          projectDirectory: directory,
           connected: true,
           connectionId: `connection-${++sequence}`
         }

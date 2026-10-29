@@ -551,7 +551,11 @@ export class OpenCodeService {
 
   private savePreferences(): void {
     this.store.configSet({
-      opencode: { executablePath: this.info.executablePath, directory: this.info.directory }
+      opencode: {
+        ...acpObject(this.store.configGet()?.opencode),
+        executablePath: this.info.executablePath,
+        ...(this.info.connected ? { directory: this.info.directory } : {})
+      }
     })
   }
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { agentPreferences } from '../../../shared/agent-projects'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import type {
@@ -164,12 +165,12 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   private savePreferences(patch: Record<string, unknown>): void {
     this.store.configSet({
-      [this.configKey]: { ...object(this.store.configGet()?.[this.configKey]), ...patch }
+      [this.configKey]: { ...agentPreferences(this.store.configGet(), this.id), ...patch }
     })
   }
 
   private extensionsEnabled(directory: string): boolean {
-    const roots = object(this.store.configGet()?.[this.configKey])?.extensionDirectories
+    const roots = agentPreferences(this.store.configGet(), this.id).extensionDirectories
     return (
       Array.isArray(roots) &&
       roots
@@ -183,7 +184,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   }
 
   setExtensions(directory: string, enabled: boolean): void {
-    const raw = object(this.store.configGet()?.[this.configKey])?.extensionDirectories
+    const raw = agentPreferences(this.store.configGet(), this.id).extensionDirectories
     const roots = (Array.isArray(raw) ? raw : []).filter(
       (item): item is string =>
         typeof item === 'string' &&
@@ -198,7 +199,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
 
   /** 只记录本入口的原生 ID，不保存正文或认证；损坏时拒绝混合两个来源的历史。 */
   private desktopSessionIds(): string[] {
-    const value = object(this.store.configGet()?.claudeDesktop)?.sessionIds
+    const value = agentPreferences(this.store.configGet(), 'claude-desktop').sessionIds
     if (value === undefined) return []
     if (
       !Array.isArray(value) ||
@@ -243,7 +244,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
   async inspect(): Promise<Omit<CodingAgentRuntimeView, 'connectionId'>> {
     if (!this.info.connected) {
       const generation = this.generation
-      const config = object(this.store.configGet()?.[this.configKey])
+      const config = agentPreferences(this.store.configGet(), this.id)
       const executablePath = text(config?.executablePath, 4096) || (await bundledClaudeExecutable())
       if (generation !== this.generation) throw new CodingAgentError('Claude 检测已失效，请重试')
       this.info.executablePath = executablePath

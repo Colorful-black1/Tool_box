@@ -14,11 +14,23 @@ import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../
 import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
 import type { AgentSendInput } from '@shared/agent-actions'
 
+/** 跨项目转用只在本次工作台内展示；连接替换仍由明确发送触发。 */
+interface ProjectHandoff {
+  sourceId: CodingAgentId
+  sourceDirectory: string
+  previousDirectory: string
+  previousConnectionId: string | null
+  connectionReplaced: boolean
+}
+
 /** 正文只留在内存；未发送草稿由独立协调器加密保存。 */
 interface RuntimeWorkspace {
   info: CodingAgentRuntimeView | null
   directory: string
   inheritedProject: boolean
+  /** undefined 为尚未检测，null 为没有记忆；不能与实际连接目录混用。 */
+  projectMemory: string | null | undefined
+  handoff: ProjectHandoff | null
   sessions: Record<string, CodingAgentSessionView>
   activeId: string | null
   history: CodingAgentSessionSummary[]
@@ -64,6 +76,8 @@ interface CodingAgentState extends RuntimeWorkspace {
   receive(event: CodingAgentEvent): void
   clearError(): void
   transferMessage(messageId: string, targetId?: CodingAgentId): Promise<void>
+  returnProject(): Promise<void>
+  dismissHandoff(): void
   draftDocument(): AgentDraftDocument
   restoreDrafts(document: AgentDraftDocument, dirty: Set<string>, selectionChanged: boolean): void
   removeDrafts(identity?: string): void
@@ -75,6 +89,8 @@ function emptyWorkspace(): RuntimeWorkspace {
     info: null,
     directory: '',
     inheritedProject: false,
+    projectMemory: undefined,
+    handoff: null,
     sessions: {},
     activeId: null,
     history: [],
@@ -95,6 +111,8 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     info,
     directory,
     inheritedProject,
+    projectMemory,
+    handoff,
     sessions,
     activeId,
     history,
@@ -112,6 +130,8 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     info,
     directory,
     inheritedProject,
+    projectMemory,
+    handoff,
     sessions,
     activeId,
     history,
@@ -142,6 +162,12 @@ function sameDirectory(a: string, b: string): boolean {
   return /^[a-z]:/i.test(left) ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
+function rememberedProject(info: CodingAgentRuntimeView): string | null {
+  return info.projectDirectory === undefined
+    ? info.directory || null
+    : info.projectDirectory || null
+}
+
 function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorkspace {
   if (sameDirectory(state.directory, directory))
     return state.inheritedProject ? { ...state, inheritedProject: false } : state
@@ -149,6 +175,7 @@ function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorks
     ...state,
     directory,
     inheritedProject: false,
+    handoff: null,
     activeId: null,
     history: [],
     historyLoaded: false,
@@ -236,7 +263,13 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
   const ensureConnected = async (id: CodingAgentId, directory: string): Promise<void> => {
     const before = read(id)
     if (!directory) throw new Error('请先选择项目')
-    if (before.info?.connected && sameDirectory(before.info.directory, directory)) return
+    if (before.info?.connected && sameDirectory(before.info.directory, directory)) {
+      if (before.projectMemory && !sameDirectory(before.projectMemory, directory)) {
+        const path = await codingAgentClient().selectProject({ runtimeId: id, directory })
+        update(id, { projectMemory: path })
+      }
+      return
+    }
     update(id, { connecting: true })
     try {
       const info = await codingAgentClient().connect({ runtimeId: id, directory })
@@ -249,6 +282,18 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         return {
           info,
           directory: info.directory,
+          projectMemory: info.projectDirectory || info.directory,
+          handoff: state.handoff
+            ? {
+                ...state.handoff,
+                connectionReplaced:
+                  state.handoff.connectionReplaced ||
+                  Boolean(
+                    state.handoff.previousConnectionId &&
+                    state.handoff.previousConnectionId !== info.connectionId
+                  )
+              }
+            : null,
           drafts: { ...state.drafts, [draftKey(state)]: state.draft },
           sessions: retain ? { [selected.id]: { ...selected, status: 'disconnected' } } : {},
           activeId: retain ? selected.id : null,
@@ -412,13 +457,20 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       if (get().info && !force) return Promise.resolve()
       return perform(async (id) => {
         const info = await codingAgentClient().inspect(id)
-        update(id, (state) => ({
-          ...(state.inheritedProject && info.directory
-            ? changeProject(state, info.directory)
-            : { directory: state.directory || info.directory }),
-          info,
-          inheritedProject: false
-        }))
+        update(id, (state) => {
+          const memory = rememberedProject(info)
+          const next =
+            state.projectMemory === undefined && !state.handoff && (memory || info.projectError)
+              ? changeProject(state, memory ?? '')
+              : state
+          return {
+            ...next,
+            info,
+            projectMemory: state.projectMemory === undefined ? memory : state.projectMemory,
+            inheritedProject: false,
+            ...(info.projectError ? { error: info.projectError } : {})
+          }
+        })
       })
     },
     chooseExecutable: () =>
@@ -429,9 +481,16 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     chooseDirectory: () =>
       perform(async (id) => {
         if (get().runs[id]) throw new Error('请先等待或停止当前 Agent 的任务再切换项目')
-        const directory = await codingAgentClient().chooseDirectory()
+        const directory = await codingAgentClient().chooseDirectory(id)
         if (!directory) return
-        update(id, (state) => changeProject(state, directory))
+        update(id, (state) => ({
+          ...changeProject(state, directory),
+          projectMemory: directory,
+          handoff: null,
+          info: state.info
+            ? { ...state.info, projectDirectory: directory, projectError: undefined }
+            : null
+        }))
       }),
     connect: () => perform((id) => ensureConnected(id, read(id).directory)),
     disconnect: () =>
@@ -585,7 +644,18 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const sameConnection = state.info?.connectionId === event.runtime.connectionId
       if (!sameConnection && !state.connecting) return
       if (sameConnection && event.revision <= state.runtimeRevision) return
-      update(id, { info: event.runtime, runtimeRevision: event.revision })
+      update(id, {
+        info: event.runtime,
+        runtimeRevision: event.revision,
+        handoff:
+          state.handoff &&
+          !state.handoff.connectionReplaced &&
+          state.handoff.previousConnectionId &&
+          (event.runtime.connectionId !== state.handoff.previousConnectionId ||
+            !event.runtime.connected)
+            ? { ...state.handoff, connectionReplaced: true }
+            : state.handoff
+      })
       if (!event.runtime.connected && get().runs[id]) clearRun(id)
     },
     clearError: () => update(get().runtimeId, { error: '' }),
@@ -608,38 +678,103 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         update(sourceId, { error: '内容超过 50,000 字，请缩短后复制，或让目标 Agent 读取文档路径' })
         return
       }
-      const next = changeProject(target, session.directory)
+      const unchangedTransfer = (): boolean =>
+        unchanged(id, target) &&
+        unchanged(sourceId, source) &&
+        !read(id).busy &&
+        !get().runs[id] &&
+        read(id).info?.connectionId === target.info?.connectionId &&
+        read(id).info?.connected === target.info?.connected &&
+        read(sourceId).info?.connectionId === source.info?.connectionId &&
+        get().runtimeId === sourceId
+      // 未打开过的目标也可能有上次项目；只读检测保留在局部，取消不能切换目标。
+      let detected = target.info
+      if (target.projectMemory === undefined) {
+        try {
+          detected = await codingAgentClient().inspect(id)
+        } catch (error) {
+          update(sourceId, { error: errorText(error) })
+          return
+        }
+        if (!unchangedTransfer()) {
+          update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新转用' })
+          return
+        }
+      }
+      const memory =
+        target.projectMemory === undefined && detected
+          ? rememberedProject(detected)
+          : target.projectMemory
+      const previousDirectory =
+        target.projectMemory === undefined && memory && !target.handoff ? memory : target.directory
+      const next = changeProject(changeProject(target, previousDirectory), session.directory)
       const key = draftEntryKey(session.directory, null)
       const existing = next.activeId ? (next.drafts[key] ?? '') : next.draft
-      if (
-        existing.trim() &&
-        existing !== text &&
-        !(await confirmDialog('目标已有新对话草稿，是否替换？'))
+      const crossProject = Boolean(
+        previousDirectory && !sameDirectory(previousDirectory, session.directory)
       )
-        return
-      if (
-        !unchanged(id, target) ||
-        !unchanged(sourceId, source) ||
-        read(id).busy ||
-        get().runs[id] ||
-        get().runtimeId !== sourceId
-      ) {
+      const replacesDraft = Boolean(existing.trim() && existing !== text)
+      if (crossProject) {
+        const message = `${CODING_AGENT_NAMES[id]} 当前在「${previousDirectory}」。继续会把它的项目切换到「${session.directory}」，原有连接将在发送时断开；原项目未发送草稿会保留，历史会话仍可从原生重新读取。${replacesDraft ? '\n\n来源项目已有新对话草稿，继续也会替换该草稿。' : ''}`
+        if (!(await confirmDialog(message))) return
+      } else if (replacesDraft && !(await confirmDialog('目标已有新对话草稿，是否替换？'))) return
+      if (!unchangedTransfer()) {
         update(get().runtimeId, { error: '目标或草稿已变化，请核对后重新转用' })
         return
       }
       // 等待期间会话/连接仍会推送；只更新草稿相关字段，保留最新运行态。
-      const approved = changeProject(read(id), session.directory)
+      const current = read(id)
+      const approved = changeProject(changeProject(current, previousDirectory), session.directory)
       update(id, {
         ...approved,
+        info: current.info ?? detected,
+        projectMemory: memory,
         activeId: null,
         selection: approved.selection + 1,
         drafts: { ...approved.drafts, [draftKey(approved)]: approved.draft, [key]: text },
         draft: text,
         transferred: true,
+        handoff: crossProject
+          ? {
+              sourceId,
+              sourceDirectory: session.directory,
+              previousDirectory,
+              previousConnectionId: detected?.connected ? detected.connectionId : null,
+              connectionReplaced: false
+            }
+          : target.handoff,
         error: ''
       })
       get().switchRuntime(id)
     },
+    returnProject: () =>
+      perform(async (id) => {
+        const before = read(id)
+        const handoff = before.handoff
+        if (!handoff || get().runs[id] || submissions.has(id))
+          throw new Error('请先等待或停止当前 Agent 的任务再返回项目')
+        const path = await codingAgentClient().selectProject({
+          runtimeId: id,
+          directory: handoff.previousDirectory
+        })
+        const current = read(id)
+        if (
+          current.selection !== before.selection ||
+          !sameDirectory(current.directory, before.directory) ||
+          current.handoff !== handoff ||
+          get().runs[id]
+        )
+          throw new Error('项目或草稿已变化，请核对后重新返回')
+        update(id, (current) => ({
+          ...changeProject(current, path),
+          projectMemory: path,
+          handoff: null,
+          info: current.info
+            ? { ...current.info, projectDirectory: path, projectError: undefined }
+            : null
+        }))
+      }),
+    dismissHandoff: () => update(get().runtimeId, { handoff: null }),
     draftDocument: () => {
       const drafts: AgentDraft[] = []
       for (const runtimeId of CODING_AGENT_IDS) {
@@ -690,7 +825,8 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       if (!selectionChanged && document.selection) {
         const { runtimeId, directory } = document.selection
         const previous = get()
-        const next = changeProject(read(runtimeId), directory)
+        const target = read(runtimeId)
+        const next = changeProject(target, target.projectMemory || directory)
         set({
           ...next,
           runtimeId,

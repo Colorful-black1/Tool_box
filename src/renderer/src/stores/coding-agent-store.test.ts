@@ -61,6 +61,7 @@ const api = {
   send: vi.fn(),
   listSessions: vi.fn(),
   chooseDirectory: vi.fn(),
+  selectProject: vi.fn(async ({ directory }: { directory: string }) => directory),
   stop: vi.fn(),
   approve: vi.fn()
 }
@@ -98,6 +99,8 @@ beforeEach(() => {
     info: null,
     directory: '/fixture/project',
     inheritedProject: false,
+    projectMemory: undefined,
+    handoff: null,
     sessions: {},
     activeId: null,
     history: [],
@@ -116,6 +119,245 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('未打开过的目标先只读检查记忆，取消不创建或修改目标工作台', async () => {
+    await store.getState().openSession('same-native-id')
+    api.inspect.mockResolvedValueOnce({
+      ...info('codex'),
+      connected: false,
+      projectDirectory: '/fixture/last-codex'
+    })
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
+    const connects = api.connect.mock.calls.length
+    await store.getState().transferMessage('answer', 'codex')
+    expect(confirmDialog).toHaveBeenLastCalledWith(expect.stringContaining('/fixture/last-codex'))
+    expect(store.getState().workspaces.codex).toBeUndefined()
+    expect(store.getState().runtimeId).toBe('opencode')
+    expect(api.connect).toHaveBeenCalledTimes(connects)
+    expect(api.selectProject).not.toHaveBeenCalled()
+  })
+
+  it('未打开过的目标确认后保留来源项目，不被迟到的记忆检测改回去', async () => {
+    await store.getState().openSession('same-native-id')
+    const remembered = {
+      ...info('codex'),
+      connected: false,
+      projectDirectory: '/fixture/last-codex'
+    }
+    api.inspect.mockResolvedValue(remembered)
+    const connects = api.connect.mock.calls.length
+    await store.getState().transferMessage('answer', 'codex')
+    expect(store.getState().handoff?.previousDirectory).toBe('/fixture/last-codex')
+    expect(store.getState().directory).toBe('/fixture/project')
+    const transferred = store.getState().draft
+    await store.getState().inspect(true)
+    expect(store.getState().directory).toBe('/fixture/project')
+    expect(store.getState().draft).toBe(transferred)
+    expect(api.connect).toHaveBeenCalledTimes(connects)
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
+  it('未打开过的目标记忆与来源相同，不额外确认或显示提示', async () => {
+    await store.getState().openSession('same-native-id')
+    api.inspect.mockResolvedValueOnce({
+      ...info('codex'),
+      connected: false,
+      projectDirectory: '/fixture/project'
+    })
+    await store.getState().transferMessage('answer', 'codex')
+    expect(confirmDialog).not.toHaveBeenCalled()
+    expect(store.getState().directory).toBe('/fixture/project')
+    expect(store.getState().handoff).toBeNull()
+  })
+
+  it('记忆路径格式损坏时不把其他 Agent 的继承项目当作自己的项目', async () => {
+    store.getState().switchRuntime('codex')
+    api.inspect.mockResolvedValueOnce({
+      ...info('codex'),
+      connected: false,
+      projectDirectory: '',
+      projectError: '上次保存的项目路径无效，请重新选择项目'
+    })
+    await store.getState().inspect()
+    expect(store.getState().directory).toBe('')
+    expect(store.getState().error).toContain('重新选择')
+    expect(api.connect).not.toHaveBeenCalled()
+  })
+
+  it('只读检测未完成时目标选择变化，旧检测不得覆盖新项目', async () => {
+    await store.getState().openSession('same-native-id')
+    let finish!: (value: CodingAgentRuntimeView) => void
+    api.inspect.mockReturnValueOnce(
+      new Promise<CodingAgentRuntimeView>((resolve) => {
+        finish = resolve
+      })
+    )
+    const pending = store.getState().transferMessage('answer', 'codex')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/new-choice')
+    await store.getState().chooseDirectory()
+    store.getState().setDraft('新项目输入')
+    finish({ ...info('codex'), projectDirectory: '/fixture/old-choice' })
+    await pending
+    expect(store.getState().directory).toBe('/fixture/new-choice')
+    expect(store.getState().draft).toBe('新项目输入')
+    expect(confirmDialog).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
+  it('跨项目取消后目标项目、连接、会话和草稿完整不变', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/target')
+    await store.getState().chooseDirectory()
+    await store.getState().openSession('same-native-id')
+    await store.getState().listSessions()
+    store.getState().setDraft('目标历史草稿')
+    store.getState().switchRuntime('opencode')
+    const target = structuredClone(store.getState().workspaces.codex)
+    const connects = api.connect.mock.calls.length
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
+    await store.getState().transferMessage('answer', 'codex')
+    expect(confirmDialog).toHaveBeenLastCalledWith(
+      expect.stringContaining('原有连接将在发送时断开')
+    )
+    expect(store.getState().workspaces.codex).toEqual(target)
+    expect(store.getState().runtimeId).toBe('opencode')
+    expect(api.connect).toHaveBeenCalledTimes(connects)
+    expect(api.send).not.toHaveBeenCalled()
+    expect(api.selectProject).not.toHaveBeenCalled()
+  })
+
+  it('确认转用只改项目草稿，返回恢复原项目草稿且不操作原生连接', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/target')
+    await store.getState().chooseDirectory()
+    await store.getState().connect()
+    store.getState().setDraft('目标项目的新对话草稿')
+    const connection = store.getState().info
+    store.getState().switchRuntime('opencode')
+    const connects = api.connect.mock.calls.length
+    const resumes = api.resumeSession.mock.calls.length
+    await store.getState().transferMessage('answer', 'codex')
+    const transferred = store.getState().draft
+    expect(store.getState().directory).toBe('/fixture/project')
+    expect(store.getState().info).toEqual(connection)
+    expect(store.getState().handoff).toMatchObject({
+      sourceId: 'opencode',
+      previousDirectory: '/fixture/target',
+      connectionReplaced: false
+    })
+    expect(api.connect).toHaveBeenCalledTimes(connects)
+    expect(api.send).not.toHaveBeenCalled()
+    await store.getState().returnProject()
+    expect(api.selectProject).toHaveBeenCalledExactlyOnceWith({
+      runtimeId: 'codex',
+      directory: '/fixture/target'
+    })
+    expect(store.getState().directory).toBe('/fixture/target')
+    expect(store.getState().activeId).toBeNull()
+    expect(store.getState().draft).toBe('目标项目的新对话草稿')
+    expect(store.getState().drafts['["/fixture/project",null]']).toBe(transferred)
+    expect(store.getState().handoff).toBeNull()
+    expect(api.connect).toHaveBeenCalledTimes(connects)
+    expect(api.resumeSession).toHaveBeenCalledTimes(resumes)
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
+  it('跨项目等待确认时目标重连，旧确认不能覆盖新连接和草稿', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/target')
+    await store.getState().chooseDirectory()
+    await store.getState().connect()
+    store.getState().setDraft('原目标草稿')
+    store.getState().switchRuntime('opencode')
+    let approve!: (value: boolean) => void
+    vi.mocked(confirmDialog).mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          approve = resolve
+        })
+    )
+    const transfer = store.getState().transferMessage('answer', 'codex')
+    const target = store.getState().workspaces.codex!
+    store.setState({
+      workspaces: {
+        ...store.getState().workspaces,
+        codex: { ...target, info: { ...target.info!, connectionId: 'new-target-connection' } }
+      }
+    })
+    approve(true)
+    await transfer
+    expect(store.getState().runtimeId).toBe('opencode')
+    expect(store.getState().workspaces.codex?.directory).toBe('/fixture/target')
+    expect(store.getState().workspaces.codex?.draft).toBe('原目标草稿')
+    expect(store.getState().error).toContain('已变化')
+  })
+
+  it('原连接实际断开后才更新转用提示，历史会话草稿不混入交接文字', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().switchRuntime('codex')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/target')
+    await store.getState().chooseDirectory()
+    await store.getState().openSession('same-native-id')
+    store.getState().setDraft('原历史草稿')
+    store.getState().switchRuntime('opencode')
+    await store.getState().transferMessage('answer', 'codex')
+    expect(store.getState().handoff?.connectionReplaced).toBe(false)
+    expect(store.getState().drafts['["/fixture/target","same-native-id"]']).toBe('原历史草稿')
+    store.getState().receive({
+      kind: 'runtime',
+      runtime: { ...info('codex'), directory: '/fixture/target', connected: false },
+      revision: 99
+    })
+    expect(store.getState().handoff?.connectionReplaced).toBe(true)
+    await store.getState().returnProject()
+    expect(store.getState().activeId).toBeNull()
+    expect(store.getState().drafts['["/fixture/target","same-native-id"]']).toBe('原历史草稿')
+  })
+
+  it('项目记忆优先于旧草稿 selection，恢复不会连接、读取历史或发任务', async () => {
+    api.inspect.mockResolvedValueOnce({
+      ...info('opencode'),
+      connected: false,
+      projectDirectory: '/fixture/remembered'
+    })
+    await store.getState().inspect()
+    store.getState().restoreDrafts(
+      {
+        version: 1,
+        selection: { runtimeId: 'opencode', directory: '/fixture/old-selection' },
+        drafts: []
+      },
+      new Set(),
+      false
+    )
+    expect(store.getState().directory).toBe('/fixture/remembered')
+    expect(api.connect).not.toHaveBeenCalled()
+    expect(api.listSessions).not.toHaveBeenCalled()
+    expect(api.createSession).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
+  it('不可访问的记忆目录提示重新选择，明确选择后立即更新自己的记忆', async () => {
+    api.inspect.mockResolvedValueOnce({
+      ...info('opencode'),
+      connected: false,
+      projectDirectory: '/fixture/missing',
+      projectError: '上次选择的项目不存在或不可访问，请重新选择项目'
+    })
+    await store.getState().inspect()
+    expect(store.getState().directory).toBe('/fixture/missing')
+    expect(store.getState().error).toContain('重新选择')
+    api.chooseDirectory.mockResolvedValueOnce('/fixture/new-project')
+    await store.getState().chooseDirectory()
+    expect(api.chooseDirectory).toHaveBeenCalledExactlyOnceWith('opencode')
+    expect(store.getState().projectMemory).toBe('/fixture/new-project')
+    expect(store.getState().error).toBe('')
+    expect(api.connect).not.toHaveBeenCalled()
+  })
+
   it('切换恢复各自项目、历史和草稿，不用来源项目重置目标工作台', async () => {
     await store.getState().openSession('same-native-id')
     store.getState().setDraft('项目 A 草稿')
@@ -432,7 +674,10 @@ describe('工作台按需准备与明确发送', () => {
     await store.getState().listSessions()
     expect(store.getState().history).toHaveLength(1)
     store.setState({ info: { ...info('opencode'), connected: false } })
-    api.connect.mockResolvedValueOnce({ ...info('opencode'), connectionId: 'opencode-connection-2' })
+    api.connect.mockResolvedValueOnce({
+      ...info('opencode'),
+      connectionId: 'opencode-connection-2'
+    })
     await store.getState().listSessions()
     expect(store.getState().info?.connectionId).toBe('opencode-connection-2')
     expect(store.getState().history).toHaveLength(1)
@@ -721,6 +966,7 @@ describe('原生事件和运行身份', () => {
         })
     )
     const pending = store.getState().transferMessage('answer')
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
     store.getState().switchRuntime('codex')
     store.getState().setDraft('等待期间的新输入')
     answer(true)

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC, WINDOW_EVENT } from '../../shared/ipc-contract'
+import { dialog } from 'electron'
 import type { CodingAgentService } from '../services/coding-agents/coding-agent-service'
 import { registerCodingAgentsIpc } from './coding-agents-ipc'
 
@@ -41,6 +42,8 @@ function fixture() {
     inspect: vi.fn(),
     send: vi.fn(),
     connect: vi.fn(),
+    selectProject: vi.fn(async (_id: string, _owner: number, directory: string) => directory),
+    allowDirectory: vi.fn(),
     approve: vi.fn(),
     subscribe: vi.fn().mockReturnValue(disposeEvents),
     dispose: vi.fn(),
@@ -63,6 +66,41 @@ beforeEach(() => {
 })
 
 describe('统一编程 IPC 安全边界', () => {
+  it('目录选择按显式 Agent 保存，取消不保存，旧无参调用仍只授权目录', async () => {
+    const f = fixture()
+    vi.mocked(dialog.showOpenDialog).mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['C:/project']
+    })
+    expect(await f.invoke(IPC.codingAgentDirectory, 'claude-desktop')).toBe('C:/project')
+    expect(f.service.selectProject).toHaveBeenCalledExactlyOnceWith(
+      'claude-desktop',
+      1,
+      'C:/project'
+    )
+    vi.mocked(dialog.showOpenDialog).mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    expect(await f.invoke(IPC.codingAgentDirectory, 'codex')).toBeNull()
+    expect(f.service.selectProject).toHaveBeenCalledTimes(1)
+    vi.mocked(dialog.showOpenDialog).mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['C:/legacy']
+    })
+    expect(await f.invoke(IPC.codingAgentDirectory)).toBe('C:/legacy')
+    expect(f.service.allowDirectory).toHaveBeenCalledExactlyOnceWith(1, 'C:/legacy')
+    expect(f.service.connect).not.toHaveBeenCalled()
+  })
+
+  it('项目保存参数在主进程校验，不认识的 Agent 不打开目录选择器', async () => {
+    const f = fixture()
+    await expect(f.invoke(IPC.codingAgentDirectory, 'unknown')).rejects.toThrow()
+    expect(dialog.showOpenDialog).not.toHaveBeenCalled()
+    await expect(
+      f.invoke(IPC.codingAgentProject, { runtimeId: 'codex', directory: '' })
+    ).rejects.toThrow()
+    expect(f.service.selectProject).not.toHaveBeenCalled()
+    await f.invoke(IPC.codingAgentProject, { runtimeId: 'codex', directory: 'C:/project' })
+    expect(f.service.selectProject).toHaveBeenCalledExactlyOnceWith('codex', 1, 'C:/project')
+  })
   it('窗口仍存在但 WebContents 已销毁时丢弃退出终态，不调用 send', () => {
     const f = fixture()
     const listener = f.service.subscribe.mock.calls[0][0] as (owner: number, event: unknown) => void

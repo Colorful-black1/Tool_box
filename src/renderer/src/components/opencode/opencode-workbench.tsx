@@ -11,6 +11,7 @@ import { OpenCodeActivity } from './opencode-activity'
 import { AgentDraftRecovery } from './agent-draft-recovery'
 import { OpenCodeMoreMenu } from './opencode-more-menu'
 import { AgentRunningTasks } from './agent-running-tasks'
+import { AgentHandoffNotice } from './agent-handoff-notice'
 
 const OPTION_NAMES: Record<string, string> = {
   model: '模型',
@@ -89,6 +90,7 @@ export function OpenCodeWorkbench(): JSX.Element {
         </div>
       ) : null}
       <AgentRunningTasks />
+      <AgentHandoffNotice />
       <div className="opencode-layout">
         <OpenCodeSessions
           key={`${runtimeId}:${directory}`}

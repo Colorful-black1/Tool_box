@@ -60,6 +60,11 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
     }
     return {
       ...api,
+      chooseDirectory: async (id) => {
+        if (id && !api.selectProject) return unavailable()
+        return api.chooseDirectory(id)
+      },
+      selectProject: api.selectProject ?? unavailable,
       attachWorkspace: api.attachWorkspace ?? unavailable,
       readCatalog: api.readCatalog ?? unavailable,
       searchFiles: api.searchFiles ?? unavailable,
@@ -68,6 +73,9 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
     }
   }
   return {
+    selectProject: async () => {
+      throw new Error('请重启更新后的桌面应用以使用项目记忆')
+    },
     readCatalog: async () => {
       throw new Error('请重启更新后的桌面应用以使用 Agent 快捷操作')
     },
@@ -86,7 +94,10 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
       const info = await legacyApi(id).chooseExecutable()
       return info ? runtime(info) : null
     },
-    chooseDirectory: () => legacyApi('opencode').chooseDirectory(),
+    chooseDirectory: async (id) => {
+      if (id) throw new Error('请重启更新后的桌面应用以保存每个 Agent 的项目选择')
+      return legacyApi('opencode').chooseDirectory()
+    },
     connect: async ({ runtimeId, directory }) => {
       legacyConnection = `legacy-opencode-${++legacyRevision}`
       return runtime(await legacyApi(runtimeId).connect(directory))

@@ -8,6 +8,7 @@ import type {
   AgentSendInput
 } from '../../../shared/agent-actions'
 import { AgentProjectFiles, withinProject } from './agent-project-files'
+import type { AgentProjectMemory } from './agent-project-memory'
 import { nativeCommands, unavailableCatalog } from './agent-action-catalog'
 import {
   CODING_AGENT_IDS,
@@ -89,7 +90,10 @@ export class CodingAgentService {
     }
   >()
 
-  constructor(adapters: CodingAgentAdapter[]) {
+  constructor(
+    adapters: CodingAgentAdapter[],
+    private readonly projects?: AgentProjectMemory
+  ) {
     for (const adapter of adapters) {
       const state: RuntimeState = {
         adapter,
@@ -119,7 +123,24 @@ export class CodingAgentService {
     const state = this.runtimes.get(id)
     if (!state) return unavailableRuntime(id)
     this.requireOwner(state, owner)
-    return this.updateInfo(state, await state.adapter.inspect())
+    const info = await state.adapter.inspect()
+    return this.updateInfo(state, {
+      ...info,
+      ...(this.projects ? await this.projects.inspect(id) : {})
+    })
+  }
+
+  /** 明确选择项目只更新偏好和目录授权，绝不替换当前原生连接。 */
+  selectProject(id: CodingAgentId, owner: number, directory: string): Promise<string> {
+    const state = this.requireRuntime(id)
+    return this.operate(state, owner, true, async () => {
+      if (!this.projects) throw new CodingAgentError('当前版本未提供项目记忆，请重启更新后的应用')
+      const path = await this.projects.select(id, directory)
+      await this.allowDirectory(owner, path)
+      state.info = { ...state.info, projectDirectory: path, projectError: undefined }
+      this.publishRuntime(state)
+      return path
+    })
   }
 
   selectExecutable(
@@ -139,7 +160,14 @@ export class CodingAgentService {
     return this.operate(state, owner, true, async () => {
       this.prepareConnection(state, owner)
       try {
-        return this.updateInfo(state, await state.adapter.connect(directory))
+        const info = await state.adapter.connect(directory)
+        const projectDirectory = this.projects
+          ? await this.projects.select(id, info.directory)
+          : undefined
+        return this.updateInfo(state, {
+          ...info,
+          ...(projectDirectory ? { projectDirectory, projectError: undefined } : {})
+        })
       } catch (error) {
         state.adapter.disconnect()
         throw error

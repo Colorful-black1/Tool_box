@@ -74,14 +74,20 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
       ? null
       : service.selectExecutable(id, owner, result.filePaths[0])
   })
-  handle(IPC.codingAgentDirectory, async (owner) => {
+  handle(IPC.codingAgentDirectory, async (owner, value) => {
+    const id = value === undefined ? undefined : validateCodingAgentId(value)
     const result = await dialog.showOpenDialog({
       title: '选择编程项目目录',
       properties: ['openDirectory']
     })
     const directory = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (directory && id) return service.selectProject(id, owner, directory)
     if (directory) await service.allowDirectory(owner, directory)
     return directory
+  })
+  handle(IPC.codingAgentProject, (owner, value) => {
+    const input = validateCodingAgentConnect(value)
+    return service.selectProject(input.runtimeId, owner, input.directory)
   })
   handle(IPC.codingAgentConnect, (owner, value) => {
     const input = validateCodingAgentConnect(value)

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CodingAgentId } from '../../../shared/coding-agents'
 import { IPC } from '../../../shared/ipc-contract'
 import { CodingAgentService, unavailableRuntime } from './coding-agent-service'
+import { AgentProjectMemory } from './agent-project-memory'
 import type { CodingAgentAdapter, NativeCodingEvent, NativeCodingSession } from './adapter'
 
 function fixture(id: CodingAgentId) {
@@ -54,6 +55,27 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('保存项目选择保留实际连接，只更新记忆；运行期间不能切换项目', async () => {
+    const f = fixture('opencode')
+    const projects = new AgentProjectMemory({ configGet: () => ({}), configSet: () => ({}) })
+    const save = vi.spyOn(projects, 'select').mockResolvedValue(process.cwd())
+    vi.spyOn(projects, 'inspect').mockResolvedValue({ projectDirectory: process.cwd() })
+    const service = new CodingAgentService([f.adapter], projects)
+    await service.connect('opencode', 1, '/fixture/original')
+    expect(save).toHaveBeenCalledWith('opencode', '/fixture/original')
+    vi.mocked(f.adapter.disconnect).mockClear()
+    expect(await service.selectProject('opencode', 1, process.cwd())).toBe(process.cwd())
+    expect(f.adapter.disconnect).not.toHaveBeenCalled()
+    const view = await service.inspect('opencode', 1)
+    expect(view.directory).toBe('/fixture/original')
+    expect(view.projectDirectory).toBe(process.cwd())
+    expect(view.connected).toBe(true)
+    const session = await service.openSession('opencode', 1)
+    await service.send('opencode', 1, session.id, '任务')
+    await expect(service.selectProject('opencode', 1, process.cwd())).rejects.toThrow('当前 Agent')
+    expect(f.adapter.disconnect).not.toHaveBeenCalled()
+    service.dispose()
+  })
   it('不同项目可并行；停止、结算和断连仅释放对应运行时', async () => {
     const a = fixture('opencode')
     const b = fixture('codex')

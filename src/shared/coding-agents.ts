@@ -29,6 +29,9 @@ export interface CodingAgentRuntimeView {
   name: string
   executablePath: string | null
   directory: string
+  /** 最近明确选择的项目，不代表当前原生连接目录；缺失时兼容旧桥接。 */
+  projectDirectory?: string
+  projectError?: string
   version: string | null
   connected: boolean
   connectionId: string

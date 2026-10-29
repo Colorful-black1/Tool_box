@@ -91,7 +91,8 @@ export interface ToolboxBridge {
     listRuntimes(): Promise<CodingAgentRuntimeView[]>
     inspect(runtimeId: CodingAgentId): Promise<CodingAgentRuntimeView>
     chooseExecutable(runtimeId: CodingAgentId): Promise<CodingAgentRuntimeView | null>
-    chooseDirectory(): Promise<string | null>
+    chooseDirectory(runtimeId?: CodingAgentId): Promise<string | null>
+    selectProject(input: { runtimeId: CodingAgentId; directory: string }): Promise<string>
     connect(input: { runtimeId: CodingAgentId; directory: string }): Promise<CodingAgentRuntimeView>
     disconnect(runtimeId: CodingAgentId): Promise<void>
     listSessions(runtimeId: CodingAgentId): Promise<CodingAgentSessionSummary[]>

@@ -30,6 +30,8 @@ import { CodexAdapter } from '../services/coding-agents/codex-adapter'
 import { ClaudeAdapter } from '../services/coding-agents/claude-adapter'
 import { readClaudeDesktopProviderSettings } from '../services/coding-agents/claude-desktop-settings'
 import { DshAdapter } from '../services/coding-agents/dsh-adapter'
+import { AgentProjectMemory } from '../services/coding-agents/agent-project-memory'
+import { mergeAgentPreferences } from '../../shared/agent-projects'
 import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
@@ -64,18 +66,21 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerTodosIpc(dependencies.store, dependencies.todos)
   registerAgentUsageIpc(dependencies.usage)
   registerDeveloperDiagnosticsIpc()
-  const codingAgents = new CodingAgentService([
-    new OpenCodeAdapter(dependencies.opencode),
-    new CodexAdapter(dependencies.store),
-    new ClaudeAdapter(dependencies.store),
-    new ClaudeAdapter(
-      dependencies.store,
-      undefined,
-      readClaudeDesktopProviderSettings,
-      'claude-desktop'
-    ),
-    new DshAdapter(dependencies.store)
-  ])
+  const codingAgents = new CodingAgentService(
+    [
+      new OpenCodeAdapter(dependencies.opencode),
+      new CodexAdapter(dependencies.store),
+      new ClaudeAdapter(dependencies.store),
+      new ClaudeAdapter(
+        dependencies.store,
+        undefined,
+        readClaudeDesktopProviderSettings,
+        'claude-desktop'
+      ),
+      new DshAdapter(dependencies.store)
+    ],
+    new AgentProjectMemory(dependencies.store)
+  )
   registerCodingAgentsIpc(codingAgents)
   registerOpenCodeIpc(dependencies.opencode, codingAgents)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
@@ -111,7 +116,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   // ---------- 阅读与桌面外观配置 kv ----------
   ipcMain.handle(IPC.configGet, () => store.configGet())
   ipcMain.handle(IPC.configSet, (_event, patch: unknown) => {
-    return store.configSet(validateConfigPatch(patch))
+    return store.configSet(mergeAgentPreferences(store.configGet(), validateConfigPatch(patch)))
   })
 
   // ---------- AI 配置（多档案） ----------

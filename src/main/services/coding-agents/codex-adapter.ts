@@ -743,7 +743,11 @@ export class CodexAdapter implements CodingAgentAdapter {
 
   private savePreferences(): void {
     this.store.configSet({
-      codex: { executablePath: this.info.executablePath, directory: this.info.directory }
+      codex: {
+        ...codexObject(this.store.configGet()?.codex),
+        executablePath: this.info.executablePath,
+        ...(this.info.connected ? { directory: this.info.directory } : {})
+      }
     })
   }
 

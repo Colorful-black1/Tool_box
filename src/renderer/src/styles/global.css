@@ -3376,6 +3376,16 @@ textarea,
   color: var(--text-mid);
 }
 
+.agent-handoff-notice {
+  flex-wrap: wrap;
+}
+
+.agent-handoff-notice > span {
+  flex: 1 1 420px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .confirm-row {
   display: flex;
   align-items: center;
