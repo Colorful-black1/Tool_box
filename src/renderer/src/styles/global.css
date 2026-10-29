@@ -440,6 +440,59 @@
   font-size: 10px;
   white-space: nowrap;
 }
+.agent-usage-trend-tooltip {
+  width: min(440px, calc(100vw - 16px));
+  padding: 12px;
+}
+.agent-usage-trend-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-mid);
+  font-size: 11.5px;
+}
+.agent-usage-trend-tooltip-head strong {
+  color: var(--text-hi);
+}
+.agent-usage-trend-tooltip-total {
+  margin: 6px 0 10px;
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+  text-align: right;
+}
+.agent-usage-trend-tooltip-models {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--gold-line);
+}
+.agent-usage-trend-tooltip-models > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  color: var(--text-hi);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.agent-usage-trend-tooltip-models dt {
+  overflow-wrap: anywhere;
+}
+.agent-usage-trend-tooltip-models dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.agent-usage-trend-tooltip .field-hint {
+  margin: 10px 0 0;
+}
 .agent-usage-legend {
   display: flex;
   flex-wrap: wrap;

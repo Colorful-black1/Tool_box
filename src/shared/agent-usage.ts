@@ -106,6 +106,8 @@ export interface UsageDaily {
   date: string
   total: number | null
   clients: { client: UsageClient; total: number | null }[]
+  /** 当天各模型的已知用量；可选以兼容旧统计结果，空模型名仍表示未知。 */
+  models?: { model: string; total: number | null }[]
 }
 
 /** 所有聚合使用同一筛选条件，空时间和缺失字段有独立提示。 */

@@ -62,7 +62,7 @@ function breakdown(rows: UsageRecord[], key: (row: UsageRecord) => string): Usag
     .slice(0, BREAKDOWN_LIMIT)
 }
 
-/** 每日按 Agent 堆叠；没有记录的日期不补零，避免把未知当成零用量。 */
+/** 每日按 Agent 堆叠并汇总全部模型；没有记录的日期不补零。 */
 function daily(rows: UsageRecord[]): UsageDaily[] {
   const days = new Map<string, UsageRecord[]>()
   for (const row of rows) {
@@ -76,14 +76,24 @@ function daily(rows: UsageRecord[]): UsageDaily[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, group]) => {
       const clients = new Map<string, UsageRecord[]>()
+      const models = new Map<string, UsageRecord[]>()
       for (const row of group) {
         const list = clients.get(row.client) ?? []
         list.push(row)
         clients.set(row.client, list)
+        const modelRows = models.get(row.model) ?? []
+        modelRows.push(row)
+        models.set(row.model, modelRows)
       }
       return {
         date,
         total: aggregateTokens(group.map((row) => row.tokens)).total,
+        models: [...models]
+          .map(([model, values]) => ({
+            model,
+            total: aggregateTokens(values.map((row) => row.tokens)).total
+          }))
+          .sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.model.localeCompare(b.model)),
         clients: [...clients]
           .map(([client, values]) => ({
             client: client as UsageRecord['client'],
