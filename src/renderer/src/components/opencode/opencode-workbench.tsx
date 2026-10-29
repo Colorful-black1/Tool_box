@@ -180,18 +180,10 @@ export function OpenCodeWorkbench(): JSX.Element {
               模型沿用原生默认；不可用时会停下供你选择。
             </p>
           )}
-          {runtimeId === 'dsh' ? (
-            <>
-              <p className="status-banner">
-                回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。历史属于独立 acp
-                profile。
-              </p>
-              {workspaceStatus ? (
-                <p className="status-banner success-banner" role="status">
-                  {workspaceStatus}
-                </p>
-              ) : null}
-            </>
+          {runtimeId === 'dsh' && workspaceStatus ? (
+            <p className="status-banner success-banner" role="status">
+              {workspaceStatus}
+            </p>
           ) : null}
           {runtimeId === 'claude-desktop' ? (
             <p className="status-banner opencode-desktop-hint">

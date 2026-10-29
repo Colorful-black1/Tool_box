@@ -64,8 +64,7 @@ export class DshAdapter implements CodingAgentAdapter {
     connected: false,
     canLoadSession: false,
     visibleModelIds: [],
-    detail:
-      '官方 ACP · 回复提交后更新，无实时 Token 分片；可续接上下文，暂不回放旧消息。独立 acp profile 的历史与 Desktop 可能不同，操作权限沿用原生规则。',
+    detail: '通过官方 ACP 连接，操作权限沿用 DSH 原生规则。',
     capabilities: {
       history: 'unsupported',
       resume: 'unknown',
