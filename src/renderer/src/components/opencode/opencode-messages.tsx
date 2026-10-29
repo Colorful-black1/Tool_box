@@ -23,6 +23,7 @@ export function OpenCodeMessages({
   const [copied, setCopied] = useState<{ id: string; message: string } | null>(null)
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const transferMessage = useCodingAgentStore((state) => state.transferMessage)
+  const recallMessage = useCodingAgentStore((state) => state.recallMessage)
   const targetId = runtimeId === 'opencode' ? 'codex' : 'opencode'
   const targetName = CODING_AGENT_NAMES[targetId]
   const id = session?.id
@@ -68,11 +69,7 @@ export function OpenCodeMessages({
             <span className="opencode-empty-icon">
               <CodeIcon />
             </span>
-            <h3>从一个明确的任务开始</h3>
-            <p>在下方输入任务即可开始，也可以从左侧继续历史会话。</p>
-            <span className="field-hint">
-              例如：先阅读项目结构，列出入口和核心模块，不修改文件。
-            </span>
+            <h3>开始新对话</h3>
           </div>
         ) : (
           session.messages.map((message) => (
@@ -86,7 +83,7 @@ export function OpenCodeMessages({
               ) : (
                 <div className="message-content">{message.content}</div>
               )}
-              {message.role === 'assistant' && message.content ? (
+              {message.content ? (
                 <div className="opencode-message-actions">
                   <button
                     type="button"
@@ -95,29 +92,41 @@ export function OpenCodeMessages({
                   >
                     复制
                   </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={session.status === 'running' || session.status === 'stopping'}
-                    onClick={() => transferMessage(message.id, targetId)}
-                  >
-                    用于 <AgentIdentity agent={targetId} label={targetName} />
-                  </button>
-                  <Dropdown
-                    ariaLabel="其他消息转用目标"
-                    value=""
-                    placeholder="其他 Agent"
-                    options={WORKBENCH_AGENT_IDS.filter(
-                      (id) => id !== runtimeId && id !== targetId
-                    ).map((value) => ({
-                      value,
-                      label: `用于 ${CODING_AGENT_NAMES[value]}`,
-                      icon: <AgentMark agent={value} />
-                    }))}
-                    disabled={session.status === 'running' || session.status === 'stopping'}
-                    onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
-                    align="left"
-                  />
+                  {message.role === 'user' ? (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => void recallMessage(message.id)}
+                    >
+                      取回编辑
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={session.status === 'running' || session.status === 'stopping'}
+                        onClick={() => transferMessage(message.id, targetId)}
+                      >
+                        用于 <AgentIdentity agent={targetId} label={targetName} />
+                      </button>
+                      <Dropdown
+                        ariaLabel="其他消息转用目标"
+                        value=""
+                        placeholder="其他 Agent"
+                        options={WORKBENCH_AGENT_IDS.filter(
+                          (id) => id !== runtimeId && id !== targetId
+                        ).map((value) => ({
+                          value,
+                          label: `用于 ${CODING_AGENT_NAMES[value]}`,
+                          icon: <AgentMark agent={value} />
+                        }))}
+                        disabled={session.status === 'running' || session.status === 'stopping'}
+                        onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
+                        align="left"
+                      />
+                    </>
+                  )}
                   {copied?.id === message.id ? <span role="status">{copied.message}</span> : null}
                 </div>
               ) : null}

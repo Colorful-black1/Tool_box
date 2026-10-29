@@ -10,6 +10,8 @@
 
 当前版本 **0.3.0**（桌面端新增 Token 统计与多 Agent 工作台；手机端暂停维护，保留 M0–M7 历史实现）。
 
+2026-10-29 编程 Agent 基础交互首批：用户消息复制与取回编辑、原生上下文快照和本轮耗时、Claude 问答／计划确认、Codex 原生用户提问、失败／停止后的原文取回及未知结果的历史核对。原生撤回／编辑重发尚未开放，不能把追加消息视作撤回；OpenCode 表单、Codex MCP elicitation 与后续执行／阅读增强仍待补齐。范围、协议边界、原生能力核对和验证证据见 [交付记录](coding-agent-basic-features-verification.md)，总体计划见 [基础能力计划](PLAN-coding-agent-basic-features.md)。不改 schema、加密或依赖，手机仍暂停。
+
 2026-10-25 对话工具扩展：接入待办管理、Token 用量查询／环比、笔记局部编辑及差异审批、四域搜索和回答内直接打开。入口随消息保存，页面和对话复用待办提醒／用量服务；无 schema／IPC／依赖变更，手机仍暂停。719 项测试、30 项隔离 UI 和构建通过，真实模型选择工具与 Windows 通知送达需人工体验。规格见 [对话扩展](SPEC-chat-priority-tools.md)，边界见 [交付记录](chat-priority-tools-verification.md)。
 
 2026-10-25 桌面控件统一：功能基线已提交为 `cf2f668`，随后统一主题下拉、5 处日期／时间控件、业务确认／输入框与模态焦点，补充分组和书签的可见管理入口、复选框／滑块与 UUID 步进。规格见 [控件规格](SPEC-ui-controls.md)，交付与剩余人工验收见 [控件验证记录](ui-controls-verification.md)；UI 改动经用户确认后单独提交，数据库／IPC／依赖不变。

@@ -108,6 +108,9 @@ export interface OpenCodeSession {
   status: 'ready' | 'running' | 'stopping' | 'disconnected' | 'error'
   /** 可选终态用于新工作台控制操作；旧桥接继续兼容缺失字段。 */
   outcome?: 'completed' | 'stopped' | 'failed' | 'unknown' | null
+  contextUsage?: import('./agent-session').AgentContextUsage
+  timing?: import('./agent-session').AgentTurnTiming
+  questions?: import('./agent-session').AgentQuestionRequest[]
   messages: Array<{ id: string; role: ChatRole; content: string }>
   tools: Array<{ id: string; title: string; status: string }>
   options: OpenCodeOption[]

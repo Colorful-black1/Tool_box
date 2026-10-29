@@ -45,6 +45,7 @@ function fixture() {
     selectProject: vi.fn(async (_id: string, _owner: number, directory: string) => directory),
     allowDirectory: vi.fn(),
     approve: vi.fn(),
+    answerQuestion: vi.fn(),
     subscribe: vi.fn().mockReturnValue(disposeEvents),
     dispose: vi.fn(),
     releaseOwner: vi.fn()
@@ -66,6 +67,33 @@ beforeEach(() => {
 })
 
 describe('统一编程 IPC 安全边界', () => {
+  it('问答答复逐项校验并绑定发送窗口，不允许任意响应对象', async () => {
+    const f = fixture()
+    const input = {
+      runtimeId: 'codex',
+      sessionId: 'local-session',
+      requestId: 'question-ref',
+      cancelled: false,
+      answers: [{ questionId: 'q0', values: ['选项一'] }]
+    }
+    await f.invoke(IPC.codingAgentQuestion, input)
+    expect(f.service.answerQuestion).toHaveBeenCalledWith(
+      'codex',
+      1,
+      'local-session',
+      expect.objectContaining({ answers: input.answers })
+    )
+    for (const patch of [
+      { cancelled: 'false' },
+      { answers: Array(5).fill(input.answers[0]) },
+      { answers: [{ questionId: 'q0', values: ['x'.repeat(4001)] }] },
+      { answers: [{ questionId: 'q0', values: [''] }] },
+      { requestId: '' },
+      { runtimeId: 'other' }
+    ])
+      await expect(f.invoke(IPC.codingAgentQuestion, { ...input, ...patch })).rejects.toThrow()
+    expect(f.service.answerQuestion).toHaveBeenCalledOnce()
+  })
   it('目录选择按显式 Agent 保存，取消不保存，旧无参调用仍只授权目录', async () => {
     const f = fixture()
     vi.mocked(dialog.showOpenDialog).mockResolvedValueOnce({

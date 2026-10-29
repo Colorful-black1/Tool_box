@@ -42,10 +42,7 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
     await page.getByRole('heading', { name: 'OpenCode 原生历史标题', exact: true }).waitFor()
     assert.equal(await count('resume'), 1)
     assert.equal(
-      await page
-        .locator('.opencode-session-item')
-        .filter({ hasText: 'OpenCode 原生历史标题' })
-        .count(),
+      await page.locator('.agent-session-tab').filter({ hasText: 'OpenCode 原生历史标题' }).count(),
       1
     )
     await draft().fill('来源未发草稿')
@@ -217,12 +214,17 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
     assert.deepEqual(await calls(), [])
     assert.equal(await page.getByRole('button', { name: '交接给其他 Agent' }).count(), 0)
   })
-  await check('Claude 两入口草稿独立，Desktop 明示来源并只发送到所选入口', async () => {
+  await check('Claude 两入口草稿独立，Desktop 标签标明当前入口并只发送到所选入口', async () => {
     await agent('Claude Code')
     await draft().fill('Code 保留草稿')
     await agent('Claude Desktop')
     assert.equal(await draft().inputValue(), '')
-    await page.getByText('沿用 Desktop 的第三方供应商配置', { exact: false }).waitFor()
+    assert.equal(
+      await page
+        .getByRole('button', { name: 'Claude Desktop', exact: true })
+        .getAttribute('aria-pressed'),
+      'true'
+    )
     await draft().fill('Desktop 合成任务')
     await agent('开始对话 · Claude Desktop')
     await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
@@ -253,9 +255,15 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
       .filter({ hasText: 'Claude Desktop 原生历史标题' })
       .click()
     await page.getByRole('heading', { name: 'Claude Desktop 原生历史标题', exact: true }).waitFor()
-    assert.ok((await calls()).some((item) => item.action === 'resume' && item.id === 'claude-desktop'))
+    assert.ok(
+      (await calls()).some((item) => item.action === 'resume' && item.id === 'claude-desktop')
+    )
     await page.getByText('已完成实现，请检查停止与审批边界。', { exact: true }).waitFor()
-    await page.getByText('续接原会话前需完整退出外部 Claude 程序', { exact: false }).waitFor()
+    const settings = page.getByRole('button', { name: '连接设置', exact: true })
+    if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click()
+    await page.getByText('Desktop 会话说明', { exact: true }).click()
+    await page.getByText('续接 Desktop 原会话前需退出外部 Claude 程序', { exact: false }).waitFor()
+    await settings.click()
     await draft().fill('继续原有编程会话')
     await agent('发送给 Claude Desktop')
     await page.getByRole('button', { name: '停止任务', exact: true }).waitFor()
@@ -268,7 +276,6 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
   await check('重新展开历史可发现 Desktop 后来新增的 Code 会话，不丢草稿或自动发送', async () => {
     await draft().fill('读取新历史时保留这份草稿')
     const before = await calls()
-    await agent('历史会话')
     await page.evaluate(() => window.uiVerification.agentAddHistory('claude-desktop'))
     await agent('历史会话')
     await page

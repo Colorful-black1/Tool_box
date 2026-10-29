@@ -6,6 +6,7 @@ import type {
   CodingAgentWorkspaceResult
 } from '../../../shared/coding-agents'
 import type { NativeAgentCatalog } from './agent-action-catalog'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 
 /** 引用由统一服务校验后转换；不接受 renderer 提交的原生路径。 */
 export interface NativeSendContext {
@@ -44,6 +45,7 @@ export interface CodingAgentAdapter {
   setExtensions?(directory: string, enabled: boolean): void
   stop(id: string): void | Promise<void>
   approve(id: string, approvalId: string, approved: boolean): void
+  answerQuestion?(id: string, answer: AgentQuestionAnswer): void
   subscribe(listener: (event: NativeCodingEvent) => void): () => void
 }
 

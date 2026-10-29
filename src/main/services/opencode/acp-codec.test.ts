@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { OpenCodeSession } from '../../../shared/types'
 import { acpOptions, acpPreview, applyAcpUpdate } from './acp-codec'
+import { applyAcpUpdate as applyCommonUpdate } from '../coding-agents/acp-codec'
 
 function session(): OpenCodeSession {
   return {
@@ -17,6 +18,28 @@ function session(): OpenCodeSession {
 }
 
 describe('ACP 外部数据收敛', () => {
+  it('保留原生消息身份，连续同角色消息不会混合，并接收上下文快照', () => {
+    const view = session()
+    for (const [messageId, text] of [
+      ['a', '第一条'],
+      ['b', '第二条'],
+      ['a', '补充']
+    ])
+      applyAcpUpdate(view, {
+        sessionUpdate: 'agent_message_chunk',
+        messageId,
+        content: { type: 'text', text }
+      })
+    expect(view.messages.map((item) => item.content)).toEqual(['第一条补充', '第二条'])
+    applyCommonUpdate(view, { sessionUpdate: 'usage_update', used: 70, size: 100 }, 'DSH')
+    expect(view.contextUsage).toMatchObject({
+      usedTokens: 70,
+      windowTokens: 100,
+      approximate: true
+    })
+    applyAcpUpdate(view, { sessionUpdate: 'usage_update', used: -1, size: 100 })
+    expect(view.contextUsage?.usedTokens).toBe(70)
+  })
   it('使用原生标题推送，限制长度，忽略不带标题或空白的元数据', () => {
     const view = session()
     applyAcpUpdate(view, { sessionUpdate: 'session_info_update', title: '  原生会话名称  ' })

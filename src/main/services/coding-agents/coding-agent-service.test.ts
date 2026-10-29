@@ -44,6 +44,7 @@ function fixture(id: CodingAgentId) {
     send: vi.fn(() => emit({ ...native, status: 'running' })),
     stop: vi.fn(() => emit({ ...native, status: 'ready' })),
     approve: vi.fn(),
+    answerQuestion: vi.fn(),
     subscribe: (listener) => {
       listeners.add(listener)
       return () => {
@@ -55,6 +56,78 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('重新读取原生历史未返回新用量时，保留旧快照并标为失效', async () => {
+    const f = fixture('codex')
+    f.native.contextUsage = {
+      usedTokens: 20,
+      windowTokens: 100,
+      source: 'codex',
+      approximate: false,
+      measuredAt: 1,
+      windowKind: 'context'
+    }
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    const first = await service.openSession('codex', 1)
+    expect(first.contextUsage?.stale).toBeUndefined()
+    f.native.contextUsage = undefined
+    const fresh = await service.openSession('codex', 1, f.native.id)
+    expect(fresh.contextUsage).toMatchObject({ usedTokens: 20, stale: true })
+    service.dispose()
+  })
+  it('问答只答复当前窗口、会话和运行中的原生请求，停止后不可复用', async () => {
+    const f = fixture('codex')
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    const session = await service.openSession('codex', 1)
+    await service.send('codex', 1, session.id, '测试')
+    f.emit({
+      ...f.native,
+      status: 'running',
+      questions: [{ id: 'question', kind: 'questions', title: '测试问题', questions: [] }]
+    })
+    const answer = { requestId: 'question', cancelled: true, answers: [] }
+    expect(() => service.answerQuestion('codex', 2, session.id, answer)).toThrow()
+    expect(() => service.answerQuestion('codex', 1, 'foreign-session', answer)).toThrow()
+    expect(() =>
+      service.answerQuestion('codex', 1, session.id, { ...answer, requestId: 'old' })
+    ).toThrow()
+    service.answerQuestion('codex', 1, session.id, answer)
+    expect(f.adapter.answerQuestion).toHaveBeenCalledExactlyOnceWith(f.native.id, answer)
+    await service.stop('codex', 1, session.id)
+    expect(() => service.answerQuestion('codex', 1, session.id, answer)).toThrow()
+    service.dispose()
+  })
+
+  it('本地耗时在结束和断线时固定；旧上下文在新任务开始后标为失效', async () => {
+    const f = fixture('codex')
+    f.native.contextUsage = {
+      usedTokens: 20,
+      windowTokens: 100,
+      source: 'codex',
+      approximate: false,
+      measuredAt: 1,
+      windowKind: 'context'
+    }
+    const service = new CodingAgentService([f.adapter])
+    let latest: import('../../../shared/coding-agents').CodingAgentSessionView | undefined
+    service.subscribe((_owner, event) => {
+      if (event.kind === 'session') latest = event.session
+    })
+    await service.connect('codex', 1, '/fixture/project')
+    const session = await service.openSession('codex', 1)
+    await service.send('codex', 1, session.id, '测试')
+    expect(latest?.contextUsage?.stale).toBe(true)
+    expect(latest?.timing?.finishedAt).toBeUndefined()
+    f.emit({ ...f.native, status: 'ready', outcome: 'completed' })
+    expect(latest?.timing?.finishedAt).toBeTypeOf('number')
+    expect(latest?.timing?.elapsedMs).toBeGreaterThanOrEqual(0)
+    await service.send('codex', 1, session.id, '第二轮')
+    service.disconnect('codex', 1)
+    expect(latest?.timing?.finishedAt).toBeTypeOf('number')
+    expect(latest?.outcome).toBe('unknown')
+    service.dispose()
+  })
   it('保存项目选择保留实际连接，只更新记忆；运行期间不能切换项目', async () => {
     const f = fixture('opencode')
     const projects = new AgentProjectMemory({ configGet: () => ({}), configSet: () => ({}) })

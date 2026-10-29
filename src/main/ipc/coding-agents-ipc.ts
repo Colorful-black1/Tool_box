@@ -10,6 +10,7 @@ import {
   validateCodingAgentConnect,
   validateCodingAgentId,
   validateCodingAgentOption,
+  validateCodingAgentQuestion,
   validateCodingAgentSend,
   validateCodingAgentSession
 } from './validation'
@@ -151,6 +152,10 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
       input.approvalId,
       input.approved
     )
+  })
+  handle(IPC.codingAgentQuestion, (owner, value) => {
+    const input = validateCodingAgentQuestion(value)
+    return service.answerQuestion(input.runtimeId, owner, input.sessionId, input)
   })
   handle(IPC.codingAgentDesktop, (_owner, value) => {
     if (validateCodingAgentId(value) !== 'opencode')

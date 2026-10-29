@@ -20,16 +20,18 @@ export function AgentDraftRecovery(): JSX.Element {
   return (
     <div className="agent-draft-recovery">
       <div className="agent-draft-status" aria-live="polite">
-        <span className="field-hint">
-          {!directory && draft
-            ? '选择项目后才会保存，当前文字暂存于窗口'
-            : {
-                loading: '读取草稿中…',
-                saving: '草稿保存中…',
-                saved: '草稿已加密保存',
-                error: '草稿保存失败'
-              }[status]}
-        </span>
+        {status !== 'saved' || (!directory && draft) ? (
+          <span className="field-hint">
+            {!directory && draft
+              ? '选择项目后才会保存，当前文字暂存于窗口'
+              : {
+                  loading: '读取草稿中…',
+                  saving: '草稿保存中…',
+                  saved: '草稿已加密保存',
+                  error: '草稿保存失败'
+                }[status]}
+          </span>
+        ) : null}
         {status === 'error' ? (
           <button type="button" className="btn-ghost" onClick={() => void retryAgentDraftSave()}>
             重试保存
@@ -38,10 +40,12 @@ export function AgentDraftRecovery(): JSX.Element {
         <button
           type="button"
           className="btn-ghost"
+          aria-label={`管理草稿（${entries.length}）`}
+          title={status === 'saved' ? '草稿已加密保存' : '管理草稿'}
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          管理草稿（{entries.length}）
+          草稿 {entries.length}
         </button>
       </div>
       {message ? <div className="status-banner">{message}</div> : null}

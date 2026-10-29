@@ -8,20 +8,16 @@ export function OpenCodeMoreMenu({
   canSummarize,
   canSync,
   canAttachWorkspace = false,
-  advanced,
   onSummarize,
   onSync,
-  onAttachWorkspace,
-  onAdvanced
+  onAttachWorkspace
 }: {
   canSummarize: boolean
   canSync: boolean
   canAttachWorkspace?: boolean
-  advanced: boolean
   onSummarize(): void
   onSync(): void
   onAttachWorkspace?: () => void
-  onAdvanced(): void
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -57,6 +53,7 @@ export function OpenCodeMoreMenu({
         className="btn-ghost"
         ref={trigger}
         aria-label="更多会话操作"
+        title="更多会话操作"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -68,7 +65,6 @@ export function OpenCodeMoreMenu({
         }}
       >
         <MoreIcon />
-        更多
       </button>
       {open ? (
         <Popover
@@ -115,15 +111,6 @@ export function OpenCodeMoreMenu({
                 归入 DSH 工作区
               </button>
             ) : null}
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={advanced}
-              className="btn-ghost"
-              onClick={() => choose(onAdvanced)}
-            >
-              {advanced ? '收起更多模型设置' : '更多模型设置'}
-            </button>
           </div>
         </Popover>
       ) : null}

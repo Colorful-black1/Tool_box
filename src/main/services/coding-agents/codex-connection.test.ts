@@ -46,9 +46,13 @@ describe('Codex stdio 协议边界', () => {
       handler
     )
     await expect(connection.request('start', {})).rejects.toThrow('检查原生登录')
-    expect(handler).toHaveBeenCalledWith('item/commandExecution/requestApproval', {
-      threadId: 't1'
-    })
+    expect(handler).toHaveBeenCalledWith(
+      'item/commandExecution/requestApproval',
+      {
+        threadId: 't1'
+      },
+      'approve'
+    )
     expect(notification).toHaveBeenCalledWith('item/agentMessage/delta', { delta: '中文' })
   })
 })

@@ -6,6 +6,7 @@ import type {
   AgentFileSearchResult,
   AgentSendInput
 } from './agent-actions'
+import type { AgentQuestionAnswer } from './agent-session'
 import type {
   AiOutputEvent,
   AgentPermission,
@@ -112,6 +113,7 @@ export interface ToolboxBridge {
       enabled: boolean
     }): Promise<void>
     stop(input: CodingAgentSessionInput): Promise<void>
+    answerQuestion(input: CodingAgentSessionInput & AgentQuestionAnswer): Promise<void>
     approve(
       input: CodingAgentSessionInput & { approvalId: string; approved: boolean }
     ): Promise<void>

@@ -102,12 +102,15 @@ beforeEach(() => {
     projectMemory: undefined,
     handoff: null,
     sessions: {},
+    closedSessions: [],
     activeId: null,
     history: [],
     historyLoaded: false,
     draft: '',
     drafts: {},
     transferred: false,
+    recall: null,
+    recallSequence: 0,
     busy: false,
     connecting: false,
     selection: 0,
@@ -119,6 +122,133 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('关闭当前标签切换相邻会话并保存两份草稿，重新打开只激活缓存', async () => {
+    const first = { ...session('opencode', 'first', 3), nativeSessionId: 'native-first' }
+    const second = { ...session('opencode', 'second', 3), nativeSessionId: 'native-second' }
+    store.setState({ info: info('opencode'), sessions: { first, second }, activeId: 'first' })
+    store.getState().setDraft('第一份草稿')
+    await store.getState().selectSession('second')
+    store.getState().setDraft('第二份草稿')
+    expect(store.getState().closeSession('second')).toBe(true)
+    expect(store.getState().activeId).toBe('first')
+    expect(store.getState().draft).toBe('第一份草稿')
+    expect(store.getState().sessions.second).toEqual(second)
+    expect(store.getState().closedSessions).toEqual(['second'])
+    await store.getState().openSession('native-second')
+    expect(store.getState().closedSessions).toEqual([])
+    expect(store.getState().draft).toBe('第二份草稿')
+    expect(api.resumeSession).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+    expect(api.stop).not.toHaveBeenCalled()
+  })
+
+  it('关闭非当前标签不动选中项，迟到更新不重开，最后一页关闭后仍可恢复草稿', async () => {
+    const first = { ...session('opencode', 'first', 3), nativeSessionId: 'native-first' }
+    const second = { ...session('opencode', 'second', 3), nativeSessionId: 'native-second' }
+    store.setState({ info: info('opencode'), sessions: { first, second }, activeId: 'first' })
+    store.getState().setDraft('保留第一份草稿')
+    const selection = store.getState().selection
+    expect(store.getState().closeSession('second')).toBe(true)
+    expect(store.getState().selection).toBe(selection)
+    expect(store.getState().draft).toBe('保留第一份草稿')
+    store
+      .getState()
+      .receive({ kind: 'session', session: { ...second, revision: 4, title: '晚到名称' } })
+    expect(store.getState().closedSessions).toContain('second')
+    expect(store.getState().closeSession('first')).toBe(true)
+    expect(store.getState().activeId).toBeNull()
+    expect(store.getState().closedSessions).toEqual(['second', 'first'])
+    await store.getState().openSession('native-first')
+    expect(store.getState().draft).toBe('保留第一份草稿')
+  })
+
+  it('执行、停止和准备中的会话不关闭，其他 Agent 的标签状态独立', async () => {
+    const first = session('opencode', 'first', 3)
+    store.setState({ info: info('opencode'), sessions: { first }, activeId: 'first' })
+    store
+      .getState()
+      .receive({ kind: 'session', session: { ...first, revision: 4, status: 'running' } })
+    expect(store.getState().closeSession('first')).toBe(false)
+    store
+      .getState()
+      .receive({ kind: 'session', session: { ...first, revision: 5, status: 'stopping' } })
+    expect(store.getState().closeSession('first')).toBe(false)
+    store
+      .getState()
+      .receive({ kind: 'session', session: { ...first, revision: 6, status: 'ready' } })
+    store.setState({ preparations: { opencode: true } })
+    expect(store.getState().closeSession('first')).toBe(false)
+    store.setState({ preparations: {} })
+    expect(store.getState().closeSession('first')).toBe(true)
+    store.getState().switchRuntime('codex')
+    expect(store.getState().closedSessions).toEqual([])
+    store.getState().switchRuntime('opencode')
+    expect(store.getState().closedSessions).toEqual(['first'])
+    expect(api.stop).not.toHaveBeenCalled()
+  })
+
+  it('核对未知结果只恢复原生会话，失败不创建替代会话也不重发', async () => {
+    await store.getState().openSession('same-native-id')
+    store
+      .getState()
+      .receive({
+        kind: 'session',
+        session: { ...session('opencode', 'opencode-ref', 3), status: 'error', outcome: 'unknown' }
+      })
+    store.getState().setDraft('用户的下一步草稿')
+    api.resumeSession.mockClear()
+    api.resumeSession.mockRejectedValueOnce(new Error('原生历史暂不可读'))
+    await store.getState().refreshSession()
+    expect(store.getState().error).toContain('原生历史暂不可读')
+    expect(store.getState().draft).toBe('用户的下一步草稿')
+    expect(api.resumeSession).toHaveBeenCalledExactlyOnceWith({
+      runtimeId: 'opencode',
+      sessionId: 'same-native-id'
+    })
+    expect(api.createSession).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+  })
+  it('取回用户消息只改草稿，取消恢复原稿且不连接或发送', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().receive({
+      kind: 'session',
+      session: {
+        ...session('opencode', 'opencode-ref', 3),
+        messages: [{ id: 'user-1', role: 'user', content: '原问题' }]
+      }
+    })
+    store.getState().setDraft('下一步草稿')
+    api.connect.mockClear()
+    await store.getState().recallMessage('user-1')
+    expect(store.getState().draft).toBe('原问题')
+    expect(store.getState().sessions['opencode-ref'].messages[0].content).toBe('原问题')
+    await store.getState().cancelRecall()
+    expect(store.getState().draft).toBe('下一步草稿')
+    expect(api.connect).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
+  it('取消覆盖或确认期间改输入，不覆盖新草稿', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().receive({
+      kind: 'session',
+      session: {
+        ...session('opencode', 'opencode-ref', 3),
+        messages: [{ id: 'user-1', role: 'user', content: '原问题' }]
+      }
+    })
+    store.getState().setDraft('原稿')
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
+    await store.getState().recallMessage('user-1')
+    expect(store.getState().draft).toBe('原稿')
+    vi.mocked(confirmDialog).mockImplementationOnce(async () => {
+      store.getState().setDraft('新输入')
+      return true
+    })
+    await store.getState().recallMessage('user-1')
+    expect(store.getState().draft).toBe('新输入')
+    expect(store.getState().recall).toBeNull()
+  })
   it('未打开过的目标先只读检查记忆，取消不创建或修改目标工作台', async () => {
     await store.getState().openSession('same-native-id')
     api.inspect.mockResolvedValueOnce({

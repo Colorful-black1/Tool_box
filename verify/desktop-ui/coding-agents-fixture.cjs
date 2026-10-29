@@ -78,6 +78,16 @@ module.exports = function codingAgentsFixture() {
       error: '',
       options: [
         {
+          id: 'thought_level',
+          name: '思考强度',
+          category: 'thought_level',
+          currentValue: 'default',
+          options: [
+            { value: 'default', label: 'Default' },
+            { value: 'high', label: 'High' }
+          ]
+        },
+        {
           id: 'model',
           name: '模型',
           category: 'model',
@@ -167,8 +177,14 @@ module.exports = function codingAgentsFixture() {
         calls.push({ action: 'resume', id })
         return open(id, sessionId)
       },
-      setOption: async ({ runtimeId: id, sessionId }) =>
-        copy(states.get(id).sessions.get(sessionId)),
+      setOption: async ({ runtimeId: id, sessionId, optionId, value }) => {
+        const view = states.get(id).sessions.get(sessionId)
+        const option = view.options.find((item) => item.id === optionId)
+        if (!option?.options.some((item) => item.value === value)) throw new Error('合成选项无效')
+        calls.push({ action: 'option', id, optionId, value })
+        option.currentValue = value
+        return publish(view)
+      },
       readCatalog: async ({ runtimeId: id, sessionId = '' }) => ({
         connectionId: states.get(id)?.info.connectionId ?? '',
         sessionId,
@@ -244,6 +260,8 @@ module.exports = function codingAgentsFixture() {
         const view = states.get(id).sessions.get(sessionId)
         active.set(id, view)
         view.status = 'running'
+        view.outcome = null
+        view.timing = { startedAt: Date.now() }
         view.runId = `run-${++sequence}`
         view.messages.push({ id: `user-${sequence}`, role: 'user', content })
         publish(view)
@@ -254,11 +272,25 @@ module.exports = function codingAgentsFixture() {
         if (run && run.id === sessionId) {
           run.status = 'ready'
           run.outcome = 'stopped'
+          run.questions = []
+          run.timing = { ...run.timing, elapsedMs: 1700, finishedAt: Date.now() }
           publish(run)
           active.delete(id)
         }
       },
       approve: async () => undefined,
+      answerQuestion: async ({ runtimeId: id, sessionId, ...answer }) => {
+        const run = active.get(id)
+        if (
+          !run ||
+          run.id !== sessionId ||
+          !run.questions?.some((item) => item.id === answer.requestId)
+        )
+          throw new Error('问题已失效')
+        calls.push({ action: 'answer', id, ...answer })
+        run.questions = run.questions.filter((item) => item.id !== answer.requestId)
+        publish(run)
+      },
       openDesktop: async () => undefined,
       onEvent: (listener) => {
         listeners.add(listener)
@@ -266,6 +298,14 @@ module.exports = function codingAgentsFixture() {
       }
     },
     controls: {
+      agentSessionMetadata: (id, patch) => {
+        const state = states.get(id)
+        const view = active.get(id) ?? [...(state?.sessions.values() ?? [])].at(-1)
+        if (!view) throw new Error('缺少合成会话')
+        Object.assign(view, copy(patch))
+        if (patch.outcome && patch.outcome !== null) active.delete(id)
+        publish(view)
+      },
       agentCalls: () => copy(calls),
       agentDirectory: (directory) => {
         nextDirectory = directory
@@ -298,6 +338,8 @@ module.exports = function codingAgentsFixture() {
         if (run) {
           run.status = 'ready'
           run.outcome = 'completed'
+          run.questions = []
+          run.timing = { ...run.timing, elapsedMs: 2600, finishedAt: Date.now() }
           publish(run)
           active.delete(run.runtimeId)
         }

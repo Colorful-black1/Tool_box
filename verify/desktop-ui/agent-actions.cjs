@@ -7,6 +7,10 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
   const button = (name) => page.getByRole('button', { name, exact: true })
   const draft = () => page.getByRole('textbox', { name: '编程任务草稿', exact: true })
   const calls = () => page.evaluate(() => window.uiVerification.agentCalls())
+  const commands = async () => {
+    await button('添加文件或工具').click()
+    await page.getByRole('menuitem', { name: '命令 /', exact: true }).click()
+  }
   await button('编程 Agent').click()
   await button('选择项目').click()
   await check('文件候选 Enter 仅插入引用，Esc 先关菜单；引用随首次发送提交', async () => {
@@ -15,7 +19,7 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
     await draft().press('Enter')
     assert.equal((await calls()).filter((item) => item.action === 'send').length, 0)
     assert.ok((await draft().inputValue()).includes('src/中文 file.ts'))
-    await button('/ 命令').click()
+    await commands()
     await page.getByRole('listbox', { name: '快捷命令' }).waitFor()
     await page.getByRole('combobox', { name: '快捷命令搜索' }).press('Escape')
     assert.equal(await page.getByRole('listbox', { name: '快捷命令' }).count(), 0)
@@ -81,7 +85,7 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
   })
   await check('DSH 不显示虚假的压缩 / Skill 能力', async () => {
     await button('DeepSeek Harness').click()
-    await button('/ 命令').click()
+    await commands()
     await page.getByText('官方 DSH ACP 未提供命令与 MCP 状态查询', { exact: true }).waitFor()
     assert.equal(await page.getByRole('option', { name: /compact/ }).count(), 0)
     await capture('agent-actions-dsh-limits')
@@ -89,7 +93,7 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
   await page.keyboard.press('Escape')
   await check('Claude 扩展首次开启需确认，不切入口路由，也不发送任务', async () => {
     await button('Claude Code').click()
-    await button('/ 命令').click()
+    await commands()
     await page.getByRole('option', { name: /compact/ }).waitFor()
     await page.keyboard.press('Escape')
     await button('连接设置').click()
@@ -119,7 +123,7 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
       )
-      await button('/ 命令').click()
+      await commands()
       await page.getByRole('option', { name: /compact/ }).waitFor()
       const box = await page.locator('.agent-actions-popover').boundingBox()
       const size = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))

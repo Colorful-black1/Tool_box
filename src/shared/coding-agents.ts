@@ -1,3 +1,5 @@
+import type { AgentContextUsage, AgentQuestionRequest, AgentTurnTiming } from './agent-session'
+
 /** 首版每种工具一个默认原生 profile；运行时和模型分别选择。 */
 export const CODING_AGENT_IDS = ['opencode', 'codex', 'kimi', 'claude', 'claude-desktop', 'dsh'] as const
 export type CodingAgentId = (typeof CODING_AGENT_IDS)[number]
@@ -79,6 +81,9 @@ export interface CodingAgentSessionView {
   directory: string
   status: 'ready' | 'running' | 'stopping' | 'disconnected' | 'error'
   outcome: 'completed' | 'stopped' | 'failed' | 'unknown' | null
+  contextUsage?: AgentContextUsage
+  timing?: AgentTurnTiming
+  questions?: AgentQuestionRequest[]
   messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>
   tools: Array<{ id: string; title: string; status: string }>
   options: CodingAgentOption[]

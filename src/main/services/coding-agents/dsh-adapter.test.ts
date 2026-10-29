@@ -203,7 +203,7 @@ describe('DSH ACP 适配器', () => {
       resume: 'supported',
       subagents: 'unsupported'
     })
-    expect(f.info.detail).toContain('提交后更新')
+    expect(f.info.detail).toContain('DSH 原生规则')
     expect(await f.adapter.listSessions()).toEqual([{ id: 'history-native', title: '原生历史' }])
     await expect(f.adapter.openSession('foreign')).rejects.toThrow('不属于当前项目')
     const session = await f.adapter.openSession('history-native')

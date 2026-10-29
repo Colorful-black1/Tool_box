@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/agent-actions'
 import { AgentProjectFiles, withinProject } from './agent-project-files'
 import type { AgentProjectMemory } from './agent-project-memory'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 import { nativeCommands, unavailableCatalog } from './agent-action-catalog'
 import {
   CODING_AGENT_IDS,
@@ -72,6 +73,7 @@ interface ActiveRun {
   sessionRef: string
   runId: string
   directory: string
+  startedAt: number
   targetFile?: string
 }
 
@@ -279,6 +281,7 @@ export class CodingAgentService {
         await state.adapter.send(session.nativeSessionId, text, context)
       } catch (error) {
         if (this.active.get(id)?.runId === session.runId) {
+          this.finishTiming(session, this.active.get(id))
           this.active.delete(id)
           session.status = state.info.connected ? 'error' : 'disconnected'
           session.outcome = state.info.connected ? 'failed' : 'unknown'
@@ -540,6 +543,7 @@ export class CodingAgentService {
         }
       } catch (error) {
         if (this.active.get(input.runtimeId)?.runId === session.runId) {
+          this.finishTiming(session, this.active.get(input.runtimeId))
           this.active.delete(input.runtimeId)
           session.status = state.info.connected ? 'error' : 'disconnected'
           session.outcome = 'unknown'
@@ -585,6 +589,20 @@ export class CodingAgentService {
     )
       throw new CodingAgentError('该审批已结束或不属于当前运行')
     state.adapter.approve(session.nativeSessionId, approvalId, approved)
+  }
+
+  /** 回答属于控制请求，不能被仍等待原生响应的发送操作阻塞。 */
+  answerQuestion(id: CodingAgentId, owner: number, ref: string, answer: AgentQuestionAnswer): void {
+    const state = this.connected(id, owner)
+    const session = this.session(state, ref)
+    if (
+      this.active.get(id)?.runId !== session.runId ||
+      session.status !== 'running' ||
+      !session.questions?.some((question) => question.id === answer.requestId) ||
+      !state.adapter.answerQuestion
+    )
+      throw new CodingAgentError('问题已结束或不属于当前运行')
+    state.adapter.answerQuestion(session.nativeSessionId, answer)
   }
 
   /** 旧 OpenCode IPC 同样遵守本运行时互斥及项目冲突检查。 */
@@ -708,17 +726,29 @@ export class CodingAgentService {
     return structuredClone(state.info)
   }
 
+  private finishTiming(session: CodingAgentSessionView, run?: ActiveRun): void {
+    if (session.timing && run?.sessionRef === session.id)
+      session.timing = {
+        ...session.timing,
+        finishedAt: Date.now(),
+        elapsedMs: Math.max(0, Math.floor(performance.now() - run.startedAt))
+      }
+  }
+
   private begin(state: RuntimeState, session: CodingAgentSessionView): void {
     // 检查与占位同步完成，两个异步发送准备不能同时抢到同一项目。
     this.requireIdleProject(session.directory)
     session.runId = randomUUID()
     session.outcome = null
     session.error = ''
+    session.timing = { startedAt: Date.now() }
+    if (session.contextUsage) session.contextUsage = { ...session.contextUsage, stale: true }
     this.active.set(state.adapter.id, {
       runtimeId: state.adapter.id,
       sessionRef: session.id,
       runId: session.runId,
-      directory: session.directory
+      directory: session.directory,
+      startedAt: performance.now()
     })
   }
 
@@ -749,6 +779,8 @@ export class CodingAgentService {
                 child.status = 'unknown'
           }
           session.status = 'disconnected'
+          this.finishTiming(session, this.active.get(state.adapter.id))
+          session.questions = []
           this.publishSession(state, session)
         }
         this.active.delete(state.adapter.id)
@@ -776,12 +808,27 @@ export class CodingAgentService {
       outcome: previous?.outcome ?? null,
       subtasks: structuredClone(raw.subtasks ?? [])
     }
+    view.timing = previous?.timing
+    const usage = raw.contextUsage ?? previous?.contextUsage
+    if (usage) {
+      const model = (item: NativeCodingSession) =>
+        item.options.find((option) => option.category === 'model')?.currentValue
+      const changedModel = previous && model(previous) !== model(raw)
+      const remainsStale =
+        previous?.contextUsage?.stale && usage.measuredAt <= previous.contextUsage.measuredAt
+      const unmeasuredReload = historyReload && !raw.contextUsage
+      view.contextUsage = {
+        ...usage,
+        ...(changedModel || remainsStale || unmeasuredReload ? { stale: true } : {})
+      }
+    }
     if (raw.status === 'running' && !this.active.has(state.adapter.id) && state.legacySending)
       this.begin(state, view)
     const run = this.active.get(state.adapter.id)
     const active = run?.sessionRef === view.id && run.runId === view.runId
     const targetFile = active ? run.targetFile : undefined
     if (active && raw.status !== 'running' && raw.status !== 'stopping') {
+      this.finishTiming(view, run)
       view.outcome =
         raw.outcome ??
         (raw.status === 'disconnected'

@@ -49,7 +49,7 @@ export function OpenCodeConnection(): JSX.Element {
               {busy ? '处理中…' : connected ? '已连接' : '发送时连接'}
             </span>
           </div>
-          <p title={directory}>{directory || '先选择项目，再输入任务'}</p>
+          <p title={directory}>{directory || '未选择项目'}</p>
         </div>
         <div className="opencode-connection-actions">
           <button
@@ -134,6 +134,15 @@ export function OpenCodeConnection(): JSX.Element {
           <p className="field-hint">
             {info?.detail || '无需先打开桌面窗口；运行时沿用自己的登录和配置。'}
           </p>
+          {runtimeId === 'claude-desktop' ? (
+            <details className="agent-connection-help">
+              <summary>Desktop 会话说明</summary>
+              <p className="field-hint">
+                仅含当前项目的 Code 历史；新会话不会自动出现在 Desktop。 续接 Desktop
+                原会话前需退出外部 Claude 程序；本地网关需保持 CC Switch 运行。
+              </p>
+            </details>
+          ) : null}
           <AgentExtensionSettings key={`${runtimeId}:${directory}`} />
         </div>
       ) : null}

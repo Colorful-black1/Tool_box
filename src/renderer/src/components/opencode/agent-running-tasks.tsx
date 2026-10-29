@@ -35,11 +35,13 @@ export function AgentRunningTasks(): JSX.Element | null {
               {CODING_AGENT_NAMES[id]} ·{' '}
               {preparing
                 ? '准备中'
-                : session?.approvals.length
-                  ? '等待审批'
-                  : stopping
-                    ? '停止中'
-                    : '执行中'}
+                : session?.questions?.length
+                  ? '等待回答'
+                  : session?.approvals.length
+                    ? '等待审批'
+                    : stopping
+                      ? '停止中'
+                      : '执行中'}
               <span className="field-hint"> · {run?.directory ?? workspaces[id]?.directory}</span>
             </span>
             <button

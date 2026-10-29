@@ -12,12 +12,7 @@ import { AgentDraftRecovery } from './agent-draft-recovery'
 import { OpenCodeMoreMenu } from './opencode-more-menu'
 import { AgentRunningTasks } from './agent-running-tasks'
 import { AgentHandoffNotice } from './agent-handoff-notice'
-
-const OPTION_NAMES: Record<string, string> = {
-  model: '模型',
-  mode: '工作模式',
-  thought_level: '思考强度'
-}
+import { AgentRunRecovery } from './agent-run-recovery'
 
 /** 发送是唯一的任务入口，连接和空白会话按需要准备。 */
 export function OpenCodeWorkbench(): JSX.Element {
@@ -34,13 +29,11 @@ export function OpenCodeWorkbench(): JSX.Element {
   const busy = useCodingAgentStore((state) => state.busy)
   const error = useCodingAgentStore((state) => state.error)
   const inspect = useCodingAgentStore((state) => state.inspect)
-  const setOption = useCodingAgentStore((state) => state.setOption)
   const summarize = useCodingAgentStore((state) => state.summarize)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
   const attachWorkspace = useCodingAgentStore((state) => state.attachWorkspace)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const clearError = useCodingAgentStore((state) => state.clearError)
-  const [advanced, setAdvanced] = useState(false)
   const [showHistory, setShowHistory] = useState(0)
   const [workspaceStatus, setWorkspaceStatus] = useState('')
   const name = CODING_AGENT_NAMES[runtimeId]
@@ -92,104 +85,48 @@ export function OpenCodeWorkbench(): JSX.Element {
       <AgentRunningTasks />
       <AgentHandoffNotice />
       <div className="opencode-layout">
-        <OpenCodeSessions
-          key={`${runtimeId}:${directory}`}
-          showHistory={showHistory}
-          onHistoryShown={() => setShowHistory(0)}
-        />
-        <section className="glass chat-panel opencode-panel" aria-label={`${name} 工作台`}>
-          <header className="chat-head">
-            <h2 className="chat-title">{session?.title ?? '新对话'}</h2>
-            <OpenCodeMoreMenu
-              canSummarize={Boolean(
-                session && !busy && !locked && info?.connected && !permissionNeedsSelection
-              )}
-              canSync={!busy && !locked}
-              canAttachWorkspace={Boolean(
-                session && info?.connected && !busy && !locked
-              )}
-              advanced={advanced}
-              onSummarize={() => void summarize()}
-              onSync={() => void inspect(true)}
-              onAttachWorkspace={
-                runtimeId === 'dsh'
-                  ? () => {
-                      void attachWorkspace().then((message) => {
-                        if (message) setWorkspaceStatus(message)
-                      })
-                    }
-                  : undefined
-              }
-              onAdvanced={() => setAdvanced(!advanced)}
-            />
-            <span className="chat-status opencode-session-state" data-status={session?.status}>
-              {session ? OPENCODE_STATUS[session.status] : '等待输入'}
-            </span>
-          </header>
-          {session ? (
-            <div className="opencode-options">
-              {session.options
-                .filter(
-                  (option) => advanced || ['model', 'mode', 'permission'].includes(option.category)
-                )
-                .map((option) => (
-                  <div className="opencode-option" key={option.id}>
-                    <span className="field-label">
-                      {OPTION_NAMES[option.category] ?? option.name}
-                    </span>
-                    <Dropdown
-                      ariaLabel={`${name} ${OPTION_NAMES[option.category] ?? option.name}`}
-                      value={option.currentValue}
-                      options={
-                        option.category === 'model'
-                          ? option.options.filter((item) => visibleModels.has(item.value))
-                          : option.options
-                      }
-                      placeholder="请选择"
-                      onChange={(value) => void setOption(option.id, value)}
-                      disabled={busy || locked || !info?.connected}
-                      searchable={option.options.length > 8}
-                      align="left"
-                    />
-                  </div>
-                ))}
-              {modelNeedsSelection ? (
-                <span className="field-hint" role="status">
-                  当前模型不可用，请选择已启用模型，或在更多菜单同步模型。
-                </span>
-              ) : null}
-              {permissionNeedsSelection ? (
-                <span className="field-hint" role="status">
-                  历史已打开。原会话权限无法直接沿用，请先选择只读或项目写入后继续。
-                </span>
-              ) : null}
-              {runtimeId === 'claude' || runtimeId === 'claude-desktop' ? (
-                <span className="field-hint">Auto 是否可用由原生程序、模型和供应商决定。</span>
-              ) : null}
-            </div>
-          ) : (
-            <p className="field-hint opencode-start-hint">
-              首次发送会连接并新建会话。
-              {runtimeId === 'opencode'
-                ? '新会话使用 Plan 模式。'
-                : runtimeId === 'claude' || runtimeId === 'claude-desktop'
-                  ? '新会话使用计划模式；打开会话后可选择自动、手动或接受编辑模式。'
-                  : runtimeId === 'dsh'
-                    ? '操作权限沿用 DSH 原生规则，需要审批时在此确认。'
-                    : '新会话使用只读权限。'}
-              模型沿用原生默认；不可用时会停下供你选择。
-            </p>
-          )}
+        <div className="agent-session-bar">
+          <OpenCodeSessions
+            key={`${runtimeId}:${directory}`}
+            showHistory={showHistory}
+            onHistoryShown={() => setShowHistory(0)}
+          />
+          <OpenCodeMoreMenu
+            canSummarize={Boolean(
+              session && !busy && !locked && info?.connected && !permissionNeedsSelection
+            )}
+            canSync={!busy && !locked}
+            canAttachWorkspace={Boolean(session && info?.connected && !busy && !locked)}
+            onSummarize={() => void summarize()}
+            onSync={() => void inspect(true)}
+            onAttachWorkspace={
+              runtimeId === 'dsh'
+                ? () => {
+                    void attachWorkspace().then((message) => {
+                      if (message) setWorkspaceStatus(message)
+                    })
+                  }
+                : undefined
+            }
+          />
+          <span className="chat-status opencode-session-state" data-status={session?.status}>
+            {session?.questions?.length
+              ? '等待回答'
+              : session
+                ? OPENCODE_STATUS[session.status]
+                : '等待输入'}
+          </span>
+        </div>
+        <section
+          className="glass chat-panel opencode-panel"
+          id="agent-session-panel"
+          role="tabpanel"
+          aria-label={`${name} 工作台`}
+        >
+          <h2 className="sr-only">{session?.title ?? '新对话'}</h2>
           {runtimeId === 'dsh' && workspaceStatus ? (
             <p className="status-banner success-banner" role="status">
               {workspaceStatus}
-            </p>
-          ) : null}
-          {runtimeId === 'claude-desktop' ? (
-            <p className="status-banner opencode-desktop-hint">
-              沿用 Desktop 的第三方供应商配置；历史只列当前项目已结束的 Desktop Code 会话，不含普通
-              Chat。工具箱新建的会话不会自动出现在 Desktop。
-              续接原会话前需完整退出外部 Claude 程序；本地网关需保持 CC Switch 运行。
             </p>
           ) : null}
           {session || !transferred ? (
@@ -203,25 +140,35 @@ export function OpenCodeWorkbench(): JSX.Element {
               {session.error}
             </div>
           ) : null}
+          <AgentRunRecovery session={session} />
           <AgentComposer
             key={`${runtimeId}:${directory}`}
             canSend={canSend}
             onLocalAction={(action) => {
               if (action === 'history') setShowHistory((old) => old + 1)
               else {
-                setAdvanced(true)
                 requestAnimationFrame(() =>
                   document
                     .querySelector<HTMLButtonElement>(
                       action === 'model'
-                        ? '.opencode-options [aria-label*="模型"]'
-                        : '.opencode-options [aria-label*="权限"], .opencode-options [aria-label*="模式"]'
+                        ? '.agent-composer-options [aria-label*="模型"]'
+                        : '.agent-composer-options [aria-label*="权限"], .agent-composer-options [aria-label*="模式"]'
                     )
                     ?.click()
                 )
               }
             }}
           >
+            {modelNeedsSelection ? (
+              <p className="status-banner" role="status">
+                模型不可用，请重新选择或同步模型。
+              </p>
+            ) : null}
+            {permissionNeedsSelection ? (
+              <p className="status-banner" role="status">
+                请选择操作权限后继续。
+              </p>
+            ) : null}
             {transferred ? (
               <details
                 className="opencode-transfer-target"

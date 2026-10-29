@@ -2,6 +2,7 @@ import type { CodingAgentOption } from '../../../shared/coding-agents'
 import type { NativeCodingSession } from './adapter'
 import { redactData } from '../../../shared/redaction-tools'
 import { acpObject } from './stdio-rpc-connection'
+import { contextUsage } from './agent-session-metrics'
 
 export function acpText(value: unknown, max = 512): string {
   return typeof value === 'string' ? value.slice(0, max) : ''
@@ -54,7 +55,7 @@ export function acpPreview(value: unknown, agentName = 'Agent'): string {
 
 /** 只消费当前会话的文本、标题、配置及工具状态，外部内容始终作为文本处理。 */
 export function applyAcpUpdate(
-  session: Pick<NativeCodingSession, 'messages' | 'tools' | 'title' | 'options'>,
+  session: Pick<NativeCodingSession, 'messages' | 'tools' | 'title' | 'options' | 'contextUsage'>,
   raw: unknown,
   agentName = 'Agent'
 ): void {
@@ -67,13 +68,20 @@ export function applyAcpUpdate(
     const role = kind === 'user_message_chunk' ? 'user' : 'assistant'
     const total = session.messages.reduce((sum, message) => sum + message.content.length, 0)
     if (total + content.text.length > 200_000) throw new Error('会话内容达到显示上限，请新建会话')
-    let last = session.messages.at(-1)
+    const nativeId = acpText(update.messageId, 200)
+    const messageId = nativeId ? `native-${role}-${nativeId}` : ''
+    let last = messageId
+      ? session.messages.find((item) => item.id === messageId)
+      : session.messages.at(-1)
     if (!last || last.role !== role) {
       if (session.messages.length >= 200) throw new Error('会话消息达到显示上限，请新建会话')
-      last = { id: `message-${session.messages.length + 1}`, role, content: '' }
+      last = { id: messageId || `message-${session.messages.length + 1}`, role, content: '' }
       session.messages.push(last)
     }
     last.content += content.text
+  } else if (kind === 'usage_update') {
+    const usage = contextUsage(update.used, update.size, 'acp', agentName === 'DSH')
+    if (usage) session.contextUsage = usage
   } else if (kind === 'tool_call' || kind === 'tool_call_update') {
     const id = acpText(update.toolCallId, 200)
     if (!id) return
@@ -90,8 +98,14 @@ export function applyAcpUpdate(
   } else if (kind === 'session_info_update') {
     const title = acpText(update.title, 100).trim()
     if (title) session.title = title
-  } else if (kind === 'config_option_update') session.options = acpOptions(update.configOptions)
-  else if (kind === 'current_mode_update') {
+  } else if (kind === 'config_option_update') {
+    const options = acpOptions(update.configOptions)
+    const previous = session.options.find((item) => item.category === 'model')?.currentValue
+    const selected = options.find((item) => item.category === 'model')?.currentValue
+    if (previous !== selected && session.contextUsage)
+      session.contextUsage = { ...session.contextUsage, stale: true }
+    session.options = options
+  } else if (kind === 'current_mode_update') {
     const mode = session.options.find((option) => option.category === 'mode')
     const value = acpText(update.currentModeId)
     if (mode?.options.some((option) => option.value === value)) mode.currentValue = value

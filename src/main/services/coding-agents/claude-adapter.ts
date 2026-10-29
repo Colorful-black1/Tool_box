@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { claudeContextUsage } from './agent-session-metrics'
+import { AgentQuestions, nativeQuestions } from './agent-questions'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 import { agentPreferences } from '../../../shared/agent-projects'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
@@ -100,6 +103,7 @@ interface ClaudeRun {
 
 /** 官方 SDK 独立运行时；供应商凭据只用于子进程，不把初始化成功当作推理可用保证。 */
 export class ClaudeAdapter implements CodingAgentAdapter {
+  private readonly questions = new AgentQuestions((session) => this.emit(session))
   private readonly commandLists = new Map<string, NativeAgentCatalog['commands']>()
   private generation = 0
   private sdk: ClaudeSdk | null = null
@@ -790,6 +794,12 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     pending.settle(approved)
   }
 
+  answerQuestion(id: string, answer: AgentQuestionAnswer): void {
+    if (this.run?.session.id !== id || this.run.stopped)
+      throw new CodingAgentError('Claude 问题已结束')
+    this.questions.answer(id, answer)
+  }
+
   private session(id: string): NativeCodingSession {
     const session = this.sessions.get(id)
     if (!session || !this.info.connected)
@@ -818,15 +828,57 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     input: Record<string, unknown>,
     signal: AbortSignal
   ): Promise<PermissionResult> {
-    if (this.run !== run || signal.aborted)
+    if (this.run !== run || run.stopped || signal.aborted)
       return Promise.resolve({ behavior: 'deny', message: '任务已结束' })
     if (name === 'AskUserQuestion' || name === 'ExitPlanMode') {
-      this.unsupportedQuestion(run)
-      return Promise.resolve({
-        behavior: 'deny',
-        message: '当前工作台暂不支持结构化问答或计划确认，请在原生客户端继续',
-        interrupt: true
-      })
+      try {
+        const plan = name === 'ExitPlanMode'
+        const parsed = plan
+          ? {
+              keys: [],
+              questions: [
+                {
+                  id: 'plan',
+                  title: '计划确认',
+                  text: `${typeof input.plan === 'string' ? `${input.plan.slice(0, 3500)}${input.plan.length > 3500 ? '…（计划较长，请核对对话原文）' : ''}\n\n` : ''}请核对对话中的原生计划，是否继续？权限仍由原生规则与后续审批决定。`,
+                  multiple: false,
+                  allowText: false,
+                  options: [
+                    { label: '确认继续', description: '交回原生权限系统处理，不自动批准后续工具。' }
+                  ]
+                }
+              ]
+            }
+          : nativeQuestions(input.questions, 'claude')
+        return this.questions
+          .ask(
+            run.session,
+            {
+              kind: plan ? 'plan' : 'questions',
+              title: plan ? 'Claude 请求确认计划' : 'Claude 需要你回答',
+              questions: parsed.questions
+            },
+            signal
+          )
+          .then((answer): PermissionResult => {
+            if (answer.cancelled || this.run !== run || signal.aborted)
+              return { behavior: 'deny', message: '用户取消了本次问答或计划确认' }
+            const answers = Object.fromEntries(
+              parsed.keys.map((key, index) => [
+                key,
+                answer.answers.find((item) => item.questionId === `q${index}`)!.values.join(', ')
+              ])
+            )
+            return { behavior: 'allow', updatedInput: plan ? input : { ...input, answers } }
+          })
+      } catch {
+        this.unsupportedQuestion(run)
+        return Promise.resolve({
+          behavior: 'deny',
+          message: '原生问题格式暂不支持，请在原生客户端继续',
+          interrupt: true
+        })
+      }
     }
     return new Promise((resolve) => {
       const id = randomUUID()
@@ -855,6 +907,7 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     })
   }
   private resolveApprovals(run: ClaudeRun): void {
+    this.questions.cancel(run.session.id)
     for (const item of [...this.approvals.values()]) if (item.run === run) item.settle(false)
   }
 
@@ -930,6 +983,8 @@ export class ClaudeAdapter implements CodingAgentAdapter {
               })
           }
         } else if (message.type === 'assistant') {
+          const usage = claudeContextUsage(message.context_usage)
+          if (usage) session.contextUsage = usage
           const body = object(message.message)
           const id = text(body?.id) || run.messageId || randomUUID()
           const content = this.messageText(body?.content)
@@ -963,6 +1018,26 @@ export class ClaudeAdapter implements CodingAgentAdapter {
           if (session.status === 'error')
             session.error =
               'Claude 任务失败，请检查当前 Claude / CC Switch 的路由、认证、模型或执行限制；未自动重发'
+          if (typeof run.query.getContextUsage === 'function') {
+            let timer: NodeJS.Timeout | undefined
+            try {
+              const summary = await Promise.race([
+                run.query.getContextUsage({ detail: 'summary' }),
+                new Promise<undefined>((resolve) => {
+                  timer = setTimeout(() => resolve(undefined), 1500)
+                  timer.unref()
+                })
+              ])
+              if (this.run === run && !run.stopped) {
+                const usage = claudeContextUsage(summary)
+                if (usage) session.contextUsage = usage
+              }
+            } catch {
+              // 状态信息不可用不影响已完成任务，不为补数字创建新 Query 或调用模型。
+            } finally {
+              if (timer) clearTimeout(timer)
+            }
+          }
           break
         }
         if (

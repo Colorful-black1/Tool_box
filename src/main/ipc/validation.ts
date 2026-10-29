@@ -234,6 +234,33 @@ export function validateCodingAgentApproval(
   }
 }
 
+/** 问答只接受有界文本，原生权限和回调对象不能经 IPC 传入。 */
+export function validateCodingAgentQuestion(
+  value: unknown
+): CodingAgentSessionInput & import('../../shared/agent-session').AgentQuestionAnswer {
+  const input = codingAgentObject(value)
+  if (
+    typeof input.cancelled !== 'boolean' ||
+    !Array.isArray(input.answers) ||
+    input.answers.length > 4
+  )
+    throw new CodingAgentValidationError('问答结果无效')
+  return {
+    ...validateCodingAgentSession(input),
+    requestId: requireCodingAgentText(input.requestId, '问题引用', 100),
+    cancelled: input.cancelled,
+    answers: input.answers.map((raw) => {
+      const answer = codingAgentObject(raw)
+      if (!Array.isArray(answer.values) || answer.values.length > 12)
+        throw new CodingAgentValidationError('答案选项无效')
+      return {
+        questionId: requireCodingAgentText(answer.questionId, '题目引用', 100),
+        values: answer.values.map((value) => requireCodingAgentText(value, '答案', 4000))
+      }
+    })
+  }
+}
+
 /** 停止引用只能来自端口快照，禁止任意 PID、脚本或命令进入执行服务。 */
 export function validatePortStopToken(value: unknown): string {
   if (typeof value !== 'string' || value.length !== 36) throw new Error('进程引用无效，请重新查询端口')

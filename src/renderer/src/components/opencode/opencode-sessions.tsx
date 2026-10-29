@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
-import { CaretIcon, PlusIcon, RefreshIcon, SearchIcon } from '../icons'
+import { CloseIcon, PlusIcon, RefreshIcon, SearchIcon } from '../icons'
+import { Popover } from '../popover'
 
 export const OPENCODE_STATUS = {
   ready: '就绪',
@@ -23,6 +24,7 @@ export function OpenCodeSessions({
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const directory = useCodingAgentStore((state) => state.directory)
   const sessions = useCodingAgentStore((state) => state.sessions)
+  const closedSessions = useCodingAgentStore((state) => state.closedSessions)
   const activeId = useCodingAgentStore((state) => state.activeId)
   const history = useCodingAgentStore((state) => state.history)
   const historyLoaded = useCodingAgentStore((state) => state.historyLoaded)
@@ -32,6 +34,16 @@ export function OpenCodeSessions({
   const newSession = useCodingAgentStore((state) => state.newSession)
   const openSession = useCodingAgentStore((state) => state.openSession)
   const listSessions = useCodingAgentStore((state) => state.listSessions)
+  const selectSession = useCodingAgentStore((state) => state.selectSession)
+  const closeSession = useCodingAgentStore((state) => state.closeSession)
+  const runningRef = useCodingAgentStore((state) => state.runs[state.runtimeId]?.sessionId)
+  const historyAnchor = useRef<HTMLButtonElement>(null)
+  const search = useRef<HTMLInputElement>(null)
+  const tabs = useRef<HTMLDivElement>(null)
+  const focusAfterClose = useRef(false)
+  const closeTab = (id: string): void => {
+    focusAfterClose.current = closeSession(id)
+  }
   const [historyOpen, setHistoryOpen] = useState(false)
   const [query, setQuery] = useState('')
   const lastHistoryConnection = useRef('')
@@ -63,7 +75,6 @@ export function OpenCodeSessions({
       if (
         (runtimeId === 'claude' || runtimeId === 'claude-desktop') &&
         info?.connected &&
-        historyOpen &&
         historyLoaded &&
         !busy &&
         !running &&
@@ -83,15 +94,16 @@ export function OpenCodeSessions({
     preparing,
     listSessions
   ])
-  const local = Object.values(sessions).filter(
+  const cached = Object.values(sessions).filter(
     (item) =>
       (item.connectionId === info?.connectionId || item.status === 'disconnected') &&
       item.directory === directory
   )
+  const local = cached.filter((item) => !closedSessions.includes(item.id))
   const items = new Map(
     (historyOpen ? history : []).map((item) => [item.id, { ...item, ref: '', status: '历史' }])
   )
-  for (const item of local)
+  for (const item of cached)
     items.set(item.nativeSessionId, {
       id: item.nativeSessionId,
       title: item.title,
@@ -101,91 +113,189 @@ export function OpenCodeSessions({
   const visible = [...items.values()].filter((item) =>
     item.title.toLowerCase().includes(query.trim().toLowerCase())
   )
+  useEffect(() => {
+    const selected = tabs.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')
+    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (focusAfterClose.current) {
+      focusAfterClose.current = false
+      selected?.focus()
+    }
+  }, [activeId, local.length])
   return (
-    <aside className="glass opencode-sessions" aria-label="编程会话列表">
-      <div className="opencode-sessions-head">
-        <h2 className="chat-title">项目会话</h2>
-        {historyOpen ? (
+    <nav className="opencode-sessions" aria-label="编程会话列表">
+      <div
+        className="agent-session-tabs"
+        role="tablist"
+        aria-label="已打开会话"
+        ref={tabs}
+        onKeyDown={(event) => {
+          if ((event.target as HTMLElement).getAttribute('role') !== 'tab') return
+          const elements = [
+            ...(tabs.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)') ??
+              [])
+          ]
+          const index = elements.findIndex((item) => item === document.activeElement)
+          const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+          if (step) {
+            event.preventDefault()
+            elements[(index + step + elements.length) % elements.length]?.focus()
+          } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault()
+            elements[event.key === 'Home' ? 0 : elements.length - 1]?.focus()
+          }
+        }}
+      >
+        {local.map((item) => (
+          <div className="agent-session-tab-wrap" role="presentation" key={item.id}>
+            <button
+              type="button"
+              role="tab"
+              className={`btn-ghost agent-session-tab${item.id === activeId ? ' active' : ''}`}
+              aria-selected={item.id === activeId}
+              aria-controls="agent-session-panel"
+              tabIndex={item.id === activeId ? 0 : -1}
+              disabled={busy}
+              title={`${item.title} · ${OPENCODE_STATUS[item.status]}`}
+              onClick={() =>
+                void (item.status === 'disconnected'
+                  ? openSession(item.nativeSessionId)
+                  : selectSession(item.id))
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Delete') {
+                  event.preventDefault()
+                  closeTab(item.id)
+                }
+              }}
+            >
+              <span className="agent-tab-dot" data-status={item.status} aria-hidden="true" />
+              <span className="opencode-session-title">{item.title}</span>
+            </button>
+            <button
+              type="button"
+              className="icon-btn agent-session-close"
+              aria-label={`关闭会话：${item.title}`}
+              title={
+                item.status === 'running' || item.status === 'stopping' || runningRef === item.id
+                  ? '先停止任务再关闭'
+                  : '关闭会话'
+              }
+              disabled={
+                busy ||
+                Boolean(preparing) ||
+                item.status === 'running' ||
+                item.status === 'stopping' ||
+                runningRef === item.id
+              }
+              onClick={() => closeTab(item.id)}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ))}
+        {!activeId ? (
           <button
             type="button"
-            className="icon-btn"
-            aria-label="刷新历史会话"
-            disabled={busy || running}
-            onClick={() => void listSessions()}
+            role="tab"
+            className="btn-ghost agent-session-tab active"
+            aria-selected="true"
+            aria-controls="agent-session-panel"
           >
-            <RefreshIcon />
+            新对话
           </button>
-        ) : (
-          <span>{items.size}</span>
-        )}
+        ) : null}
       </div>
-      <button type="button" className="btn-ghost" disabled={busy} onClick={newSession}>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="新对话"
+        title="新对话"
+        disabled={busy}
+        onClick={() => {
+          if (activeId) newSession()
+          document.querySelector<HTMLTextAreaElement>('#opencode-draft')?.focus()
+        }}
+      >
         <PlusIcon />
-        新对话
       </button>
       <button
         type="button"
-        className="btn-ghost"
+        className="icon-btn"
+        ref={historyAnchor}
+        aria-label="历史会话"
+        title="历史会话"
         aria-expanded={historyOpen}
-        aria-controls="opencode-session-list"
-        disabled={!directory || busy || running}
+        aria-haspopup="dialog"
+        disabled={!directory || busy || running || Boolean(preparing)}
         onClick={() => {
           setHistoryOpen(!historyOpen)
-          // 外部 Agent 可能在列表收起期间新增会话，展开时不能只沿用旧缓存。
           if (!historyOpen) void listSessions()
         }}
       >
-        历史会话
-        <span className="ui-dropdown-caret" data-expanded={historyOpen}>
-          <CaretIcon />
-        </span>
+        <SearchIcon />
       </button>
-      {runtimeId === 'claude-desktop' && historyOpen && historyLoaded ? (
-        <p className="opencode-session-empty">
-          只列当前项目的 Code 历史。找不到时，请切换到 Desktop 使用的项目目录，再刷新历史。
-          普通 Chat 不在此列。
-        </p>
+      {historyOpen ? (
+        <Popover
+          anchor={historyAnchor}
+          align="right"
+          matchAnchorWidth={false}
+          className="agent-history-popover"
+          onClose={() => setHistoryOpen(false)}
+          onReady={() => search.current?.focus()}
+        >
+          <section role="dialog" aria-label="历史会话">
+            <div className="agent-history-head">
+              <h3>历史会话</h3>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="刷新历史会话"
+                title="刷新历史会话"
+                disabled={busy || running || Boolean(preparing)}
+                onClick={() => void listSessions()}
+              >
+                <RefreshIcon />
+              </button>
+            </div>
+            <div className="opencode-session-search">
+              <SearchIcon />
+              <input
+                ref={search}
+                className="field-input"
+                aria-label="搜索会话"
+                placeholder="搜索会话"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <div className="opencode-session-list" id="opencode-session-list" aria-busy={busy}>
+              {!visible.length ? (
+                <p className="opencode-session-empty">
+                  {busy ? '正在读取…' : query ? '无匹配会话' : '暂无会话'}
+                </p>
+              ) : null}
+              {visible.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`btn-ghost opencode-session-item${item.ref && item.ref === activeId ? ' active' : ''}`}
+                  disabled={busy || (!item.ref && (running || !info?.canLoadSession))}
+                  onClick={async () => {
+                    await openSession(item.id)
+                    setHistoryOpen(false)
+                  }}
+                  aria-current={item.ref && item.ref === activeId ? 'page' : undefined}
+                >
+                  <span className="opencode-session-title" title={item.title}>
+                    {item.title}
+                  </span>
+                  <small className="opencode-session-state">{item.status}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        </Popover>
       ) : null}
-      {items.size > 6 ? (
-        <div className="opencode-session-search">
-          <SearchIcon />
-          <input
-            className="field-input"
-            aria-label="搜索会话"
-            placeholder="搜索会话"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-      ) : null}
-      <div className="opencode-session-list" id="opencode-session-list" aria-busy={busy}>
-        {!visible.length ? (
-          <p className="opencode-session-empty">
-            {busy
-              ? '正在读取…'
-              : query
-                ? '没有匹配的会话'
-                : historyOpen && historyLoaded
-                  ? '当前项目暂无会话。'
-                  : '直接输入任务开始，或打开历史会话。'}
-          </p>
-        ) : null}
-        {visible.map((item) => (
-          <button
-            type="button"
-            key={item.id}
-            className={`btn-ghost opencode-session-item${item.ref && item.ref === activeId ? ' active' : ''}`}
-            disabled={busy || (!item.ref && (running || !info?.canLoadSession))}
-            onClick={() => void openSession(item.id)}
-            aria-current={item.ref === activeId ? 'page' : undefined}
-          >
-            <span className="opencode-session-title" title={item.title}>
-              {item.title}
-            </span>
-            <small className="opencode-session-state">{item.status}</small>
-          </button>
-        ))}
-      </div>
-    </aside>
+    </nav>
   )
 }

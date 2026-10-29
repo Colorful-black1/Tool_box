@@ -13,6 +13,7 @@ import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-ag
 import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../shared/agent-drafts'
 import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
 import type { AgentSendInput } from '@shared/agent-actions'
+import type { AgentQuestionAnswer } from '@shared/agent-session'
 
 /** 跨项目转用只在本次工作台内展示；连接替换仍由明确发送触发。 */
 interface ProjectHandoff {
@@ -32,12 +33,15 @@ interface RuntimeWorkspace {
   projectMemory: string | null | undefined
   handoff: ProjectHandoff | null
   sessions: Record<string, CodingAgentSessionView>
+  closedSessions: string[]
   activeId: string | null
   history: CodingAgentSessionSummary[]
   historyLoaded: boolean
   draft: string
   drafts: Record<string, string>
   transferred: boolean
+  recall: { previousDraft: string; previousTransferred: boolean; text: string } | null
+  recallSequence: number
   busy: boolean
   connecting: boolean
   selection: number
@@ -62,6 +66,7 @@ interface CodingAgentState extends RuntimeWorkspace {
   newSession(): void
   openSession(nativeId: string, carryDraft?: boolean): Promise<void>
   listSessions(): Promise<void>
+  refreshSession(): Promise<void>
   attachWorkspace(): Promise<string>
   setOption(id: string, value: string): Promise<void>
   send(extra?: Pick<AgentSendInput, 'references' | 'literal'>): Promise<void>
@@ -70,9 +75,13 @@ interface CodingAgentState extends RuntimeWorkspace {
   viewRunning(id?: CodingAgentId): void
   stop(id?: CodingAgentId): Promise<void>
   approve(id: string, approved: boolean): Promise<void>
+  answerQuestion(answer: AgentQuestionAnswer): Promise<void>
   openDesktop(): Promise<void>
   setDraft(text: string): void
+  recallMessage(id: string): Promise<void>
+  cancelRecall(): Promise<void>
   selectSession(id: string): Promise<void>
+  closeSession(id: string): boolean
   receive(event: CodingAgentEvent): void
   clearError(): void
   transferMessage(messageId: string, targetId?: CodingAgentId): Promise<void>
@@ -92,12 +101,15 @@ function emptyWorkspace(): RuntimeWorkspace {
     projectMemory: undefined,
     handoff: null,
     sessions: {},
+    closedSessions: [],
     activeId: null,
     history: [],
     historyLoaded: false,
     draft: '',
     drafts: {},
     transferred: false,
+    recall: null,
+    recallSequence: 0,
     busy: false,
     connecting: false,
     selection: 0,
@@ -114,12 +126,15 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     projectMemory,
     handoff,
     sessions,
+    closedSessions,
     activeId,
     history,
     historyLoaded,
     draft,
     drafts,
     transferred,
+    recall,
+    recallSequence,
     busy,
     connecting,
     selection,
@@ -133,12 +148,15 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     projectMemory,
     handoff,
     sessions,
+    closedSessions,
     activeId,
     history,
     historyLoaded,
     draft,
     drafts,
     transferred,
+    recall,
+    recallSequence,
     busy,
     connecting,
     selection,
@@ -182,7 +200,8 @@ function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorks
     selection: state.selection + 1,
     drafts: { ...state.drafts, [draftKey(state)]: state.draft },
     draft: state.drafts[draftEntryKey(directory, null)] ?? (state.directory ? '' : state.draft),
-    transferred: false
+    transferred: false,
+    recall: null
   }
 }
 
@@ -296,6 +315,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
             : null,
           drafts: { ...state.drafts, [draftKey(state)]: state.draft },
           sessions: retain ? { [selected.id]: { ...selected, status: 'disconnected' } } : {},
+          closedSessions: [],
           activeId: retain ? selected.id : null,
           history: [],
           historyLoaded: false
@@ -336,10 +356,12 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     }
     update(id, {
       activeId: ref,
+      closedSessions: state.closedSessions.filter((id) => id !== ref),
       selection: state.selection + 1,
       drafts: { ...state.drafts, [draftKey(state)]: state.draft },
       draft: carryDraft ? state.draft : existing,
-      transferred: carryDraft && state.transferred
+      transferred: carryDraft && state.transferred,
+      recall: null
     })
   }
   const submit = async (
@@ -422,7 +444,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           return {
             drafts,
             ...(draftKey(current) === key && current.draft === before.draft
-              ? { draft: '', transferred: false }
+              ? { draft: '', transferred: false, recall: null }
               : {})
           }
         })
@@ -507,7 +529,8 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         selection: state.selection + 1,
         drafts: { ...state.drafts, [draftKey(state)]: state.draft },
         draft: state.drafts[draftEntryKey(state.directory, null)] ?? '',
-        transferred: false
+        transferred: false,
+        recall: null
       })
     },
     openSession: (nativeId, carryDraft = false) =>
@@ -567,6 +590,26 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
             if (sameDirectory(directory, read(id).directory)) upsert(view)
           }
         }
+      }),
+    refreshSession: () =>
+      perform(async (id) => {
+        const before = read(id)
+        const selected = before.activeId ? before.sessions[before.activeId] : undefined
+        if (!selected || get().runs[id] || submissions.has(id))
+          throw new Error('请先结束当前任务，再核对原生历史')
+        await ensureConnected(id, before.directory)
+        const view = await codingAgentClient().resumeSession({
+          runtimeId: id,
+          sessionId: selected.nativeSessionId
+        })
+        upsert(view)
+        if (
+          read(id).selection !== before.selection ||
+          !sameDirectory(read(id).directory, before.directory)
+        )
+          return
+        // 重读只能恢复这一条原生会话，失败不创建替代记录，也不重发输入。
+        if (read(id).activeId !== view.id) await activate(id, view.id)
       }),
     attachWorkspace: async () => {
       const id = get().runtimeId
@@ -628,12 +671,117 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       perform(async (id) => {
         await codingAgentClient().openDesktop(id)
       }),
+    answerQuestion: async (answer) => {
+      const id = get().runtimeId
+      const sessionId = read(id).activeId
+      if (!sessionId) return
+      try {
+        await codingAgentClient().answerQuestion({ runtimeId: id, sessionId, ...answer })
+      } catch (error) {
+        update(id, { error: errorText(error) })
+      }
+    },
+    recallMessage: async (messageId) => {
+      const id = get().runtimeId
+      const before = read(id)
+      const session = before.activeId ? before.sessions[before.activeId] : undefined
+      const message = session?.messages.find(
+        (item) => item.id === messageId && item.role === 'user'
+      )
+      if (!message?.content || !sameDirectory(session!.directory, before.directory)) return
+      if (message.content.length > 50_000) {
+        update(id, { error: '这条消息超过 50,000 字符，请复制后截取需要的内容' })
+        return
+      }
+      if (
+        before.draft.trim() &&
+        before.draft !== message.content &&
+        !(await confirmDialog(
+          '输入框已有草稿，是否先保留它并取回这条消息？取消取回时可恢复原草稿。'
+        ))
+      )
+        return
+      if (get().runtimeId !== id || !unchanged(id, before)) {
+        update(get().runtimeId, { error: '当前会话或草稿已变化，请重新取回消息' })
+        return
+      }
+      update(id, {
+        draft: message.content,
+        transferred: false,
+        recall: {
+          previousDraft: before.recall?.previousDraft ?? before.draft,
+          previousTransferred: before.recall?.previousTransferred ?? before.transferred,
+          text: message.content
+        },
+        recallSequence: before.recallSequence + 1
+      })
+    },
+    cancelRecall: async () => {
+      const id = get().runtimeId
+      const before = read(id)
+      if (!before.recall) return
+      if (
+        before.draft !== before.recall.text &&
+        before.draft !== before.recall.previousDraft &&
+        !(await confirmDialog('取消取回会放弃本次编辑并恢复原草稿，是否继续？'))
+      )
+        return
+      if (get().runtimeId !== id || !unchanged(id, before)) return
+      update(id, {
+        draft: before.recall.previousDraft,
+        transferred: before.recall.previousTransferred,
+        recall: null,
+        recallSequence: before.recallSequence + 1
+      })
+    },
     setDraft: (draft) =>
       update(get().runtimeId, (state) => ({
         draft,
         drafts: { ...state.drafts, [draftKey(state)]: draft }
       })),
     selectSession: (id) => activate(get().runtimeId, id),
+    closeSession: (ref) => {
+      const id = get().runtimeId
+      const state = read(id)
+      const target = state.sessions[ref]
+      if (
+        !target ||
+        state.closedSessions.includes(ref) ||
+        state.busy ||
+        state.connecting ||
+        get().preparations[id] ||
+        submissions.has(id) ||
+        target.status === 'running' ||
+        target.status === 'stopping' ||
+        get().runs[id]?.sessionId === ref ||
+        !sameDirectory(target.directory, state.directory)
+      )
+        return false
+      const closedSessions = [...state.closedSessions, ref]
+      if (state.activeId !== ref) {
+        update(id, { closedSessions })
+        return true
+      }
+      const visible = Object.values(state.sessions).filter(
+        (item) =>
+          !state.closedSessions.includes(item.id) &&
+          item.directory === state.directory &&
+          (item.connectionId === state.info?.connectionId || item.status === 'disconnected')
+      )
+      const index = visible.findIndex((item) => item.id === ref)
+      const next = index < 0 ? undefined : (visible[index + 1] ?? visible[index - 1])
+      // 只关闭标签，缓存继续接收事件；正文、原生历史和按身份保存的草稿均保留。
+      update(id, {
+        closedSessions,
+        activeId: next?.id ?? null,
+        selection: state.selection + 1,
+        drafts: { ...state.drafts, [draftKey(state)]: state.draft },
+        draft: state.drafts[draftEntryKey(state.directory, next?.nativeSessionId ?? null)] ?? '',
+        transferred: false,
+        recall: null
+      })
+      return true
+    },
     receive: (event) => {
       if (event.kind === 'session') {
         upsert(event.session)
@@ -734,6 +882,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         drafts: { ...approved.drafts, [draftKey(approved)]: approved.draft, [key]: text },
         draft: text,
         transferred: true,
+        recall: null,
         handoff: crossProject
           ? {
               sourceId,

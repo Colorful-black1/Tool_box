@@ -12,7 +12,11 @@ import {
   type LocalAgentCommand
 } from '../../lib/agent-composer-input'
 import { AgentActionMenu, type AgentActionChoice } from './agent-action-menu'
-import { CloseIcon, CodeIcon, FolderIcon, SendIcon, StopIcon } from '../icons'
+import { AgentContextStatus } from './agent-context-status'
+import { AgentComposerOptions } from './agent-composer-options'
+import { AgentComposerTools } from './agent-composer-tools'
+import { confirmDialog } from '../../stores/dialog-store'
+import { CloseIcon, SendIcon, StopIcon } from '../icons'
 
 type Menu = 'commands' | 'files' | 'skills' | 'mcp'
 
@@ -33,6 +37,9 @@ export function AgentComposer({
   const draft = useCodingAgentStore((state) => state.draft)
   const busy = useCodingAgentStore((state) => state.busy)
   const transferred = useCodingAgentStore((state) => state.transferred)
+  const recall = useCodingAgentStore((state) => state.recall)
+  const recallSequence = useCodingAgentStore((state) => state.recallSequence)
+  const cancelRecall = useCodingAgentStore((state) => state.cancelRecall)
   const runningSession = useCodingAgentStore((state) => state.runs[state.runtimeId]?.sessionId)
   const preparing = useCodingAgentStore((state) => state.preparations[state.runtimeId])
   const session = useCodingAgentStore((state) => (activeId ? state.sessions[activeId] : undefined))
@@ -53,6 +60,12 @@ export function AgentComposer({
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null)
   const [files, setFiles] = useState<AgentFileSearchResult>({ files: [], limited: false })
   const [references, setReferences] = useState<AgentReference[]>([])
+  const recalledReferences = useRef<{
+    draft: string
+    items: AgentReference[]
+    sessionId: string | null
+    connectionId?: string
+  } | null>(null)
   const [active, setActive] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -63,6 +76,39 @@ export function AgentComposer({
     setLoading(false)
     selection.current = null
   }, [setMode, setLoading])
+  useEffect(() => {
+    if (!recallSequence) return
+    const frame = requestAnimationFrame(() => {
+      input.current?.focus()
+      input.current?.setSelectionRange(input.current.value.length, input.current.value.length)
+    })
+    close()
+    return () => cancelAnimationFrame(frame)
+  }, [recallSequence, close])
+  useEffect(() => {
+    if (recall) {
+      if (!recalledReferences.current)
+        recalledReferences.current = {
+          draft: recall.previousDraft,
+          items: references,
+          sessionId: activeId,
+          connectionId: info?.connectionId
+        }
+      setReferences([])
+    } else if (recalledReferences.current) {
+      const previous = recalledReferences.current
+      recalledReferences.current = null
+      setReferences(
+        previous.draft === draft &&
+          previous.sessionId === activeId &&
+          previous.connectionId === info?.connectionId
+          ? previous.items
+          : []
+      )
+    }
+    // 引用快照与取回动作绑定，输入变化不应重复重建或清除它。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recall])
   const open = (next: Menu): void => {
     selection.current = null
     setQuery('')
@@ -333,6 +379,14 @@ export function AgentComposer({
       }}
     >
       {children}
+      {recall ? (
+        <div className="status-banner opencode-desktop-hint" role="status">
+          <span title="历史未修改；原有文件与 Skill 引用需重新选择">取回编辑 · 发送为新消息</span>
+          <button type="button" className="btn-ghost" onClick={() => void cancelRecall()}>
+            取消取回
+          </button>
+        </div>
+      ) : null}
       <label className="sr-only" htmlFor="opencode-draft">
         编程任务草稿
       </label>
@@ -393,68 +447,81 @@ export function AgentComposer({
             } else close()
           }}
           onKeyDown={onKey}
-          placeholder="描述任务，@ 引用文件，/ 选择命令；Enter 发送，Shift + Enter 换行"
+          placeholder="发送消息，@ 文件，/ 命令"
+          title="Enter 发送，Shift + Enter 换行"
           aria-expanded={Boolean(mode)}
           aria-controls={mode ? 'agent-action-options' : undefined}
           aria-activedescendant={mode && visible[active] ? `agent-action-${active}` : undefined}
         />
-        <div className="agent-composer-toolbar">
-          <div className="agent-composer-shortcuts" role="group" aria-label="任务输入工具">
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={locked || !directory}
-              aria-expanded={mode === 'files'}
-              aria-controls={mode === 'files' ? 'agent-action-options' : undefined}
-              onClick={() => (mode === 'files' ? close() : open('files'))}
-            >
-              <FolderIcon />
-              @ 文件
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={locked || !directory}
-              aria-expanded={mode === 'commands'}
-              aria-controls={mode === 'commands' ? 'agent-action-options' : undefined}
-              onClick={() => (mode === 'commands' ? close() : open('commands'))}
-            >
-              <CodeIcon />
-              / 命令
-            </button>
-          </div>
-          <span className="opencode-draft-count" data-over-limit={draft.length > 50_000}>
-            {draft.length.toLocaleString()}/50,000
-          </span>
-        </div>
         <div className="composer-actions">
-          <span className="field-hint agent-composer-keyboard">
-            <kbd>Enter</kbd> 发送 · <kbd>Shift + Enter</kbd> 换行
-          </span>
-          {preparing ? (
-            <button type="button" className="btn-ghost" onClick={() => cancelPreparation()}>
-              取消准备
-            </button>
-          ) : runningSession && runningSession === activeId ? (
-            <button
-              type="button"
-              className="btn-danger"
-              disabled={session?.status !== 'running'}
-              onClick={() => void stop()}
-            >
-              <StopIcon />
-              停止任务
-            </button>
-          ) : (
-            <button type="submit" className="btn-gold" disabled={!canSend}>
-              <SendIcon />
-              {busy
-                ? '准备中…'
-                : session
-                  ? `发送给 ${CODING_AGENT_NAMES[runtimeId]}`
-                  : `开始对话 · ${CODING_AGENT_NAMES[runtimeId]}`}
-            </button>
-          )}
+          <div className="agent-composer-controls">
+            <AgentComposerTools disabled={locked || !directory} onChoose={open} />
+            <AgentComposerOptions session={session} disabled={locked || busy} />
+          </div>
+          <div className="agent-composer-submit">
+            {draft.length > 45_000 ? (
+              <span className="opencode-draft-count" data-over-limit={draft.length > 50_000}>
+                {draft.length.toLocaleString()}/50,000
+              </span>
+            ) : null}
+            <AgentContextStatus
+              session={session}
+              connected={Boolean(info?.connected && info.directory === directory)}
+              canCompact={Boolean(activeId && !locked && runtimeId !== 'dsh')}
+              onCompact={() =>
+                void (async () => {
+                  const before = useCodingAgentStore.getState()
+                  if (
+                    before.draft.trim() &&
+                    !(await confirmDialog('准备压缩命令会替换当前草稿，是否继续？'))
+                  )
+                    return
+                  const current = useCodingAgentStore.getState()
+                  if (
+                    current.runtimeId !== runtimeId ||
+                    current.activeId !== activeId ||
+                    current.draft !== before.draft
+                  )
+                    return
+                  setDraft('/compact')
+                  focusInput()
+                })()
+              }
+            />
+            {preparing ? (
+              <button type="button" className="btn-ghost" onClick={() => cancelPreparation()}>
+                取消准备
+              </button>
+            ) : runningSession && runningSession === activeId ? (
+              <button
+                type="button"
+                className="btn-danger"
+                aria-label="停止任务"
+                title="停止任务"
+                disabled={session?.status !== 'running'}
+                onClick={() => void stop()}
+              >
+                <StopIcon />
+                <span className="sr-only">停止任务</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="btn-gold"
+                disabled={!canSend}
+                aria-label={
+                  busy
+                    ? '准备中'
+                    : session
+                      ? `发送给 ${CODING_AGENT_NAMES[runtimeId]}`
+                      : `开始对话 · ${CODING_AGENT_NAMES[runtimeId]}`
+                }
+                title="发送（Enter）"
+              >
+                <SendIcon />
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {error ? (

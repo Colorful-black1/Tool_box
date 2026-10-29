@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import type { CodingAgentSessionView } from '@shared/coding-agents'
 import { useCodingAgentStore as useOpenCodeStore } from '../../stores/coding-agent-store'
+import { AgentQuestionCard } from './agent-question-card'
 
 const TOOL_STATUS: Record<string, string> = {
   pending: '等待',
@@ -36,6 +37,9 @@ export function OpenCodeActivity({
   const approval = session?.approvals[0]
   return (
     <>
+      {session?.questions?.[0] ? (
+        <AgentQuestionCard key={session.questions[0].id} request={session.questions[0]} />
+      ) : null}
       {session && (session.tools.length > 0 || session.subtasks.length > 0) ? (
         <details className="opencode-tools">
           <summary>

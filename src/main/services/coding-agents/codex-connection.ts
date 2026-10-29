@@ -19,7 +19,11 @@ export class CodexConnection {
   constructor(
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly notification: (method: string, params: unknown) => void,
-    private readonly handler: (method: string, params: unknown) => Promise<unknown>,
+    private readonly handler: (
+      method: string,
+      params: unknown,
+      requestId?: number | string
+    ) => Promise<unknown>,
     private readonly disconnected: () => void
   ) {
     child.stdout.setEncoding('utf8')
@@ -120,7 +124,7 @@ export class CodexConnection {
 
   private async respond(id: number | string, method: string, params: unknown): Promise<void> {
     try {
-      this.write({ id, result: await this.handler(method, params) })
+      this.write({ id, result: await this.handler(method, params, id) })
     } catch {
       this.write({ id, error: { code: -32601, message: 'Unsupported client request' } })
     } finally {

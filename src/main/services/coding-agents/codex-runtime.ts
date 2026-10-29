@@ -67,7 +67,7 @@ export function launchCodex(
   executable: string,
   directory: string,
   notification: (method: string, params: unknown) => void,
-  request: (method: string, params: unknown) => Promise<unknown>,
+  request: (method: string, params: unknown, requestId?: number | string) => Promise<unknown>,
   disconnected: () => void
 ): CodexConnection {
   const env = { ...process.env }

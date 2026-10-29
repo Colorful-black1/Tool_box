@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { codexContextUsage } from './agent-session-metrics'
+import { AgentQuestions, nativeQuestions } from './agent-questions'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 import type {
@@ -47,6 +50,9 @@ interface CodexRun {
 
 /** 独立使用 Codex 原生 profile；不从其他 Agent 复制密钥或配置。 */
 export class CodexAdapter implements CodingAgentAdapter {
+  private readonly questions = new AgentQuestions((session) => this.publish(session, true))
+  private readonly questionRequests = new Map<string, string>()
+  private readonly resolvedQuestions = new Set<string>()
   readonly id = 'codex' as const
   private peer: CodexPeer | null = null
   private generation = 0
@@ -147,9 +153,9 @@ export class CodexAdapter implements CodingAgentAdapter {
         (method, params) => {
           if (generation === this.generation) this.notification(method, params)
         },
-        (method, params) =>
+        (method, params, requestId) =>
           generation === this.generation
-            ? this.permission(method, params)
+            ? this.permission(method, params, requestId)
             : Promise.resolve({ decision: 'decline' }),
         () => {
           if (generation === this.generation) this.disconnected()
@@ -191,6 +197,9 @@ export class CodexAdapter implements CodingAgentAdapter {
   }
 
   disconnect(): void {
+    this.questions.cancel()
+    this.questionRequests.clear()
+    this.resolvedQuestions.clear()
     ++this.generation
     const peer = this.peer
     if (this.run?.turnId)
@@ -539,6 +548,11 @@ export class CodexAdapter implements CodingAgentAdapter {
     pending.settle(approved)
   }
 
+  answerQuestion(id: string, answer: AgentQuestionAnswer): void {
+    if (this.run?.session.id !== id) throw new CodingAgentError('Codex 问题已结束')
+    this.questions.answer(id, answer)
+  }
+
   private async readModels(peer: CodexPeer): Promise<CodexModel[]> {
     const result = await peer.request('model/list', { limit: 200, includeHidden: false })
     return codexModels(result)
@@ -547,6 +561,18 @@ export class CodexAdapter implements CodingAgentAdapter {
   private notification(method: string, raw: unknown): void {
     const params = codexObject(raw)
     if (!params) return
+    if (method === 'serverRequest/resolved') {
+      if (typeof params.requestId !== 'string' && typeof params.requestId !== 'number') return
+      const id = `${typeof params.requestId}:${params.requestId}`
+      const local = this.questionRequests.get(id)
+      if (local) this.questions.cancelRequest(local)
+      else {
+        this.resolvedQuestions.add(id)
+        if (this.resolvedQuestions.size > 64)
+          this.resolvedQuestions.delete(this.resolvedQuestions.values().next().value!)
+      }
+      return
+    }
     const id = codexText(params.threadId)
     const session = this.sessions.get(id)
     if (method === 'thread/name/updated' && session) {
@@ -582,7 +608,13 @@ export class CodexAdapter implements CodingAgentAdapter {
       if (method === 'turn/completed' && turn) this.finish(run, turn)
       else if (method === 'error' && params.willRetry === false)
         this.finish(run, { status: 'failed' })
-      else if (run.compacting) {
+      else if (method === 'thread/tokenUsage/updated') {
+        const usage = codexContextUsage(params.tokenUsage)
+        if (usage) {
+          run.session.contextUsage = usage
+          this.publish(run.session)
+        }
+      } else if (run.compacting) {
         // 控制操作不向已满的显示缓存追加原生摘要；只等待原生终态。
         return
       } else if (method === 'item/agentMessage/delta') {
@@ -600,7 +632,50 @@ export class CodexAdapter implements CodingAgentAdapter {
     }
   }
 
-  private async permission(method: string, raw: unknown): Promise<unknown> {
+  private async permission(
+    method: string,
+    raw: unknown,
+    requestId?: number | string
+  ): Promise<unknown> {
+    if (method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput') {
+      const params = codexObject(raw)
+      const run = this.run
+      if (run && !run.turnId) await run.ready
+      if (
+        !run ||
+        this.run !== run ||
+        run.session.status !== 'running' ||
+        params?.threadId !== run.session.id ||
+        params?.turnId !== run.turnId ||
+        (requestId !== undefined && this.resolvedQuestions.has(`${typeof requestId}:${requestId}`))
+      )
+        return { answers: {} }
+      const parsed = nativeQuestions(params.questions, 'codex')
+      const pending = this.questions.ask(run.session, {
+        kind: 'questions',
+        title: 'Codex 需要你回答',
+        questions: parsed.questions
+      })
+      const local = run.session.questions?.at(-1)?.id
+      const key = requestId === undefined ? undefined : `${typeof requestId}:${requestId}`
+      if (key !== undefined && local) this.questionRequests.set(key, local)
+      try {
+        const answer = await pending
+        if (answer.cancelled || this.run !== run) return { answers: {} }
+        return {
+          answers: Object.fromEntries(
+            parsed.keys.map((key, index) => [
+              key,
+              {
+                answers: answer.answers.find((item) => item.questionId === `q${index}`)!.values
+              }
+            ])
+          )
+        }
+      } finally {
+        if (key !== undefined) this.questionRequests.delete(key)
+      }
+    }
     if (
       method !== 'item/commandExecution/requestApproval' &&
       method !== 'item/fileChange/requestApproval'
@@ -696,6 +771,9 @@ export class CodexAdapter implements CodingAgentAdapter {
   }
 
   private disconnected(): void {
+    this.questions.cancel()
+    this.questionRequests.clear()
+    this.resolvedQuestions.clear()
     this.peer = null
     if (this.run) {
       clearTimeout(this.run.timer)
@@ -711,6 +789,7 @@ export class CodexAdapter implements CodingAgentAdapter {
   }
 
   private clearApprovals(id: string): void {
+    this.questions.cancel(id)
     for (const pending of [...this.approvals.values()])
       if (pending.sessionId === id) pending.settle(false)
   }

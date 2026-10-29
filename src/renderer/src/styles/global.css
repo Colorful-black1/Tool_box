@@ -3386,6 +3386,108 @@ textarea,
   overflow-wrap: anywhere;
 }
 
+.agent-context-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.agent-context-popover {
+  width: min(360px, calc(100vw - 24px));
+  padding: 14px;
+  color: var(--text-hi);
+}
+
+.agent-context-popover p {
+  margin: 8px 0;
+}
+
+.agent-context-popover progress {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  border: none;
+  border-radius: 4px;
+  background: var(--gold-line);
+  accent-color: var(--gold);
+}
+
+.agent-recovery {
+  flex-wrap: wrap;
+}
+
+.agent-recovery > span {
+  flex: 1 1 300px;
+  overflow-wrap: anywhere;
+}
+
+.agent-context-popover progress::-webkit-progress-bar {
+  background: var(--gold-line);
+  border-radius: 4px;
+}
+
+.agent-context-popover progress::-webkit-progress-value {
+  background: var(--gold);
+  border-radius: 4px;
+}
+
+.opencode-panel .agent-question-card {
+  min-height: 120px;
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  flex-shrink: 1;
+}
+
+.opencode-layout:has(.agent-question-card) {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.opencode-panel:has(.agent-question-card) .composer-input {
+  height: 36px;
+  min-height: 36px;
+}
+
+.opencode-panel:has(.agent-question-card) .agent-composer-toolbar {
+  display: none;
+}
+
+.agent-question-card fieldset {
+  min-width: 0;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--gold-line);
+  border-radius: 10px;
+}
+
+.agent-question-card p {
+  margin: 6px 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.agent-question-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agent-question-options .btn-ghost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  white-space: normal;
+}
+
+.agent-question-options .btn-ghost[aria-pressed='true'] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
 .confirm-row {
   display: flex;
   align-items: center;
@@ -7024,6 +7126,304 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
 :is(.opencode-tools, .opencode-transfer-target, .agent-usage-hidden-sources) > summary:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: -2px;
+}
+
+/* 编程工作台：会话标签与输入区参数沿用主题令牌，历史浮层不占常驻侧栏。 */
+.opencode-page .opencode-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 360px;
+}
+
+.agent-session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: 14px 14px 0 0;
+  background: var(--bg-panel);
+}
+
+.agent-session-bar .opencode-sessions {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+}
+
+.agent-session-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.agent-session-tab.btn-ghost {
+  flex: 0 0 auto;
+  max-width: 220px;
+  gap: 8px;
+  border-color: transparent;
+  background: transparent;
+  padding: 6px 10px;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+.agent-session-tab.btn-ghost.active {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.agent-session-tab-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.agent-session-tab-wrap > .agent-session-tab {
+  max-width: 100%;
+  padding-right: 30px;
+}
+
+.agent-session-tab-wrap .agent-session-close {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  margin-block: auto;
+  padding: 3px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.agent-session-close:hover:not(:disabled),
+.agent-session-close:focus-visible {
+  color: var(--text-hi);
+  border-color: var(--gold-line);
+}
+
+.agent-tab-dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.agent-tab-dot[data-status='running'],
+.agent-tab-dot[data-status='stopping'] {
+  background: var(--gold);
+}
+
+.agent-tab-dot[data-status='error'] {
+  background: var(--pink);
+}
+
+.agent-session-bar .opencode-more {
+  margin: 0;
+}
+
+.agent-session-bar .opencode-more > .btn-ghost {
+  padding: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.agent-session-bar > .chat-status {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.agent-history-popover {
+  width: min(380px, calc(100vw - 24px));
+  padding: 10px;
+}
+
+.agent-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.agent-history-head h3 {
+  margin: 0;
+  color: var(--text-hi);
+  font-size: 13px;
+}
+
+.agent-history-popover .opencode-session-list {
+  max-height: 280px;
+  margin-top: 8px;
+}
+
+.opencode-page .opencode-panel {
+  flex: 1;
+  min-height: 0;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+}
+
+.opencode-page .opencode-messages {
+  padding: 24px clamp(16px, 5vw, 80px);
+}
+
+.opencode-page .opencode-messages .message {
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+.opencode-page .opencode-panel .composer {
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+  padding: 12px 20px 8px;
+}
+
+.opencode-page .composer-box {
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.opencode-page .composer-actions {
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.agent-composer-controls,
+.agent-composer-options,
+.agent-composer-submit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-composer-controls {
+  flex: 1 1 320px;
+}
+
+.agent-composer-options {
+  flex-wrap: wrap;
+}
+
+.agent-composer-option {
+  min-width: 0;
+}
+
+.agent-composer-options .agent-option-trigger {
+  border-color: transparent;
+  background: transparent;
+  padding: 5px 6px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.agent-option-trigger .ui-dropdown-label {
+  max-width: min(260px, 32vw);
+}
+
+.agent-composer-options .agent-option-trigger:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.agent-composer-options .agent-option-trigger:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.agent-composer-submit {
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.agent-composer-submit > .btn-gold,
+.agent-composer-submit > .btn-danger {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+.opencode-page .agent-context-status {
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.agent-context-status > .btn-ghost {
+  padding: 4px 6px;
+  background: transparent;
+  border-color: transparent;
+  letter-spacing: 0;
+}
+
+.agent-input-menu {
+  width: 190px;
+  padding: 6px;
+}
+
+.agent-input-menu .btn-ghost {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  border-color: transparent;
+  background: transparent;
+  letter-spacing: 0;
+}
+
+.agent-input-menu svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-input-menu kbd {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-family: var(--sans);
+}
+
+.opencode-page .agent-draft-recovery {
+  padding: 0 20px 8px;
+}
+
+.opencode-page .agent-draft-status {
+  justify-content: flex-end;
+}
+
+.agent-connection-help {
+  margin-top: 8px;
+  color: var(--text-mid);
+  font-size: 12px;
+}
+
+.agent-connection-help summary {
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .agent-session-tab.btn-ghost { max-width: 170px; }
+  .agent-session-bar > .chat-status { display: none; }
+  .opencode-page .opencode-panel .composer { padding-inline: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

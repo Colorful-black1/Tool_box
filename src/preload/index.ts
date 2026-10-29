@@ -75,6 +75,7 @@ const bridge: ToolboxBridge = {
     executeCommand: (input) => ipcRenderer.invoke(IPC.codingAgentCommand, input),
     setExtensions: (input) => ipcRenderer.invoke(IPC.codingAgentExtensions, input),
     stop: (input) => ipcRenderer.invoke(IPC.codingAgentStop, input),
+    answerQuestion: (input) => ipcRenderer.invoke(IPC.codingAgentQuestion, input),
     approve: (input) => ipcRenderer.invoke(IPC.codingAgentApprove, input),
     openDesktop: (id) => ipcRenderer.invoke(IPC.codingAgentDesktop, id),
     onEvent: (listener) => subscribe<CodingAgentEvent>(WINDOW_EVENT.codingAgent, listener)

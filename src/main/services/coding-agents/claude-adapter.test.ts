@@ -126,6 +126,82 @@ async function fixture(
 }
 
 describe('Claude 官方 SDK 适配器', () => {
+  it('结束前只查询活跃 Query 的 summary，用量缺失不另开模型请求', async () => {
+    const f = await fixture()
+    await f.adapter.send(f.session.id, '合成任务')
+    const summary = vi.fn<Query['getContextUsage']>(async () => ({
+      totalTokens: 40,
+      maxTokens: 100,
+      rawMaxTokens: 100,
+      model: 'fixture-model',
+      percentage: 40,
+      categories: [],
+      gridRows: [],
+      memoryFiles: [],
+      mcpTools: [],
+      agents: [],
+      isAutoCompactEnabled: true,
+      apiUsage: null
+    }))
+    f.queries[1].query.getContextUsage = summary
+    f.queries[1].push({ type: 'result', subtype: 'success', session_id: f.session.id })
+    await vi.waitFor(() =>
+      expect(f.events.at(-1)).toMatchObject({
+        kind: 'session',
+        session: {
+          outcome: 'completed',
+          contextUsage: { usedTokens: 40, windowTokens: 100, approximate: true }
+        }
+      })
+    )
+    expect(summary).toHaveBeenCalledExactlyOnceWith({ detail: 'summary' })
+    expect(f.sdk.query).toHaveBeenCalledTimes(2)
+    expect(f.queries[1].query.close).toHaveBeenCalledOnce()
+  })
+  it('结构化问题回答原请求，停止使待回答问题失效', async () => {
+    const f = await fixture()
+    await f.adapter.send(f.session.id, '合成请求')
+    const pending = f.options[1].canUseTool!(
+      'AskUserQuestion',
+      {
+        questions: [
+          { question: '选择方案', header: '方案', options: [{ label: 'A', description: '方案 A' }] }
+        ]
+      },
+      { signal: new AbortController().signal, toolUseID: 'q', requestId: 'q' }
+    )
+    const event = f.events.at(-1)
+    if (event?.kind !== 'session') throw new Error('缺少问题')
+    const request = event.session.questions![0]
+    f.adapter.answerQuestion(f.session.id, {
+      requestId: request.id,
+      cancelled: false,
+      answers: [{ questionId: 'q0', values: ['A'] }]
+    })
+    expect(await pending).toMatchObject({
+      behavior: 'allow',
+      updatedInput: { answers: { 选择方案: 'A' } }
+    })
+    const plan = f.options[1].canUseTool!(
+      'ExitPlanMode',
+      {},
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'plan',
+        requestId: 'plan'
+      }
+    )
+    f.adapter.stop(f.session.id)
+    expect(await plan).toMatchObject({ behavior: 'deny' })
+    expect(() =>
+      f.adapter.answerQuestion(f.session.id, {
+        requestId: request.id,
+        cancelled: true,
+        answers: []
+      })
+    ).toThrow('结束')
+  })
+
   it('扩展发现失败仍返回开关状态，允许用户关闭出错的本机配置', async () => {
     const f = await fixture()
     f.adapter.setExtensions(process.cwd(), true)

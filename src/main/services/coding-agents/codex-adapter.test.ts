@@ -11,7 +11,7 @@ vi.mock('./codex-runtime', () => ({
 
 function fixture() {
   let notify!: (method: string, params: unknown) => void
-  let request!: (method: string, params: unknown) => Promise<unknown>
+  let request!: Parameters<typeof launchCodex>[3]
   let closed!: () => void
   const directory = process.cwd()
   const thread = (id = 't1', cwd = directory) => ({
@@ -91,7 +91,7 @@ function fixture() {
     directory,
     thread,
     notify: (method: string, params: unknown) => notify(method, params),
-    request: (method: string, params: unknown) => request(method, params),
+    request: (method: string, params: unknown, id?: string | number) => request(method, params, id),
     closed: () => closed()
   }
 }
@@ -100,6 +100,89 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.useRealTimers())
 
 describe('Codex 原生 App Server 适配', () => {
+  it('turn/start 响应前的旧用量不认领新运行，当前用量按响应 ID 消费', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    await f.service.openSession()
+    f.calls.mockImplementationOnce(async () => {
+      for (const [turnId, used] of [
+        ['old-turn', 99],
+        ['new-turn', 30]
+      ] as const)
+        f.notify('thread/tokenUsage/updated', {
+          threadId: 't1',
+          turnId,
+          tokenUsage: { last: { totalTokens: used }, modelContextWindow: 100 }
+        })
+      expect(f.latest().contextUsage).toBeUndefined()
+      return { turn: { id: 'new-turn', status: 'inProgress', items: [] } }
+    })
+    await f.service.send('t1', '测试')
+    await vi.waitFor(() => expect(f.latest().contextUsage?.usedTokens).toBe(30))
+    f.service.disconnect()
+  })
+  it('原生已解决和断线立即结算问题，数字与字符串请求 ID 不串用', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    await f.service.openSession()
+    await f.service.send('t1', '测试')
+    const input = {
+      threadId: 't1',
+      turnId: 'r1',
+      questions: [{ id: 'q', question: '选择', options: [{ label: 'A' }] }]
+    }
+    f.notify('serverRequest/resolved', { requestId: 1 })
+    expect(await f.request('item/tool/requestUserInput', input, 1)).toEqual({ answers: {} })
+    const pending = f.request('item/tool/requestUserInput', input, '1')
+    const first = f.latest().questions![0].id
+    f.notify('serverRequest/resolved', { requestId: '1' })
+    expect(await pending).toEqual({ answers: {} })
+    expect(() =>
+      f.service.answerQuestion('t1', { requestId: first, cancelled: true, answers: [] })
+    ).toThrow()
+    const disconnected = f.request('item/tool/requestUserInput', input, 'next')
+    f.closed()
+    expect(await disconnected).toEqual({ answers: {} })
+    f.service.disconnect()
+  })
+  it('接收当前轮次用量并回答原生问题，旧轮次用量和过期回答不生效', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    await f.service.openSession()
+    await f.service.send('t1', '合成任务')
+    f.notify('thread/tokenUsage/updated', {
+      threadId: 't1',
+      turnId: 'r1',
+      tokenUsage: {
+        last: { totalTokens: 40 },
+        total: { totalTokens: 9000 },
+        modelContextWindow: 100
+      }
+    })
+    await vi.waitFor(() => expect(f.latest().contextUsage?.usedTokens).toBe(40))
+    f.notify('thread/tokenUsage/updated', {
+      threadId: 't1',
+      turnId: 'old',
+      tokenUsage: {
+        last: { totalTokens: 99 },
+        modelContextWindow: 100
+      }
+    })
+    const pending = f.request('item/tool/requestUserInput', {
+      threadId: 't1',
+      turnId: 'r1',
+      questions: [{ id: 'native-q', question: '选择方案', options: [{ label: 'A' }] }]
+    })
+    const question = f.latest().questions![0]
+    f.service.answerQuestion('t1', {
+      requestId: question.id,
+      cancelled: false,
+      answers: [{ questionId: 'q0', values: ['A'] }]
+    })
+    expect(await pending).toEqual({ answers: { 'native-q': { answers: ['A'] } } })
+    expect(f.latest().contextUsage?.usedTokens).toBe(40)
+    f.service.disconnect()
+  })
   it('压缩受理不结算；绑定原生压缩 turn，显示缓存满时仍等到原生完成', async () => {
     const f = fixture()
     await f.service.connect(f.directory)

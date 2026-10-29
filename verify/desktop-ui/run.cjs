@@ -35,6 +35,7 @@ async function main() {
     process.argv.includes('--coding-agents-only') ||
     process.argv.includes('--agent-actions-only') ||
     process.argv.includes('--agent-parallel-only') ||
+    process.argv.includes('--agent-basics-only') ||
     process.argv.includes('--agent-projects-only')
   )
     env.TOOLBOX_CODING_AGENT_VERIFY = '1'
@@ -119,6 +120,12 @@ async function main() {
       await verifyAgentUsage({ page, app, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`Token 统计验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--agent-basics-only')) {
+      await require('./agent-basics.cjs')({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`Agent 基础交互验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
     if (process.argv.includes('--agent-actions-only')) {
