@@ -8,6 +8,73 @@ function first(source: string) {
 }
 
 describe('parseMarkdown 块级解析', () => {
+  it('解析实际 Agent 回复中的四列表格，保留空单元格与行内语法', () => {
+    const blocks = parseMarkdown(
+      [
+        '## 现状',
+        '| 对象 | 字段 | 当前 | 目标 |',
+        '| --- | :--- | ---: | :---: |',
+        '| `purchase_order_item` | 单价含税 | 98.01 | **98.61** |',
+        '| | 单价不含税 | 97.04 | **97.63** |',
+        '',
+        '后续说明'
+      ].join('\r\n')
+    )
+    expect(blocks.map((block) => block.kind)).toEqual(['heading', 'table', 'paragraph'])
+    const table = blocks[1]
+    expect(table.kind).toBe('table')
+    if (table.kind !== 'table') throw new Error('未解析出表格')
+    expect(table.alignments).toEqual([null, 'left', 'right', 'center'])
+    expect(table.rows).toHaveLength(2)
+    expect(table.rows[0][0]).toEqual([{ kind: 'code', text: 'purchase_order_item' }])
+    expect(table.rows[0][3][0].kind).toBe('strong')
+    expect(table.rows[1][0]).toEqual([])
+  })
+
+  it('表格支持可选外侧竖线、转义竖线、代码中的竖线，并规范不等长行', () => {
+    const table = first(
+      '字段 | 值\n--- | ---\none\\|two | ``a`|b``\n缺少尾列 |\n额外 | 保留 | 丢弃\n转义代码 | `a\\|b`'
+    )
+    if (table.kind !== 'table') throw new Error('未解析出表格')
+    expect(table.rows[0][0]).toEqual([{ kind: 'text', text: 'one|two' }])
+    expect(table.rows[0][1]).toEqual([{ kind: 'code', text: 'a`|b' }])
+    expect(table.rows[1][1]).toEqual([])
+    expect(table.rows[2]).toHaveLength(2)
+    expect(table.rows[3][1]).toEqual([{ kind: 'code', text: 'a|b' }])
+  })
+
+  it('普通竖线、列数不符和流式尚未写完的分隔行不误判为表格', () => {
+    for (const source of ['a | b', 'a | b\n--- |', 'a | b\n| --'])
+      expect(parseMarkdown(source).some((block) => block.kind === 'table')).toBe(false)
+    expect(first('```text\na | b\n--- | ---\n```')).toEqual({
+      kind: 'code',
+      language: 'text',
+      text: 'a | b\n--- | ---'
+    })
+  })
+
+  it('只有匹配字符且足够长的代码围栏能闭合，流式代码保留语言和原文', () => {
+    expect(first('````markdown\n```sql\nSELECT 1;\n```\n````')).toEqual({
+      kind: 'code',
+      language: 'markdown',
+      text: '```sql\nSELECT 1;\n```'
+    })
+    expect(first('~~~sql\nSELECT 1;')).toEqual({
+      kind: 'code',
+      language: 'sql',
+      text: 'SELECT 1;'
+    })
+  })
+
+  it('任务标记仅在无序列表中解析，复选状态只读', () => {
+    const list = first('- [ ] 待核对\n- [x] **已完成**\n- [X] 也已完成')
+    if (list.kind !== 'list') throw new Error('未解析出列表')
+    expect(list.items[0][0]).toEqual({ kind: 'task', checked: false })
+    expect(list.items[1][0]).toEqual({ kind: 'task', checked: true })
+    expect(list.items[2][0]).toEqual({ kind: 'task', checked: true })
+    expect(first('[x] 普通文本')).toMatchObject({ kind: 'paragraph' })
+  })
+
   it('空内容解析出空数组', () => {
     expect(parseMarkdown('')).toEqual([])
     expect(parseMarkdown('   \n  ')).toEqual([])
@@ -70,6 +137,14 @@ describe('parseMarkdown 块级解析', () => {
 })
 
 describe('parseInline 行内解析', () => {
+  it('删除线和转义标记可与代码混排，代码内部不做格式转换', () => {
+    expect(parseInline('~~旧值~~ \\*文字\\* `~~原样~~`')).toEqual([
+      { kind: 'del', children: [{ kind: 'text', text: '旧值' }] },
+      { kind: 'text', text: ' *文字* ' },
+      { kind: 'code', text: '~~原样~~' }
+    ])
+  })
+
   it('解析粗体 / 斜体 / 行内代码', () => {
     expect(parseInline('**粗**')).toEqual([
       { kind: 'strong', children: [{ kind: 'text', text: '粗' }] }

@@ -1,9 +1,8 @@
 /**
  * 轻量 Markdown 渲染（桌面端）—— 把 `shared/markdown` 的 AST 渲染成 HTML。
  *
- * 与旧实现的差别只有一处：**解析与渲染分离**。
- * 解析在 `src/shared/markdown.ts`（两端共用），这里只负责把 AST 变成 HTML，
- * 因此手机端可以用同一份 AST 渲染成 RN 组件，语法表现不会分叉。
+ * 解析在 `src/shared/markdown.ts`，这里只负责把 AST 变成受控 HTML，
+ * 桌面消息和笔记使用相同的表格、任务列表与代码块排版。
  *
  * 安全策略不变：先对全部文本做 HTML 转义，再插入受控标签，
  * 因此原始 HTML 不会执行；HTTP(S) 外链正常渲染，对话专用的内部引用只生成本地按钮。
@@ -28,15 +27,32 @@ function renderBlock(block: MdBlock): string {
       return `<p>${renderInlines(block.children)}</p>`
     case 'list': {
       const tag = block.ordered ? 'ol' : 'ul'
-      const items = block.items.map((item) => `<li>${renderInlines(item)}</li>`).join('\n')
+      const items = block.items
+        .map(
+          (item) =>
+            `<li${item[0]?.kind === 'task' ? ' class="md-task-item"' : ''}>${renderInlines(item)}</li>`
+        )
+        .join('\n')
       return `<${tag}>\n${items}\n</${tag}>`
     }
     case 'code':
-      return `<pre><code>${escapeHtml(block.text)}</code></pre>`
+      return `<pre${block.language ? ` data-language="${escapeHtml(block.language)}"` : ''}><code>${escapeHtml(block.text)}</code></pre>`
     case 'quote':
       return `<blockquote>${renderInlines(block.children)}</blockquote>`
     case 'rule':
       return '<hr />'
+    case 'table': {
+      const row = (cells: MdInline[][], header = false): string => {
+        const tag = header ? 'th' : 'td'
+        return `<tr>${cells
+          .map((cell, column) => {
+            const alignment = block.alignments[column]
+            return `<${tag}${header ? ' scope="col"' : ''}${alignment ? ` class="md-align-${alignment}"` : ''}>${renderInlines(cell)}</${tag}>`
+          })
+          .join('')}</tr>`
+      }
+      return `<div class="md-table-scroll" role="region" aria-label="Markdown 表格" tabindex="0"><table><thead>${row(block.header, true)}</thead><tbody>${block.rows.map((cells) => row(cells)).join('\n')}</tbody></table></div>`
+    }
   }
 }
 
@@ -52,6 +68,10 @@ function renderInline(node: MdInline): string {
       return `<strong>${renderInlines(node.children)}</strong>`
     case 'em':
       return `<em>${renderInlines(node.children)}</em>`
+    case 'del':
+      return `<del>${renderInlines(node.children)}</del>`
+    case 'task':
+      return `<span class="md-task-marker" role="img" aria-label="${node.checked ? '已完成' : '未完成'}">${node.checked ? '☑' : '☐'}</span>`
     case 'code':
       return `<code>${escapeHtml(node.text)}</code>`
     case 'link':
