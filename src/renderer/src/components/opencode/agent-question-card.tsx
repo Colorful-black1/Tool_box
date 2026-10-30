@@ -35,19 +35,22 @@ export function AgentQuestionCard({ request }: { request: AgentQuestionRequest }
       }}
     >
       <strong>{request.title}</strong>
+      {request.description ? <p>{request.description}</p> : null}
       {request.questions.map((question) => (
         <fieldset key={question.id} disabled={sending}>
           <legend>
             {question.title}
             {question.multiple ? '（可多选）' : ''}
+            {question.required === false ? '（可选）' : ''}
           </legend>
           <p>{question.text}</p>
           <div className="agent-question-options">
             {question.options.map((option) => {
-              const selected = values[question.id]?.includes(option.label) ?? false
+              const value = option.value ?? option.label
+              const selected = values[question.id]?.includes(value) ?? false
               return (
                 <button
-                  key={option.label}
+                  key={value}
                   type="button"
                   className="btn-ghost"
                   aria-pressed={selected}
@@ -56,9 +59,9 @@ export function AgentQuestionCard({ request }: { request: AgentQuestionRequest }
                       ...old,
                       [question.id]: question.multiple
                         ? selected
-                          ? (old[question.id] ?? []).filter((value) => value !== option.label)
-                          : [...(old[question.id] ?? []), option.label]
-                        : [option.label]
+                          ? (old[question.id] ?? []).filter((item) => item !== value)
+                          : [...(old[question.id] ?? []), value]
+                        : [value]
                     }))
                     if (!question.multiple) setText((old) => ({ ...old, [question.id]: '' }))
                   }}
@@ -77,7 +80,16 @@ export function AgentQuestionCard({ request }: { request: AgentQuestionRequest }
               <input
                 className="field-input"
                 value={text[question.id] ?? ''}
-                maxLength={4000}
+                type={
+                  question.valueKind === 'number' || question.valueKind === 'integer'
+                    ? 'number'
+                    : 'text'
+                }
+                step={question.valueKind === 'integer' ? 1 : 'any'}
+                min={question.minimum}
+                max={question.maximum}
+                minLength={question.minLength}
+                maxLength={Math.min(question.maxLength ?? 4000, 4000)}
                 onChange={(event) => {
                   setText((old) => ({ ...old, [question.id]: event.target.value }))
                   if (!question.multiple) setValues((old) => ({ ...old, [question.id]: [] }))
@@ -91,7 +103,17 @@ export function AgentQuestionCard({ request }: { request: AgentQuestionRequest }
         <button
           type="submit"
           className="btn-gold"
-          disabled={sending || answers.some((answer) => !answer.values.length)}
+          disabled={
+            sending ||
+            answers.some((answer, index) => {
+              const question = request.questions[index]
+              return (
+                question.required !== false &&
+                !answer.values.length &&
+                !(question.valueKind === 'array' && (question.minItems ?? 0) === 0)
+              )
+            })
+          }
         >
           提交回答
         </button>

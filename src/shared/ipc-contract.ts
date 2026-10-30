@@ -58,6 +58,8 @@ export const IPC = {
   codingAgentExtensions: 'coding-agent:extensions:set',
   codingAgentStop: 'coding-agent:run:stop',
   codingAgentQuestion: 'coding-agent:question:answer',
+  codingAgentRevertPreview: 'coding-agent:history:preview-revert',
+  codingAgentRevert: 'coding-agent:history:revert',
   codingAgentApprove: 'coding-agent:run:approve',
   codingAgentDesktop: 'coding-agent:desktop:open',
   configGet: 'config:get',

@@ -35,7 +35,7 @@
 
 计划编写时 PATH 没有发现 `claude`、`dsh` 命令。实施时已定位批准的 Claude SDK 原生组件和 DSH Desktop 公开 CLI，完成无模型探针；未读取凭据内容。
 
-现有 `tasks/plan.md` / `tasks/todo.md` 已有 Claude P1D、DSH P5.1 待办。此方案调整其优先级，不自动恢复 Kimi 或历史自动团队计划。
+此方案将历史计划中的 Claude／DSH 提前实施，现已交付；当前任务索引见 `tasks/plan.md` / `tasks/todo.md`。不自动恢复 Kimi 或历史自动团队计划。
 
 ## 3. 能力划分与依赖
 

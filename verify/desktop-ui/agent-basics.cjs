@@ -213,6 +213,86 @@ module.exports = async function verifyAgentBasics({ page, app, check, capture })
     await page.getByRole('form', { name: question.title }).waitFor({ state: 'hidden' })
     await page.getByLabel('任务恢复操作').waitFor()
   })
+  await check('原生表单区分枚举值与标签，可选项不阻止提交，支持数字与布尔', async () => {
+    await draft().fill('表单合成请求')
+    await draft().press('Enter')
+    await button('停止任务').waitFor()
+    await metadata({
+      questions: [
+        {
+          id: 'typed-form',
+          kind: 'questions',
+          title: '原生类型表单',
+          questions: [
+            {
+              id: 'q0',
+              title: '颜色',
+              text: '选择颜色',
+              multiple: false,
+              allowText: false,
+              required: true,
+              options: [{ label: '金色', value: 'gold', description: '' }]
+            },
+            {
+              id: 'q1',
+              title: '数量',
+              text: '填写数量',
+              multiple: false,
+              allowText: true,
+              valueKind: 'integer',
+              minimum: 1,
+              maximum: 3,
+              required: true,
+              options: []
+            },
+            {
+              id: 'q2',
+              title: '启用',
+              text: '是否启用',
+              multiple: false,
+              allowText: false,
+              valueKind: 'boolean',
+              required: true,
+              options: [{ label: '否', value: 'false', description: '' }]
+            },
+            {
+              id: 'q3',
+              title: '备注',
+              text: '可省略',
+              multiple: false,
+              allowText: true,
+              required: false,
+              options: []
+            }
+          ]
+        }
+      ]
+    })
+    const form = page.getByRole('form', { name: '原生类型表单' })
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setContentSize(1024, 680)
+    )
+    const cardBounds = await form.boundingBox()
+    const stopBounds = await button('停止任务').boundingBox()
+    assert.ok(cardBounds && cardBounds.x >= 0 && cardBounds.x + cardBounds.width <= 1025)
+    assert.ok(stopBounds && stopBounds.y >= 0 && stopBounds.y + stopBounds.height <= 681)
+    await capture('agent-basics-form-paper-1024')
+    await form.getByRole('button', { name: '金色', exact: true }).click()
+    await form.getByRole('spinbutton').fill('2')
+    await form.getByRole('button', { name: '否', exact: true }).click()
+    assert.equal(await form.getByRole('button', { name: '提交回答' }).isEnabled(), true)
+    await form.getByRole('button', { name: '提交回答' }).click()
+    await form.waitFor({ state: 'hidden' })
+    const answer = (await calls()).filter((item) => item.action === 'answer').at(-1)
+    assert.deepEqual(
+      answer.answers.map((item) => item.values),
+      [['gold'], ['2'], ['false'], []]
+    )
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
+    )
+    await button('停止任务').click()
+  })
   await check('未知结果仅核对原生历史，不提供盲重试；草稿仍保留', async () => {
     await metadata({ status: 'error', outcome: 'unknown', questions: [] })
     const recovery = page.getByLabel('任务恢复操作')
@@ -253,5 +333,41 @@ module.exports = async function verifyAgentBasics({ page, app, check, capture })
     await history.waitFor({ state: 'hidden' })
     assert.equal((await calls()).filter((item) => item.action === 'resume').length, before + 1)
     assert.equal(await tabs.count(), 3)
+  })
+  await check('原生回退先预览，取消不改历史；确认后取回草稿且不自动发送', async () => {
+    await metadata({ canRevert: true })
+    const before = (await calls()).filter((item) => item.action === 'send').length
+    const original = await page
+      .locator('.message.user')
+      .first()
+      .locator('.message-content')
+      .innerText()
+    await draft().fill('回退前保留的草稿')
+    await button('回退到此处').first().click()
+    const dialog = page.locator('[data-app-dialog]')
+    await dialog.waitFor()
+    assert.ok((await dialog.innerText()).includes('文件改动保留'))
+    const bounds = await dialog.boundingBox()
+    assert.ok(
+      bounds &&
+        bounds.x >= 0 &&
+        bounds.x + bounds.width <= 1281 &&
+        bounds.y >= 0 &&
+        bounds.y + bounds.height <= 821
+    )
+    await capture('agent-basics-revert-preview-paper-1280')
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal((await calls()).filter((item) => item.action === 'revert').length, 0)
+    assert.equal(await page.locator('.message.user').count(), 1)
+    await withDialog(page, true, () => button('回退并编辑').first().click())
+    await page.waitForFunction(() => document.querySelectorAll('.message.user').length === 0)
+    assert.equal(await draft().inputValue(), original)
+    await page.getByRole('status').filter({ hasText: '已回退原生对话' }).waitFor()
+    assert.equal((await calls()).filter((item) => item.action === 'send').length, before)
+    await button('恢复原草稿').click()
+    assert.equal(await draft().inputValue(), '回退前保留的草稿')
+    assert.equal(await page.locator('.message.user').count(), 0)
+    assert.equal((await calls()).filter((item) => item.action === 'revert').length, 1)
   })
 }

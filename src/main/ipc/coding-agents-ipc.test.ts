@@ -46,6 +46,8 @@ function fixture() {
     allowDirectory: vi.fn(),
     approve: vi.fn(),
     answerQuestion: vi.fn(),
+    previewRevert: vi.fn(),
+    revert: vi.fn(),
     subscribe: vi.fn().mockReturnValue(disposeEvents),
     dispose: vi.fn(),
     releaseOwner: vi.fn()
@@ -67,6 +69,26 @@ beforeEach(() => {
 })
 
 describe('统一编程 IPC 安全边界', () => {
+  it('回退只接收本地消息和单次凭据，不接受任意原生 turn 或不合法输入', async () => {
+    const f = fixture()
+    const input = { runtimeId: 'codex', sessionId: 'session', messageId: 'display-message' }
+    await f.invoke(IPC.codingAgentRevertPreview, input)
+    expect(f.service.previewRevert).toHaveBeenCalledWith('codex', 1, 'session', 'display-message')
+    await f.invoke(IPC.codingAgentRevert, {
+      runtimeId: 'codex',
+      sessionId: 'session',
+      token: 'opaque'
+    })
+    expect(f.service.revert).toHaveBeenCalledWith('codex', 1, 'session', 'opaque')
+    for (const messageId of ['', 'x'.repeat(201), 2, undefined])
+      await expect(
+        f.invoke(IPC.codingAgentRevertPreview, { ...input, messageId })
+      ).rejects.toThrow()
+    await expect(
+      f.invoke(IPC.codingAgentRevert, { ...input, beforeTurnId: 'arbitrary' })
+    ).rejects.toThrow()
+    expect(f.service.revert).toHaveBeenCalledOnce()
+  })
   it('问答答复逐项校验并绑定发送窗口，不允许任意响应对象', async () => {
     const f = fixture()
     const input = {

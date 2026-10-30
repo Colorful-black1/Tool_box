@@ -1,3 +1,4 @@
+import { agentUserMessageText } from '../lib/agent-message-text'
 import { confirmDialog } from './dialog-store'
 import { create } from 'zustand'
 import { CODING_AGENT_NAMES } from '../../../shared/coding-agents'
@@ -40,7 +41,12 @@ interface RuntimeWorkspace {
   draft: string
   drafts: Record<string, string>
   transferred: boolean
-  recall: { previousDraft: string; previousTransferred: boolean; text: string } | null
+  recall: {
+    previousDraft: string
+    previousTransferred: boolean
+    text: string
+    reverted?: boolean
+  } | null
   recallSequence: number
   busy: boolean
   connecting: boolean
@@ -79,6 +85,7 @@ interface CodingAgentState extends RuntimeWorkspace {
   openDesktop(): Promise<void>
   setDraft(text: string): void
   recallMessage(id: string): Promise<void>
+  revertMessage(id: string, edit: boolean): Promise<void>
   cancelRecall(): Promise<void>
   selectSession(id: string): Promise<void>
   closeSession(id: string): boolean
@@ -716,6 +723,68 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         recallSequence: before.recallSequence + 1
       })
     },
+    revertMessage: (messageId, edit) =>
+      perform(async (id) => {
+        const before = read(id)
+        const session = before.activeId ? before.sessions[before.activeId] : undefined
+        if (!session?.canRevert || get().runs[id] || submissions.has(id))
+          throw new Error('请先结束当前任务，并选择支持回退的原生会话')
+        const preview = await codingAgentClient().previewRevert({
+          runtimeId: id,
+          sessionId: session.id,
+          messageId
+        })
+        const tail = preview.tail
+          .map(
+            (message, index) =>
+              `${index + 1}. ${message.role === 'user' ? '你' : 'Agent'}：${message.content}`
+          )
+          .join('\n')
+        const overwrite =
+          edit && before.draft.trim() ? '\n当前草稿将先保留在内存，可通过恢复原草稿取回。' : ''
+        if (
+          !(await confirmDialog(
+            `将从选中提问之前回退，移除该轮及之后的 ${preview.affectedTurns} 轮、${preview.affectedMessages} 条可见消息。\n文件改动保留，不会自动发送或恢复文件。${overwrite}\n\n受影响的消息（每条最多预览 160 字符）：\n${tail}`
+          ))
+        )
+          return
+        const current = read(id)
+        if (
+          get().runtimeId !== id ||
+          !unchanged(id, before) ||
+          current.activeId !== session.id ||
+          current.info?.connectionId !== session.connectionId ||
+          current.sessions[session.id]?.runId !== session.runId
+        )
+          throw new Error('会话、草稿或运行已变化，未执行回退，请重新预览')
+        const view = await codingAgentClient().revert({
+          runtimeId: id,
+          sessionId: session.id,
+          token: preview.token
+        })
+        upsert(view)
+        // 请求发出后仍可切换工作台或继续打字；返回只更新原会话，不覆盖后来的输入。
+        if (
+          !edit ||
+          get().runtimeId !== id ||
+          !unchanged(id, before) ||
+          read(id).activeId !== session.id
+        )
+          return
+        const text = agentUserMessageText(preview.originalText)
+        update(id, {
+          draft: text,
+          transferred: false,
+          drafts: { ...read(id).drafts, [draftKey(read(id))]: text },
+          recall: {
+            previousDraft: before.draft,
+            previousTransferred: before.transferred,
+            text,
+            reverted: true
+          },
+          recallSequence: before.recallSequence + 1
+        })
+      }),
     cancelRecall: async () => {
       const id = get().runtimeId
       const before = read(id)
@@ -723,7 +792,11 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       if (
         before.draft !== before.recall.text &&
         before.draft !== before.recall.previousDraft &&
-        !(await confirmDialog('取消取回会放弃本次编辑并恢复原草稿，是否继续？'))
+        !(await confirmDialog(
+          before.recall.reverted
+            ? '恢复原草稿会放弃本次编辑；已经回退的原生历史不会恢复，是否继续？'
+            : '取消取回会放弃本次编辑并恢复原草稿，是否继续？'
+        ))
       )
         return
       if (get().runtimeId !== id || !unchanged(id, before)) return

@@ -111,6 +111,8 @@ export interface OpenCodeSession {
   contextUsage?: import('./agent-session').AgentContextUsage
   timing?: import('./agent-session').AgentTurnTiming
   questions?: import('./agent-session').AgentQuestionRequest[]
+  canRevert?: boolean
+  historyRevision?: string
   messages: Array<{ id: string; role: ChatRole; content: string }>
   tools: Array<{ id: string; title: string; status: string }>
   options: OpenCodeOption[]

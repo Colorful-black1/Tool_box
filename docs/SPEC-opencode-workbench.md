@@ -1,6 +1,6 @@
 # OpenCode 工作台首版
 
-> 2026-10-23：当前交互以 [统一工作台](SPEC-coding-agent-workbench.md) 与 [易用性方案](PLAN-coding-agent-usability.md) 为准。
+> 2026-10-23：当前交互以 [统一工作台规格](SPEC-coding-agent-workbench.md) 为准。
 > 首次发送按需连接 / 新建，历史直接点选，恢复保留原生模式；连接细节收进设置，旧交接表单已取消。
 > 下文保留首版实现与历史修复记录；“读取历史 / 手动预建会话 / 打开后一律 Plan”等旧交互描述不再作为验收条件。
 

@@ -117,6 +117,81 @@ afterEach(() => {
 })
 
 describe('OpenCode 会话业务', () => {
+  it('声明受限 form 能力并原生答复，可选项省略，停止后拒绝旧答复', async () => {
+    const f = setup()
+    await f.service.connect(process.cwd())
+    const session = await f.service.openSession()
+    f.service.send(session.id, '合成请求')
+    const params = {
+      mode: 'form',
+      sessionId: session.id,
+      requestedSchema: {
+        type: 'object',
+        required: ['color'],
+        properties: {
+          color: { type: 'string', oneOf: [{ const: 'gold', title: '金色' }] },
+          note: { type: 'string' }
+        }
+      }
+    }
+    const pending = f.permission('elicitation/create', params)
+    const latest = () => f.events.filter((event) => event.kind === 'session').at(-1)!
+    const event = latest()
+    if (event.kind !== 'session') throw new Error('未发布问题')
+    f.service.answerQuestion(session.id, {
+      requestId: event.session.questions![0].id,
+      cancelled: false,
+      answers: [
+        { questionId: 'q0', values: ['gold'] },
+        { questionId: 'q1', values: [] }
+      ]
+    })
+    expect(await pending).toEqual({ action: 'accept', content: { color: 'gold' } })
+    expect(f.requests.find((item) => item.method === 'initialize')?.params).toMatchObject({
+      clientCapabilities: { elicitation: { form: {} } }
+    })
+    const stopped = f.permission('elicitation/create', params)
+    f.service.stop(session.id)
+    expect(await stopped).toEqual({ action: 'cancel' })
+    expect(() =>
+      f.service.answerQuestion(session.id, {
+        requestId: event.session.questions![0].id,
+        cancelled: true,
+        answers: []
+      })
+    ).toThrow('已结束')
+    f.finish()
+    f.service.disconnect()
+  })
+
+  it('秘密、未知 schema、其他会话表单不挂起任务，断线释放有效表单', async () => {
+    const f = setup()
+    await f.service.connect(process.cwd())
+    const session = await f.service.openSession()
+    f.service.send(session.id, '合成请求')
+    const params = {
+      mode: 'form',
+      sessionId: session.id,
+      requestedSchema: { type: 'object', properties: { answer: { type: 'string' } } }
+    }
+    expect(await f.permission('elicitation/create', { ...params, sessionId: 'other' })).toEqual({
+      action: 'cancel'
+    })
+    expect(
+      await f.permission('elicitation/create', {
+        ...params,
+        requestedSchema: { type: 'object', properties: { password: { type: 'string' } } }
+      })
+    ).toEqual({ action: 'decline' })
+    expect(await f.permission('elicitation/create', { ...params, mode: 'url' })).toEqual({
+      action: 'decline'
+    })
+    const pending = f.permission('elicitation/create', params)
+    f.disconnect()
+    expect(await pending).toEqual({ action: 'cancel' })
+    f.finish()
+    f.service.disconnect()
+  })
   it('提前缓存建会话响应前的命令；显示已满仍可压缩，不把摘要塞进显示缓存', async () => {
     const f = setup()
     await f.service.connect(process.cwd())

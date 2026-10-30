@@ -20,10 +20,13 @@ import {
   type CodingAgentSessionView,
   type CodingAgentWorkspaceResult
 } from '../../../shared/coding-agents'
+import type { CodingAgentRevertPreview } from '../../../shared/coding-agents'
+import type { NativeRevertPreview } from './adapter'
 import { IPC } from '../../../shared/ipc-contract'
 import { OpenCodeError } from '../opencode/opencode-error'
 import {
   CodingAgentError,
+  CodingAgentHistoryUnknownError,
   type CodingAgentAdapter,
   type NativeCodingEvent,
   type NativeCodingSession,
@@ -82,6 +85,19 @@ export class CodingAgentService {
   private readonly runtimes = new Map<CodingAgentId, RuntimeState>()
   private readonly listeners = new Set<(owner: number, event: CodingAgentEvent) => void>()
   private readonly active = new Map<CodingAgentId, ActiveRun>()
+  private readonly historyLocks = new Set<string>()
+  private readonly revertPreviews = new Map<
+    string,
+    {
+      owner: number
+      runtimeId: CodingAgentId
+      connectionId: string
+      sessionRef: string
+      runId: string | null
+      expiresAt: number
+      preview: NativeRevertPreview
+    }
+  >()
   private readonly files = new AgentProjectFiles()
   private readonly selectedDirectories = new Map<number, Map<string, string>>()
   private readonly catalogs = new Map<
@@ -605,6 +621,103 @@ export class CodingAgentService {
     state.adapter.answerQuestion(session.nativeSessionId, answer)
   }
 
+  previewRevert(
+    id: CodingAgentId,
+    owner: number,
+    ref: string,
+    messageId: string
+  ): Promise<CodingAgentRevertPreview> {
+    const state = this.connected(id, owner)
+    return this.operate(state, owner, true, async () => {
+      const session = this.session(state, ref)
+      this.requireIdleProject(session.directory)
+      if (
+        !session.canRevert ||
+        !state.adapter.previewRevert ||
+        !session.messages.some((message) => message.id === messageId && message.role === 'user')
+      )
+        throw new CodingAgentError('此消息没有可确认的原生回退能力')
+      const preview = await state.adapter.previewRevert(session.nativeSessionId, messageId)
+      if (this.connected(id, owner) !== state || session.connectionId !== state.info.connectionId)
+        throw new CodingAgentError('连接已变化，请重新预览')
+      this.requireIdleProject(session.directory)
+      for (const [key, entry] of this.revertPreviews)
+        if (entry.expiresAt < Date.now() || (entry.runtimeId === id && entry.sessionRef === ref))
+          this.revertPreviews.delete(key)
+      if (this.revertPreviews.size >= 40)
+        throw new CodingAgentError('待确认回退过多，请稍后重新预览')
+      const token = randomUUID()
+      this.revertPreviews.set(token, {
+        owner,
+        runtimeId: id,
+        connectionId: state.info.connectionId,
+        sessionRef: ref,
+        runId: session.runId,
+        expiresAt: Date.now() + 5 * 60_000,
+        preview
+      })
+      return {
+        token,
+        historyRevision: preview.revision,
+        affectedTurns: preview.affectedTurns,
+        affectedMessages: preview.affectedMessages,
+        tail: preview.tail,
+        originalText: preview.originalText
+      }
+    })
+  }
+
+  revert(
+    id: CodingAgentId,
+    owner: number,
+    ref: string,
+    token: string
+  ): Promise<CodingAgentSessionView> {
+    const state = this.connected(id, owner)
+    return this.operate(state, owner, true, async () => {
+      const session = this.session(state, ref)
+      const entry = this.revertPreviews.get(token)
+      if (
+        !entry ||
+        entry.owner !== owner ||
+        entry.runtimeId !== id ||
+        entry.sessionRef !== ref ||
+        entry.connectionId !== state.info.connectionId ||
+        entry.runId !== session.runId ||
+        entry.expiresAt < Date.now() ||
+        !state.adapter.revert
+      )
+        throw new CodingAgentError('回退预览已失效，请重新预览')
+      this.requireIdleProject(session.directory)
+      this.revertPreviews.delete(token)
+      const key = this.directoryKey(session.directory)
+      this.historyLocks.add(key)
+      try {
+        const raw = await state.adapter.revert(session.nativeSessionId, entry.preview)
+        if (!state.info.connected || entry.connectionId !== state.info.connectionId)
+          throw new CodingAgentError('连接已结束，请核对原生历史；未自动重试回退')
+        // 原历史的耗时与上下文均不再代表回退后的分支。
+        const previous = this.session(state, ref)
+        previous.timing = undefined
+        previous.contextUsage = undefined
+        previous.outcome = 'completed'
+        return this.upsert(state, raw, true)
+      } catch (error) {
+        if (error instanceof CodingAgentHistoryUnknownError) {
+          const current = this.session(state, ref)
+          current.status = state.info.connected ? 'error' : 'disconnected'
+          current.outcome = 'unknown'
+          current.canRevert = false
+          current.error = error.message
+          this.publishSession(state, current)
+        }
+        throw error
+      } finally {
+        this.historyLocks.delete(key)
+      }
+    })
+  }
+
   /** 旧 OpenCode IPC 同样遵守本运行时互斥及项目冲突检查。 */
   runLegacy<T>(owner: number, channel: string, action: () => T | Promise<T>): Promise<T> {
     const state = this.requireRuntime('opencode')
@@ -646,6 +759,8 @@ export class CodingAgentService {
   }
 
   releaseOwner(owner: number): void {
+    for (const [token, entry] of this.revertPreviews)
+      if (entry.owner === owner) this.revertPreviews.delete(token)
     this.selectedDirectories.delete(owner)
     this.files.release(`${owner}:`)
     for (const state of this.runtimes.values()) {
@@ -656,6 +771,8 @@ export class CodingAgentService {
   }
 
   dispose(): void {
+    this.revertPreviews.clear()
+    this.historyLocks.clear()
     this.listeners.clear()
     this.active.clear()
     for (const state of this.runtimes.values()) {
@@ -753,6 +870,8 @@ export class CodingAgentService {
   }
 
   private requireIdleProject(directory: string): void {
+    if (this.historyLocks.has(this.directoryKey(directory)))
+      throw new CodingAgentError('此项目正在回退原生历史，请稍候再发送')
     for (const run of this.active.values()) {
       if (this.directoryKey(run.directory) === this.directoryKey(directory))
         throw new CodingAgentError('请先等待或停止正在运行的相同项目任务')
@@ -788,6 +907,9 @@ export class CodingAgentService {
       }
       return
     }
+    const previous = state.sessions.get(event.session.id)
+    if (previous?.historyRevision && event.session.historyRevision !== previous.historyRevision)
+      return
     this.upsert(state, event.session)
   }
 

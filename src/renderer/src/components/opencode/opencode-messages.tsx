@@ -24,6 +24,8 @@ export function OpenCodeMessages({
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const transferMessage = useCodingAgentStore((state) => state.transferMessage)
   const recallMessage = useCodingAgentStore((state) => state.recallMessage)
+  const revertMessage = useCodingAgentStore((state) => state.revertMessage)
+  const busy = useCodingAgentStore((state) => state.busy)
   const targetId = runtimeId === 'opencode' ? 'codex' : 'opencode'
   const targetName = CODING_AGENT_NAMES[targetId]
   const id = session?.id
@@ -93,13 +95,39 @@ export function OpenCodeMessages({
                     复制
                   </button>
                   {message.role === 'user' ? (
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => void recallMessage(message.id)}
-                    >
-                      取回编辑
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => void recallMessage(message.id)}
+                      >
+                        取回编辑
+                      </button>
+                      {session.canRevert ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={
+                              busy || session.status === 'running' || session.status === 'stopping'
+                            }
+                            onClick={() => void revertMessage(message.id, false)}
+                          >
+                            回退到此处
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={
+                              busy || session.status === 'running' || session.status === 'stopping'
+                            }
+                            onClick={() => void revertMessage(message.id, true)}
+                          >
+                            回退并编辑
+                          </button>
+                        </>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <button

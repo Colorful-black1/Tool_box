@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { codexContextUsage } from './agent-session-metrics'
 import { AgentQuestions, nativeQuestions } from './agent-questions'
+import { nativeForm } from './agent-elicitation'
+import { codexRevertPreview, readCodexHistory } from './codex-history'
+import { inspectCodexRevert } from './codex-revert-capability'
+import type { NativeRevertPreview } from './adapter'
 import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
@@ -11,6 +15,7 @@ import type {
 import type { ToolboxStore } from '../chat-store/chat-store'
 import {
   CodingAgentError,
+  CodingAgentHistoryUnknownError,
   type CodingAgentAdapter,
   type NativeCodingEvent,
   type NativeCodingSession
@@ -53,6 +58,9 @@ export class CodexAdapter implements CodingAgentAdapter {
   private readonly questions = new AgentQuestions((session) => this.publish(session, true))
   private readonly questionRequests = new Map<string, string>()
   private readonly resolvedQuestions = new Set<string>()
+  private readonly userTurns = new Map<string, string>()
+  private readonly uncertainReverts = new Set<string>()
+  private revertSupported = false
   readonly id = 'codex' as const
   private peer: CodexPeer | null = null
   private generation = 0
@@ -146,6 +154,7 @@ export class CodexAdapter implements CodingAgentAdapter {
       const path = this.info.executablePath ?? (await this.inspect()).executablePath
       if (!path) throw new CodingAgentError('未发现 Codex 原生 CLI，请选择程序')
       const executable = await inspectCodexExecutable(path)
+      this.revertSupported = await inspectCodexRevert(executable.path)
       if (generation !== this.generation) throw new CodingAgentError('Codex 连接已取消')
       const peer = this.launch(
         executable.path,
@@ -241,8 +250,8 @@ export class CodexAdapter implements CodingAgentAdapter {
   async openSession(id?: string): Promise<NativeCodingSession> {
     const peer = this.requirePeer()
     if (this.run) throw new CodingAgentError('请先等待或停止当前任务')
-    if (id && this.sessions.has(id)) return structuredClone(this.sessions.get(id)!)
-    if (this.sessions.size >= 20) throw new CodingAgentError('当前连接已打开 20 个会话，请重新连接')
+    if (this.sessions.size >= 20 && (!id || !this.sessions.has(id)))
+      throw new CodingAgentError('当前连接已打开 20 个会话，请重新连接')
     if (id) {
       const read = codexObject(
         await peer.request('thread/read', { threadId: id, includeTurns: false })
@@ -301,6 +310,7 @@ export class CodexAdapter implements CodingAgentAdapter {
       ),
       error: ''
     }
+    session.canRevert = this.revertSupported && thread.historyMode === 'paginated'
     // 历史可读与后续执行分开：无法映射的策略保留原样，下一次发送前由用户明确选权限。
     session.options.find((item) => item.id === 'permission')!.currentValue =
       reusablePermission && permission ? permission : ''
@@ -312,9 +322,80 @@ export class CodexAdapter implements CodingAgentAdapter {
         if (Array.isArray(turn?.items))
           for (const item of turn.items.slice(-200)) applyCodexItem(session, item)
       }
-    this.sessions.set(nativeId, session)
-    this.publish(session, true)
-    return structuredClone(session)
+    const fresh =
+      id && thread.historyMode === 'paginated' ? (await this.readHistory(peer, session, true)).session : session
+    fresh.canRevert = session.canRevert
+    this.checkPeer(peer)
+    this.uncertainReverts.delete(nativeId)
+    this.sessions.set(nativeId, fresh)
+    this.publish(fresh, true)
+    return structuredClone(fresh)
+  }
+
+  private async readHistory(peer: CodexPeer, session: NativeCodingSession, recent = false) {
+    const history = await readCodexHistory(
+      peer,
+      session,
+      (thread) =>
+        thread.id === session.id && !thread.parentThreadId && this.sameDirectory(thread.cwd),
+      recent
+    )
+    this.checkPeer(peer)
+    return history
+  }
+
+  async previewRevert(id: string, messageId: string): Promise<NativeRevertPreview> {
+    const session = this.requireSession(id)
+    if (this.run || this.uncertainReverts.has(id))
+      throw new CodingAgentError('请先结束任务或核对回退结果，再重新预览')
+    if (!session.canRevert) throw new CodingAgentError('当前 Codex 会话没有可确认的分页回退能力')
+    return codexRevertPreview(
+      await this.readHistory(this.requirePeer(), session),
+      messageId,
+      this.userTurns.get(`${id}:${messageId}`)
+    )
+  }
+
+  async revert(id: string, preview: NativeRevertPreview): Promise<NativeCodingSession> {
+    const peer = this.requirePeer()
+    const session = this.requireSession(id)
+    if (this.run || this.uncertainReverts.has(id))
+      throw new CodingAgentError('请先结束任务或核对回退结果')
+    const history = await this.readHistory(peer, session)
+    const index = history.turns.findIndex((turn) => turn.id === preview.beforeTurnId)
+    if (history.revision !== preview.revision || index < 0)
+      throw new CodingAgentError('原生历史已变化，请重新预览回退范围')
+    this.uncertainReverts.add(id)
+    try {
+      await peer.request('thread/revert', { threadId: id, beforeTurnId: preview.beforeTurnId })
+      this.checkPeer(peer)
+      const fresh = await this.readHistory(peer, session)
+      if (
+        fresh.turns.length !== index ||
+        fresh.turns.some(
+          (turn, position) => turn.fingerprint !== history.turns[position].fingerprint
+        )
+      )
+        throw new CodingAgentError('回退后的原生历史与预览不一致')
+      // 成功回读前不更改显示；清理旧定时分片后整体替换权威历史。
+      const timer = this.updates.get(id)
+      if (timer) clearTimeout(timer)
+      this.updates.delete(id)
+      this.sessions.set(id, fresh.session)
+      this.uncertainReverts.delete(id)
+      for (const key of this.userTurns.keys())
+        if (key.startsWith(`${id}:`)) this.userTurns.delete(key)
+      console.info('[Codex] 对话回退已确认', { affectedTurns: preview.affectedTurns })
+      return structuredClone(fresh.session)
+    } catch {
+      // RPC 超时也可能已经生效；凭据已消费，保留旧显示并阻止盲重发，须显式核对历史。
+      session.status = 'error'
+      session.outcome = 'unknown'
+      session.canRevert = false
+      session.error = '回退结果尚未确认，请先核对原生历史；不会自动重试或恢复文件'
+      this.publish(session, true)
+      throw new CodingAgentHistoryUnknownError(session.error)
+    }
   }
 
   async setOption(id: string, optionId: string, value: string): Promise<NativeCodingSession> {
@@ -391,6 +472,8 @@ export class CodexAdapter implements CodingAgentAdapter {
   async compact(id: string): Promise<void> {
     const peer = this.requirePeer()
     const session = this.requireSession(id)
+    if (this.uncertainReverts.has(id))
+      throw new CodingAgentError('回退结果未知，请先核对原生历史再压缩')
     if (this.run) throw new CodingAgentError('Codex 已有正在执行的任务')
     let resolveReady!: (id: string | null) => void
     const ready = new Promise<string | null>((resolve) => {
@@ -432,6 +515,8 @@ export class CodexAdapter implements CodingAgentAdapter {
   async send(id: string, content: string, context?: NativeSendContext): Promise<void> {
     const peer = this.requirePeer()
     const session = this.requireSession(id)
+    if (this.uncertainReverts.has(id))
+      throw new CodingAgentError('回退结果未知，请先核对原生历史再发送')
     if (this.run) throw new CodingAgentError('Codex 已有正在执行的任务')
     if (!content.trim() || content.length > 50_000)
       throw new CodingAgentError('编程任务需在 1 至 50,000 字以内')
@@ -500,6 +585,7 @@ export class CodexAdapter implements CodingAgentAdapter {
       }
       if (this.run === run) {
         run.turnId = turnId
+        this.userTurns.set(`${id}:${clientId}`, turnId)
         run.resolveReady(turnId)
         const pending = run.pending.splice(0)
         for (const event of pending) this.notification(event.method, event.params)
@@ -637,7 +723,13 @@ export class CodexAdapter implements CodingAgentAdapter {
     raw: unknown,
     requestId?: number | string
   ): Promise<unknown> {
-    if (method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput') {
+    if (
+      method === 'item/tool/requestUserInput' ||
+      method === 'tool/requestUserInput' ||
+      method === 'mcpServer/elicitation/request'
+    ) {
+      const elicitation = method === 'mcpServer/elicitation/request'
+      const cancelled = elicitation ? { action: 'cancel' } : { answers: {} }
       const params = codexObject(raw)
       const run = this.run
       if (run && !run.turnId) await run.ready
@@ -646,14 +738,32 @@ export class CodexAdapter implements CodingAgentAdapter {
         this.run !== run ||
         run.session.status !== 'running' ||
         params?.threadId !== run.session.id ||
-        params?.turnId !== run.turnId ||
+        (params?.turnId !== run.turnId && !(elicitation && params?.turnId == null)) ||
         (requestId !== undefined && this.resolvedQuestions.has(`${typeof requestId}:${requestId}`))
       )
-        return { answers: {} }
-      const parsed = nativeQuestions(params.questions, 'codex')
+        return cancelled
+      let form: ReturnType<typeof nativeForm> | undefined
+      let parsed: ReturnType<typeof nativeQuestions>
+      try {
+        if (elicitation) {
+          if (params?.mode !== 'form') throw new CodingAgentError('此 MCP 表单需在原生客户端处理')
+          form = nativeForm(params.requestedSchema, params.message)
+          parsed = { questions: form.questions, keys: [] }
+        } else parsed = nativeQuestions(params?.questions, 'codex')
+      } catch (error) {
+        if (!elicitation) throw error
+        run.session.tools.push({
+          id: randomUUID(),
+          title: 'MCP 表单暂不支持或涉及秘密信息，请在原生客户端继续',
+          status: 'failed'
+        })
+        this.publish(run.session, true)
+        return { action: 'decline' }
+      }
       const pending = this.questions.ask(run.session, {
         kind: 'questions',
-        title: 'Codex 需要你回答',
+        title: elicitation ? 'Codex MCP 需要你回答' : 'Codex 需要你回答',
+        ...(form?.message ? { description: form.message } : {}),
         questions: parsed.questions
       })
       const local = run.session.questions?.at(-1)?.id
@@ -661,7 +771,8 @@ export class CodexAdapter implements CodingAgentAdapter {
       if (key !== undefined && local) this.questionRequests.set(key, local)
       try {
         const answer = await pending
-        if (answer.cancelled || this.run !== run) return { answers: {} }
+        if (answer.cancelled || this.run !== run) return cancelled
+        if (form) return { action: 'accept', content: form.content(answer) }
         return {
           answers: Object.fromEntries(
             parsed.keys.map((key, index) => [
@@ -771,6 +882,8 @@ export class CodexAdapter implements CodingAgentAdapter {
   }
 
   private disconnected(): void {
+    this.userTurns.clear()
+    this.uncertainReverts.clear()
     this.questions.cancel()
     this.questionRequests.clear()
     this.resolvedQuestions.clear()

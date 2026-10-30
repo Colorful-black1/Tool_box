@@ -6,6 +6,7 @@ module.exports = function codingAgentsFixture() {
   const addedHistory = new Map()
   const externalReplies = new Map()
   const active = new Map()
+  const revertPreviews = new Map()
   let nextDirectory = 'E:\\合成项目'
   let sequence = 0,
     revision = 0,
@@ -279,6 +280,45 @@ module.exports = function codingAgentsFixture() {
         }
       },
       approve: async () => undefined,
+      previewRevert: async ({ runtimeId: id, sessionId, messageId }) => {
+        const view = states.get(id).sessions.get(sessionId)
+        const index = view.messages.findIndex(
+          (message) => message.id === messageId && message.role === 'user'
+        )
+        if (!view.canRevert || index < 0 || active.has(id)) throw new Error('合成回退目标失效')
+        const token = `preview-${++sequence}`
+        revertPreviews.set(token, { id, sessionId, index, messages: JSON.stringify(view.messages) })
+        calls.push({ action: 'preview-revert', id })
+        return {
+          token,
+          historyRevision: 'fixture',
+          affectedTurns: view.messages.slice(index).filter((message) => message.role === 'user')
+            .length,
+          affectedMessages: view.messages.length - index,
+          tail: copy(view.messages.slice(index)),
+          originalText: view.messages[index].content
+        }
+      },
+      revert: async ({ runtimeId: id, sessionId, token }) => {
+        const preview = revertPreviews.get(token)
+        const view = states.get(id).sessions.get(sessionId)
+        if (
+          !preview ||
+          preview.id !== id ||
+          preview.sessionId !== sessionId ||
+          active.has(id) ||
+          preview.messages !== JSON.stringify(view.messages)
+        )
+          throw new Error('合成预览失效')
+        revertPreviews.delete(token)
+        calls.push({ action: 'revert', id })
+        view.messages = view.messages.slice(0, preview.index)
+        view.status = 'ready'
+        view.outcome = 'completed'
+        delete view.contextUsage
+        delete view.timing
+        return publish(view)
+      },
       answerQuestion: async ({ runtimeId: id, sessionId, ...answer }) => {
         const run = active.get(id)
         if (

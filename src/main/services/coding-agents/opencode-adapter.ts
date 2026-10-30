@@ -4,6 +4,7 @@ import type { OpenCodeService } from '../opencode/opencode-service'
 import type { CodingAgentAdapter, NativeCodingEvent, NativeCodingSession } from './adapter'
 import type { NativeSendContext } from './adapter'
 import type { NativeAgentCatalog } from './agent-action-catalog'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 
 /** 兼容包装：继续使用现有服务、子进程、Plan 和 Desktop 可见模型规则。 */
 export class OpenCodeAdapter implements CodingAgentAdapter {
@@ -80,6 +81,10 @@ export class OpenCodeAdapter implements CodingAgentAdapter {
 
   approve(id: string, approvalId: string, approved: boolean): void {
     this.service.approve(id, approvalId, approved)
+  }
+
+  answerQuestion(id: string, answer: AgentQuestionAnswer): void {
+    this.service.answerQuestion(id, answer)
   }
 
   subscribe(listener: (event: NativeCodingEvent) => void): () => void {

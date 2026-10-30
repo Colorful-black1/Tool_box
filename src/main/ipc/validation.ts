@@ -248,6 +248,22 @@ export function validateCodingAgentApproval(
   }
 }
 
+/** 回退只接收本地消息引用或预览凭据，不能提交任意原生轮次。 */
+export function validateCodingAgentRevert(
+  value: unknown,
+  preview: boolean
+): CodingAgentSessionInput & { reference: string } {
+  const input = codingAgentObject(value)
+  return {
+    ...validateCodingAgentSession(input),
+    reference: requireCodingAgentText(
+      preview ? input.messageId : input.token,
+      preview ? '消息引用' : '回退凭据',
+      200
+    )
+  }
+}
+
 /** 问答只接受有界文本，原生权限和回调对象不能经 IPC 传入。 */
 export function validateCodingAgentQuestion(
   value: unknown

@@ -7,6 +7,7 @@ import type {
 import type { NativeCodingSession } from './adapter'
 import { CodingAgentError } from './adapter'
 import { acpObject } from './stdio-rpc-connection'
+import { validateQuestionValues } from './agent-elicitation'
 
 /** 仅接受已知的小型问答结构，原生对象和回调留在主进程。 */
 export function nativeQuestions(
@@ -114,19 +115,9 @@ export class AgentQuestions {
       for (const question of entry.request.questions) {
         const item = answer.answers.filter((item) => item.questionId === question.id)
         const values = item[0]?.values
-        if (
-          item.length !== 1 ||
-          !values?.length ||
-          (!question.multiple && values.length !== 1) ||
-          new Set(values).size !== values.length ||
-          values.some(
-            (value) =>
-              !value.trim() ||
-              value.length > 4000 ||
-              (!question.allowText && !question.options.some((option) => option.label === value))
-          )
-        )
+        if (item.length !== 1 || !values)
           throw new CodingAgentError('答案不符合原生问题要求，请重新选择')
+        validateQuestionValues(question, values)
       }
     }
     entry.settle(answer)

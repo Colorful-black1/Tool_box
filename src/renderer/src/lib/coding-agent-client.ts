@@ -66,6 +66,8 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
       },
       selectProject: api.selectProject ?? unavailable,
       answerQuestion: api.answerQuestion ?? unavailable,
+      previewRevert: api.previewRevert ?? unavailable,
+      revert: api.revert ?? unavailable,
       attachWorkspace: api.attachWorkspace ?? unavailable,
       readCatalog: api.readCatalog ?? unavailable,
       searchFiles: api.searchFiles ?? unavailable,
@@ -74,6 +76,12 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
     }
   }
   return {
+    previewRevert: async () => {
+      throw new Error('请重启更新后的桌面应用以预览原生回退')
+    },
+    revert: async () => {
+      throw new Error('请重启更新后的桌面应用以回退原生对话')
+    },
     answerQuestion: async () => {
       throw new Error('请重启更新后的桌面应用以回答 Agent 问题')
     },

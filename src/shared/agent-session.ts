@@ -24,7 +24,16 @@ export interface AgentQuestion {
   text: string
   multiple: boolean
   allowText: boolean
-  options: Array<{ label: string; description: string }>
+  options: Array<{ label: string; description: string; value?: string }>
+  /** 表单字段约束由主进程解析并复核；旧问题缺省为必填文本。 */
+  required?: boolean
+  valueKind?: 'string' | 'number' | 'integer' | 'boolean' | 'array'
+  minimum?: number
+  maximum?: number
+  minLength?: number
+  maxLength?: number
+  minItems?: number
+  maxItems?: number
 }
 
 /** 请求仅在其所属原生运行期有效，id 是不透明的本地引用。 */
@@ -33,6 +42,7 @@ export interface AgentQuestionRequest {
   kind: 'questions' | 'plan'
   title: string
   questions: AgentQuestion[]
+  description?: string
 }
 
 /** 答案逐题校验；取消不等于选择默认选项。 */

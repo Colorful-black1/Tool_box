@@ -381,9 +381,13 @@ export function AgentComposer({
       {children}
       {recall ? (
         <div className="status-banner opencode-desktop-hint" role="status">
-          <span title="历史未修改；原有文件与 Skill 引用需重新选择">取回编辑 · 发送为新消息</span>
+          <span title="原有文件与 Skill 引用需重新选择">
+            {recall.reverted
+              ? '已回退原生对话 · 编辑后发送将继续新历史'
+              : '取回编辑 · 发送为新消息'}
+          </span>
           <button type="button" className="btn-ghost" onClick={() => void cancelRecall()}>
-            取消取回
+            {recall.reverted ? '恢复原草稿' : '取消取回'}
           </button>
         </div>
       ) : null}

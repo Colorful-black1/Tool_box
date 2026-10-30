@@ -14,6 +14,9 @@ import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
 import { readOpenCodeVisibleModels } from './opencode-models'
 import { nativeCommands, type NativeAgentCatalog } from '../coding-agents/agent-action-catalog'
 import type { NativeSendContext } from '../coding-agents/adapter'
+import type { AgentQuestionAnswer } from '../../../shared/agent-session'
+import { AgentQuestions } from '../coding-agents/agent-questions'
+import { nativeForm } from '../coding-agents/agent-elicitation'
 import { pathToFileURL } from 'node:url'
 import {
   detectOpenCodeExecutable,
@@ -32,6 +35,7 @@ export type OpenCodeLauncher = (...args: Parameters<typeof launchOpenCode>) => A
 
 /** 独立管理外部编程会话，不向 OpenCode 提供百宝箱内部工具或数据库。 */
 export class OpenCodeService {
+  private readonly questions = new AgentQuestions((session) => this.publish(session, true))
   private readonly compacting = new Set<string>()
   private readonly commandLists = new Map<string, NativeAgentCatalog['commands']>()
   private peer: AcpPeer | null = null
@@ -128,7 +132,7 @@ export class OpenCodeService {
       const handshake = acpObject(
         await peer.request('initialize', {
           protocolVersion: 1,
-          clientCapabilities: {},
+          clientCapabilities: { elicitation: { form: {} } },
           clientInfo: { name: 'tool-box', version: '0.3.0' }
         })
       )
@@ -410,6 +414,12 @@ export class OpenCodeService {
     pending.settle(allow)
   }
 
+  answerQuestion(id: string, answer: AgentQuestionAnswer): void {
+    const session = this.requireSession(id)
+    if (session.status !== 'running') throw new OpenCodeError('OpenCode 问题已结束')
+    this.questions.answer(id, answer)
+  }
+
   /** OpenCode 部分版本不推送名称；读取失败只保留现有名称，不影响会话或任务结果。 */
   private async refreshSessionTitles(peer: AcpPeer): Promise<void> {
     if (peer !== this.peer) return
@@ -470,6 +480,7 @@ export class OpenCodeService {
   }
 
   private permission(method: string, params: unknown): Promise<unknown> {
+    if (method === 'elicitation/create') return this.elicit(params)
     if (method !== 'session/request_permission')
       return Promise.reject(new OpenCodeError('不支持此客户端能力'))
     const body = acpObject(params)
@@ -505,8 +516,39 @@ export class OpenCodeService {
   }
 
   private clearApprovals(id: string): void {
+    this.questions.cancel(id)
     for (const pending of [...this.approvals.values()])
       if (pending.sessionId === id) pending.settle(false)
+  }
+
+  private async elicit(raw: unknown): Promise<unknown> {
+    const body = acpObject(raw)
+    const session = this.sessions.get(acpText(body?.sessionId, 200))
+    const peer = this.peer
+    if (!session || session.status !== 'running') return { action: 'cancel' }
+    let form: ReturnType<typeof nativeForm>
+    try {
+      if (body?.mode !== 'form') throw new OpenCodeError('此类表单需在原生客户端处理')
+      form = nativeForm(body.requestedSchema, body.message)
+    } catch {
+      // 不声明任意 schema 或秘密输入支持；明确拒绝后让原生按未回答流程继续。
+      session.tools.push({
+        id: randomUUID(),
+        title: '表单暂不支持或涉及秘密信息，请在原生客户端继续',
+        status: 'failed'
+      })
+      this.publish(session, true)
+      return { action: 'decline' }
+    }
+    const answer = await this.questions.ask(session, {
+      kind: 'questions',
+      title: 'OpenCode 需要你回答',
+      description: form.message,
+      questions: form.questions
+    })
+    if (answer.cancelled || peer !== this.peer || session.status !== 'running')
+      return { action: 'cancel' }
+    return { action: 'accept', content: form.content(answer) }
   }
 
   private disconnected(): void {

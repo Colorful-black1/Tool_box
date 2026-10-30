@@ -63,7 +63,9 @@ const api = {
   chooseDirectory: vi.fn(),
   selectProject: vi.fn(async ({ directory }: { directory: string }) => directory),
   stop: vi.fn(),
-  approve: vi.fn()
+  approve: vi.fn(),
+  previewRevert: vi.fn(),
+  revert: vi.fn()
 }
 
 beforeEach(() => {
@@ -122,6 +124,85 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('工作台按需准备与明确发送', () => {
+  it('原生回退取消不动正文，确认后只填草稿；恢复草稿不恢复历史', async () => {
+    const view = {
+      ...session('codex'),
+      canRevert: true,
+      messages: [{ id: 'u', role: 'user' as const, content: '原始提问' }]
+    }
+    store.setState({
+      runtimeId: 'codex',
+      info: info('codex'),
+      sessions: { [view.id]: view },
+      activeId: view.id,
+      draft: '旧草稿'
+    })
+    api.previewRevert.mockResolvedValue({
+      token: 'token',
+      historyRevision: 'h1',
+      affectedTurns: 1,
+      affectedMessages: 1,
+      tail: view.messages,
+      originalText: '原始提问'
+    })
+    api.revert.mockResolvedValue({ ...view, revision: 3, messages: [], historyRevision: 'h2' })
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
+    await store.getState().revertMessage('u', true)
+    expect(api.revert).not.toHaveBeenCalled()
+    expect(store.getState().draft).toBe('旧草稿')
+    vi.mocked(confirmDialog).mockResolvedValueOnce(true)
+    await store.getState().revertMessage('u', true)
+    expect(store.getState().draft).toBe('原始提问')
+    expect(store.getState().recall?.reverted).toBe(true)
+    expect(store.getState().sessions[view.id].messages).toEqual([])
+    expect(api.send).not.toHaveBeenCalled()
+    await store.getState().cancelRecall()
+    expect(store.getState().draft).toBe('旧草稿')
+    expect(store.getState().sessions[view.id].messages).toEqual([])
+  })
+
+  it('回退确认期间的新草稿使旧意图失效，返回期间的新输入也不会被覆盖', async () => {
+    const view = {
+      ...session('codex'),
+      canRevert: true,
+      messages: [{ id: 'u', role: 'user' as const, content: '原文' }]
+    }
+    store.setState({
+      runtimeId: 'codex',
+      info: info('codex'),
+      sessions: { [view.id]: view },
+      activeId: view.id
+    })
+    api.previewRevert.mockResolvedValue({
+      token: 'token',
+      affectedTurns: 1,
+      affectedMessages: 1,
+      tail: view.messages,
+      originalText: '原文'
+    })
+    vi.mocked(confirmDialog).mockImplementationOnce(async () => {
+      store.getState().setDraft('后来输入')
+      return true
+    })
+    await store.getState().revertMessage('u', true)
+    expect(api.revert).not.toHaveBeenCalled()
+    expect(store.getState().draft).toBe('后来输入')
+    vi.mocked(confirmDialog).mockResolvedValueOnce(true)
+    let finish!: (value: CodingAgentSessionView) => void
+    api.revert.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const reverting = store.getState().revertMessage('u', true)
+    await vi.waitFor(() => expect(api.revert).toHaveBeenCalledOnce())
+    store.getState().setDraft('请求期间的新输入')
+    finish({ ...view, revision: 3, messages: [] })
+    await reverting
+    expect(store.getState().draft).toBe('请求期间的新输入')
+    expect(store.getState().sessions[view.id].messages).toEqual([])
+  })
   it('关闭当前标签切换相邻会话并保存两份草稿，重新打开只激活缓存', async () => {
     const first = { ...session('opencode', 'first', 3), nativeSessionId: 'native-first' }
     const second = { ...session('opencode', 'second', 3), nativeSessionId: 'native-second' }

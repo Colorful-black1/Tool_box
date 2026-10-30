@@ -11,6 +11,7 @@ import {
   validateCodingAgentId,
   validateCodingAgentOption,
   validateCodingAgentQuestion,
+  validateCodingAgentRevert,
   validateCodingAgentSend,
   validateCodingAgentSession
 } from './validation'
@@ -156,6 +157,14 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
   handle(IPC.codingAgentQuestion, (owner, value) => {
     const input = validateCodingAgentQuestion(value)
     return service.answerQuestion(input.runtimeId, owner, input.sessionId, input)
+  })
+  handle(IPC.codingAgentRevertPreview, (owner, value) => {
+    const input = validateCodingAgentRevert(value, true)
+    return service.previewRevert(input.runtimeId, owner, input.sessionId, input.reference)
+  })
+  handle(IPC.codingAgentRevert, (owner, value) => {
+    const input = validateCodingAgentRevert(value, false)
+    return service.revert(input.runtimeId, owner, input.sessionId, input.reference)
   })
   handle(IPC.codingAgentDesktop, (_owner, value) => {
     if (validateCodingAgentId(value) !== 'opencode')

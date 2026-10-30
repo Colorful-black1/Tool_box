@@ -1,5 +1,57 @@
 # 编程 Agent 基础交互首批交付与边界
 
+## 2026-10-30 两个 P0 与文档清理
+
+用户要求清理过期文档，并先实施原生回退／编辑重发和剩余结构化表单。以下是当前增量；下方 2026-10-29 记录保留为历史证据，不代表这些能力仍未交付。实现完成后用户已授权提交，提交记录以 Git 历史为准；未推送、建分支或修改真实用户会话。
+
+### 当前行为与原因
+
+| 范围 | 已交付 | 边界 |
+| --- | --- | --- |
+| 原生能力门 | 所选 Codex CLI 只读导出 schema，确认 `thread/revert`、两个锚点参数、文件保留语义及分页接口；成功按可执行文件大小／修改时间缓存 | 旧版、未知 schema、探测失败和非分页历史均不开放回退，不从版本号猜能力 |
+| 真回退 | 用户消息“回退到此处”“回退并编辑”；完整有界分页快照、原生 turn 映射、全部受影响可见消息摘要、五分钟单次凭据、执行前复核、执行后权威回读 | 删除所选提问所在轮次及之后的原生对话；文件始终保留；同轮多条用户输入暂不开放单消息回退 |
+| 编辑后续接 | 确认回退并成功回读后取回原文、聚焦输入区；保留原草稿供恢复 | 不自动调用模型；用户再次发送才继续新历史；恢复草稿不会恢复已回退历史；引用需重新选择 |
+| 失败与竞态 | 历史变化拒绝执行；提交后失败／超时／回读不符显示未知并阻止盲重试，先核对原生历史；旧正文／上下文事件不能覆盖新历史 | 不先删 UI、不自动重发；不同 Agent 同项目在回退期间同样互斥；确认／返回期间的新草稿不被覆盖 |
+| 结构化表单 | OpenCode `elicitation/create` 和 Codex `mcpServer/elicitation/request` 的 form；文本、数值／整数、布尔、枚举／多选、可选字段、长度／范围／数量约束；保留选项原值 | 最多四字段、每字段十二选项；主进程复核并转换原生类型。空的必填数组按原生 minItems=0 返回 `[]`，可选空字段省略 |
+| 表单生命周期 | 复用现有问答卡片、答复 IPC、五分钟超时、取消／停止／断线清理；Codex 已解决请求使旧答案失效 | URL、秘密提示／字段、嵌套、正则、未知约束和复杂格式拒绝并提示回原生，不执行原生正则、不保存秘密答案、不打开 URL |
+
+需要这些改动的原因：普通“取回编辑”不能改变模型下一轮上下文；遗漏原生表单会让 Agent 在追问时中止或迫使用户切回原应用。用原生协议和受限视图补齐这两个缺口，保留原有运行时与草稿架构。
+
+### 文件与影响
+
+- 契约／桥接：`src/shared/agent-session.ts`、`coding-agents.ts`、`types.ts`、`bridge.ts`、`ipc-contract.ts`，以及 `src/preload/index.ts`、`src/main/ipc/{coding-agents-ipc,validation}.ts`。新增 `coding-agent:history:preview-revert`／`coding-agent:history:revert`，问题答复继续用原通道；可选字段兼容旧事件，旧 preload 明确提示重启。
+- 原生／服务：新增 `codex-history.ts`、`codex-revert-capability.ts`、`agent-elicitation.ts`，修改 Codex／OpenCode 适配器、OpenCodeService、AgentQuestions 和 CodingAgentService。原生轮次与回调留主进程，窗口／连接／会话／运行／项目校验继续收敛到服务层。
+- 界面：现有 `coding-agent-store.ts`、`coding-agent-client.ts`、用户消息操作、问答卡片与 composer；复用已有确认框、按钮和主题，没有新增样式或依赖。
+- 文档：删除 `PLAN-coding-agent-usability.md`、`SPEC-agent-role-handoff.md`，有效交互合并到 `SPEC-coding-agent-workbench.md`；重写 `tasks/plan.md` 为当前索引、移除 `tasks/todo.md` 旧交接／角色历史任务，保留后置选项与验证证据；更新 README、路线图、能力图和引用，修正收藏、Claude／DSH、项目并行等过期状态。
+- 数据库仍为桌面 v5；无新表、加密／主密钥／安全基线／依赖变更。手机暂停。已将其他任务的未提交内容与开工快照比较，相关内容未被本轮改动覆盖。
+
+### 最终验证
+
+本轮自身增量相对开工快照超过 500 有效代码行且修改文件超过 10 个；不计既有未提交改动。按顺序执行：
+
+- `npm run typecheck`：通过。
+- `npm run lint -- --ignore-pattern "mobile/**"`：通过，0 errors／0 warnings。
+- `npm run test -- --exclude "mobile/**"`：124 文件／944 项通过，无失败；仍有既有 Node `--localstorage-file` 无有效路径警告。
+- `npm run build`：通过，无构建告警或失败。
+- `node verify/desktop-ui/run.cjs --agent-basics-only --screenshots`：13 项通过，页面异常 0 项。目视核对 1280×820 三主题、1024×680 表单与停止入口、回退预览弹窗；取消不变更，确认只回退和填草稿，不自动发送。
+- `node verify/desktop-ui/run.cjs --agent-parallel-only`：6 项通过，页面异常 0 项；验证独立项目／草稿／回复、后台状态与分别停止。
+- PowerShell：`node verify/codex-revert-isolated.cjs (Get-Command codex).Source`：本机 Codex `0.164.0-alpha.11.1` 真实 CLI 通过。使用新建临时项目、独立 `CODEX_HOME` 和 127.0.0.1 的确定性 Responses 模型桩；生成两轮、回退第二轮，下一轮 HTTP 输入保留第一轮并排除第二轮，第二轮之后手动修改的文件保留，原生历史重读一致。没有访问用户账号、原生真实会话或外部模型；临时合成数据保留供排查。
+- `git diff --check` 与本地 Markdown 链接检查通过，删除文档没有留下失效引用。Git 可能提示 LF／CRLF 转换，不是内容失败。未运行 rebuild、手机命令或打包安装程序。
+
+### 剩余范围与风险
+
+提交前按开工快照拆分暂存，保留其他任务的 Skill／MCP 目录、Token 统计等未提交改动；回退取回原文所需的 `agent-message-text.ts` 公共函数及引用作为必要内部依赖纳入。上述 944 项属于完整工作区；另外从暂存索引导出独立快照，依次执行同样的 typecheck、桌面 lint、桌面 test 与 build，122 文件／923 项测试通过，类型／lint／构建均通过，仅保留既有 Node 告警；该快照的真实 Codex 本机模型桩回退验证也通过。没有用其他任务的修改填充本次提交。
+
+- Claude Code／Desktop、OpenCode ACP、DSH 的真回退仍未开放；Claude 链条／附带条目与恢复边界、OpenCode 服务 API 的文件语义需要分别验证。按消息分叉、执行／Diff、正文搜索与图片附件仍是后续批次，不能将本轮视作 C2／D／E 完成。
+- 回退完整快照上限为 100 轮、200 条可见消息、200,000 字符和 2 MiB 原生分页内容。超过范围时拒绝回退；恢复分页会话先显示最近一页，预览另读完整有界历史，不把局部展示当成完整上下文。
+- 原生接口没有跨独立进程的历史 CAS。Tool_box 内会复核完整快照并锁住同项目操作，但仍应避免在外部原生客户端同时修改同一会话；回读确认不等同于跨客户端事务隔离。
+- 真实 OpenCode／Codex MCP 服务触发表单、其他安装版本、实际供应商问答和 Desktop 互见仍需正常使用验收。合成传输／本机模型桩不代表这些真实服务已通过。
+- 只展示当前运行中的 Codex MCP form；无法关联当前运行的请求取消。秘密信息识别按明确提示／字段和受限 schema 拒绝，不将未知表单自动降级成通用输入。
+
+协议依据：[Codex 官方 App Server 说明](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md) 与所选本机 CLI 导出的 schema；[OpenCode 固定版本表单映射](https://github.com/anomalyco/opencode/blob/aaa0d7c8f6775a211185951a3f16fec840e648a4/packages/cli/src/acp/elicitation.ts)。运行时能力以实际本机协议与上述隔离行为验证为准。
+
+---
+
 日期：2026-10-29
 
 用户要求「先 commit，然后开始实现」。实施前基线已分功能提交：

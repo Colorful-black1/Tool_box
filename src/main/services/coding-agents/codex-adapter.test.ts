@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeCodingEvent, NativeCodingSession } from './adapter'
 import { CodexAdapter, type CodexPeer } from './codex-adapter'
 import { launchCodex } from './codex-runtime'
+import { inspectCodexRevert } from './codex-revert-capability'
+
+vi.mock('./codex-revert-capability', () => ({ inspectCodexRevert: vi.fn(async () => true) }))
 
 vi.mock('./codex-runtime', () => ({
   detectCodexExecutable: vi.fn(async () => '/fixture/codex.exe'),
@@ -100,6 +103,132 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(() => vi.useRealTimers())
 
 describe('Codex 原生 App Server 适配', () => {
+  it('分页标记不代表支持回退，schema 未确认时隐藏能力', async () => {
+    const f = fixture()
+    vi.mocked(inspectCodexRevert).mockResolvedValueOnce(false)
+    const original = f.calls.getMockImplementation()!
+    f.calls.mockImplementation(async (method, params) => {
+      const value = await original(method, params)
+      if (method === 'thread/start')
+        return { ...(value as object), thread: { ...f.thread(), historyMode: 'paginated' } }
+      return value
+    })
+    await f.service.connect(f.directory)
+    expect((await f.service.openSession()).canRevert).toBe(false)
+    await expect(f.service.previewRevert('t1', 'arbitrary')).rejects.toThrow('没有可确认')
+    f.service.disconnect()
+  })
+  it('MCP 表单按原生类型答复，已解决、断线和未知 schema 安全结算', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    await f.service.openSession()
+    await f.service.send('t1', '测试')
+    const params = {
+      threadId: 't1',
+      turnId: 'r1',
+      serverName: 'fixture',
+      mode: 'form',
+      message: '请选择',
+      requestedSchema: {
+        type: 'object',
+        required: ['enabled'],
+        properties: { enabled: { type: 'boolean' } }
+      }
+    }
+    const pending = f.request('mcpServer/elicitation/request', params, 'mcp-one')
+    const id = f.latest().questions![0].id
+    f.service.answerQuestion('t1', {
+      requestId: id,
+      cancelled: false,
+      answers: [{ questionId: 'q0', values: ['false'] }]
+    })
+    expect(await pending).toEqual({ action: 'accept', content: { enabled: false } })
+    const resolved = f.request('mcpServer/elicitation/request', params, 'mcp-two')
+    f.notify('serverRequest/resolved', { requestId: 'mcp-two' })
+    expect(await resolved).toEqual({ action: 'cancel' })
+    expect(
+      await f.request('mcpServer/elicitation/request', {
+        ...params,
+        mode: 'url',
+        url: 'https://example.invalid'
+      })
+    ).toEqual({ action: 'decline' })
+    expect(
+      await f.request('mcpServer/elicitation/request', { ...params, threadId: 'foreign' })
+    ).toEqual({ action: 'cancel' })
+    const disconnected = f.request(
+      'mcpServer/elicitation/request',
+      { ...params, turnId: null },
+      'mcp-three'
+    )
+    f.closed()
+    expect(await disconnected).toEqual({ action: 'cancel' })
+    f.service.disconnect()
+  })
+
+  it('完整分页预览和原生回退后回读，历史变化或未知结果不盲重试', async () => {
+    const f = fixture()
+    const original = f.calls.getMockImplementation()!
+    let turns = [1, 2].map((i) => ({
+      id: `turn-${i}`,
+      status: 'completed',
+      items: [
+        { id: `user-${i}`, type: 'userMessage', content: [{ type: 'text', text: `问题${i}` }] },
+        { id: `answer-${i}`, type: 'agentMessage', text: `回答${i}` }
+      ]
+    }))
+    let fail = false
+    f.calls.mockImplementation(async (method, params) => {
+      if (method === 'thread/start' || method === 'thread/resume') {
+        const result = (await original(method, params)) as Record<string, unknown>
+        return { ...result, thread: { ...f.thread(), historyMode: 'paginated' } }
+      }
+      if (method === 'thread/read') return { thread: { ...f.thread(), historyMode: 'paginated' } }
+      if (method === 'thread/turns/list') {
+        const cursor = (params as { cursor?: string }).cursor
+        return {
+          data: cursor ? turns.slice(1) : turns.slice(0, 1),
+          nextCursor: !cursor && turns.length > 1 ? 'next' : null
+        }
+      }
+      if (method === 'thread/revert') {
+        if (fail) throw new Error('unknown-result')
+        turns = turns.slice(
+          0,
+          turns.findIndex((turn) => turn.id === (params as { beforeTurnId: string }).beforeTurnId)
+        )
+        return { thread: { ...f.thread(), historyMode: 'paginated' } }
+      }
+      return original(method, params)
+    })
+    await f.service.connect(f.directory)
+    await f.service.openSession('t1')
+    const preview = await f.service.previewRevert('t1', 'user-2')
+    expect(preview).toMatchObject({
+      beforeTurnId: 'turn-2',
+      affectedTurns: 1,
+      affectedMessages: 2,
+      originalText: '问题2'
+    })
+    const fresh = await f.service.revert('t1', preview)
+    expect(fresh.messages.map((message) => message.content)).toEqual(['问题1', '回答1'])
+    expect(f.calls).toHaveBeenCalledWith('thread/revert', {
+      threadId: 't1',
+      beforeTurnId: 'turn-2'
+    })
+    const stale = await f.service.previewRevert('t1', 'user-1')
+    turns[0].items[1].text = '已变化'
+    await expect(f.service.revert('t1', stale)).rejects.toThrow('历史已变化')
+    const next = await f.service.previewRevert('t1', 'user-1')
+    fail = true
+    await expect(f.service.revert('t1', next)).rejects.toThrow('尚未确认')
+    await expect(f.service.send('t1', '不应发送')).rejects.toThrow('结果未知')
+    expect(f.latest().messages).toHaveLength(2)
+    expect(f.calls.mock.calls.filter(([method]) => method === 'thread/revert')).toHaveLength(2)
+    await f.service.openSession('t1')
+    await f.service.previewRevert('t1', 'user-1')
+    f.service.disconnect()
+  })
   it('turn/start 响应前的旧用量不认领新运行，当前用量按响应 ID 消费', async () => {
     const f = fixture()
     await f.service.connect(f.directory)

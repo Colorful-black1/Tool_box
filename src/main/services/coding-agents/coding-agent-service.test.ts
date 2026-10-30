@@ -4,6 +4,7 @@ import { IPC } from '../../../shared/ipc-contract'
 import { CodingAgentService, unavailableRuntime } from './coding-agent-service'
 import { AgentProjectMemory } from './agent-project-memory'
 import type { CodingAgentAdapter, NativeCodingEvent, NativeCodingSession } from './adapter'
+import { CodingAgentHistoryUnknownError } from './adapter'
 
 function fixture(id: CodingAgentId) {
   const listeners = new Set<(event: NativeCodingEvent) => void>()
@@ -56,6 +57,125 @@ function fixture(id: CodingAgentId) {
 }
 
 describe('统一编程运行时边界', () => {
+  it('回退预览绑定窗口、连接、会话与运行；凭据消费一次，回读替换正文', async () => {
+    const f = fixture('codex')
+    f.native.canRevert = true
+    f.native.messages = [{ id: 'u', role: 'user', content: '问题' }]
+    f.adapter.previewRevert = vi.fn(async () => ({
+      revision: 'revision',
+      beforeTurnId: 'turn',
+      affectedTurns: 1,
+      affectedMessages: 1,
+      tail: [{ role: 'user' as const, content: '问题' }],
+      originalText: '问题'
+    }))
+    f.adapter.revert = vi.fn(async () => ({
+      ...structuredClone(f.native),
+      messages: [],
+      historyRevision: 'fresh'
+    }))
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    const session = await service.openSession('codex', 1)
+    expect(() => service.previewRevert('codex', 2, session.id, 'u')).toThrow('另一个窗口')
+    const preview = await service.previewRevert('codex', 1, session.id, 'u')
+    expect(preview).not.toHaveProperty('beforeTurnId')
+    await expect(service.revert('codex', 1, 'other-session', preview.token)).rejects.toThrow('失效')
+    const fresh = await service.revert('codex', 1, session.id, preview.token)
+    expect(fresh.messages).toEqual([])
+    expect(fresh.historyRevision).toBe('fresh')
+    let latest = fresh
+    service.subscribe((_owner, event) => {
+      if (event.kind === 'session') latest = event.session
+    })
+    f.emit({
+      ...f.native,
+      contextUsage: {
+        usedTokens: 99,
+        windowTokens: 100,
+        source: 'codex',
+        approximate: false,
+        measuredAt: 99,
+        windowKind: 'context'
+      }
+    })
+    expect(latest.messages).toEqual([])
+    expect(latest.contextUsage).toBeUndefined()
+    await expect(service.revert('codex', 1, session.id, preview.token)).rejects.toThrow('失效')
+    expect(f.adapter.revert).toHaveBeenCalledOnce()
+    service.dispose()
+  })
+
+  it('回退结果未知必须显示核对状态，不能被已结算事件保护吞掉', async () => {
+    const f = fixture('codex')
+    f.native.canRevert = true
+    f.native.messages = [{ id: 'u', role: 'user', content: '问题' }]
+    f.adapter.previewRevert = vi.fn(async () => ({
+      revision: 'h1',
+      beforeTurnId: 't',
+      affectedTurns: 1,
+      affectedMessages: 1,
+      tail: [],
+      originalText: '问题'
+    }))
+    f.adapter.revert = vi.fn(async () => {
+      throw new CodingAgentHistoryUnknownError('请核对原生历史')
+    })
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    const session = await service.openSession('codex', 1)
+    const preview = await service.previewRevert('codex', 1, session.id, 'u')
+    let latest = session
+    service.subscribe((_owner, event) => {
+      if (event.kind === 'session') latest = event.session
+    })
+    await expect(service.revert('codex', 1, session.id, preview.token)).rejects.toThrow('核对')
+    expect(latest).toMatchObject({
+      status: 'error',
+      outcome: 'unknown',
+      canRevert: false,
+      messages: session.messages
+    })
+    service.dispose()
+  })
+
+  it('新运行使旧预览失效；回退期间阻止另一 Agent 写同项目', async () => {
+    const f = fixture('codex'),
+      other = fixture('opencode')
+    f.native.canRevert = true
+    f.native.messages = [{ id: 'u', role: 'user', content: '问题' }]
+    f.adapter.previewRevert = vi.fn(async () => ({
+      revision: 'revision',
+      beforeTurnId: 'turn',
+      affectedTurns: 1,
+      affectedMessages: 1,
+      tail: [],
+      originalText: '问题'
+    }))
+    let finish!: (session: NativeCodingSession) => void
+    f.adapter.revert = vi.fn(
+      () =>
+        new Promise<NativeCodingSession>((resolve) => {
+          finish = resolve
+        })
+    )
+    const service = new CodingAgentService([f.adapter, other.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    await service.connect('opencode', 1, '/fixture/project')
+    const session = await service.openSession('codex', 1)
+    const second = await service.openSession('opencode', 1)
+    const stale = await service.previewRevert('codex', 1, session.id, 'u')
+    await service.send('codex', 1, session.id, '新运行')
+    await service.stop('codex', 1, session.id)
+    await expect(service.revert('codex', 1, session.id, stale.token)).rejects.toThrow('失效')
+    const preview = await service.previewRevert('codex', 1, session.id, 'u')
+    const reverting = service.revert('codex', 1, session.id, preview.token)
+    await vi.waitFor(() => expect(f.adapter.revert).toHaveBeenCalledOnce())
+    await expect(service.send('opencode', 1, second.id, '冲突任务')).rejects.toThrow('正在回退')
+    finish({ ...f.native, messages: [] })
+    await reverting
+    service.dispose()
+  })
   it('重新读取原生历史未返回新用量时，保留旧快照并标为失效', async () => {
     const f = fixture('codex')
     f.native.contextUsage = {

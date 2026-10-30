@@ -63,7 +63,9 @@ import type {
   CodingAgentSessionView,
   CodingAgentSessionSummary,
   CodingAgentSessionInput,
-  CodingAgentWorkspaceResult
+  CodingAgentWorkspaceResult,
+  CodingAgentRevertInput,
+  CodingAgentRevertPreview
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
@@ -125,6 +127,8 @@ export interface ToolboxBridge {
     }): Promise<void>
     stop(input: CodingAgentSessionInput): Promise<void>
     answerQuestion(input: CodingAgentSessionInput & AgentQuestionAnswer): Promise<void>
+    previewRevert(input: CodingAgentRevertInput): Promise<CodingAgentRevertPreview>
+    revert(input: CodingAgentSessionInput & { token: string }): Promise<CodingAgentSessionView>
     approve(
       input: CodingAgentSessionInput & { approvalId: string; approved: boolean }
     ): Promise<void>

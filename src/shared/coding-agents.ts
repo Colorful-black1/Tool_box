@@ -84,6 +84,9 @@ export interface CodingAgentSessionView {
   contextUsage?: AgentContextUsage
   timing?: AgentTurnTiming
   questions?: AgentQuestionRequest[]
+  /** 只在原生分页历史支持对话回退时启用；不包含文件恢复。 */
+  canRevert?: boolean
+  historyRevision?: string
   messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>
   tools: Array<{ id: string; title: string; status: string }>
   options: CodingAgentOption[]
@@ -113,4 +116,19 @@ export type CodingAgentEvent =
 export interface CodingAgentSessionInput {
   runtimeId: CodingAgentId
   sessionId: string
+}
+
+/** 预览凭据只在原窗口、连接、会话和当前历史有效，执行后即消费。 */
+export interface CodingAgentRevertPreview {
+  token: string
+  historyRevision: string
+  affectedTurns: number
+  affectedMessages: number
+  tail: Array<{ role: 'user' | 'assistant'; content: string }>
+  originalText: string
+}
+
+/** messageId 是当前显示消息的本地引用，由适配器映射到原生轮次。 */
+export interface CodingAgentRevertInput extends CodingAgentSessionInput {
+  messageId: string
 }

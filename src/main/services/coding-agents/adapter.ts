@@ -15,6 +15,16 @@ export interface NativeSendContext {
   command?: boolean
 }
 
+/** 原生轮次锚点与完整历史摘要仅留主进程，不接受 renderer 提交。 */
+export interface NativeRevertPreview {
+  revision: string
+  beforeTurnId: string
+  affectedTurns: number
+  affectedMessages: number
+  tail: Array<{ role: 'user' | 'assistant'; content: string }>
+  originalText: string
+}
+
 /** 适配器使用原生 ID；本地引用、连接所有权和顶层运行由统一服务管理。 */
 export type NativeCodingSession = Omit<
   CodingAgentSessionView,
@@ -46,8 +56,13 @@ export interface CodingAgentAdapter {
   stop(id: string): void | Promise<void>
   approve(id: string, approvalId: string, approved: boolean): void
   answerQuestion?(id: string, answer: AgentQuestionAnswer): void
+  previewRevert?(id: string, messageId: string): Promise<NativeRevertPreview>
+  revert?(id: string, preview: NativeRevertPreview): Promise<NativeCodingSession>
   subscribe(listener: (event: NativeCodingEvent) => void): () => void
 }
 
 /** 只允许由本项目创建的可读文案跨 IPC，不透传第三方错误原文。 */
 export class CodingAgentError extends Error {}
+
+/** 历史变更已提交但结果无法确认，必须读取权威历史后才能继续。 */
+export class CodingAgentHistoryUnknownError extends CodingAgentError {}
