@@ -32,6 +32,7 @@ import { resolveChatModels } from '../../../shared/model-list'
 import type { UsageQuery } from '../../../shared/agent-usage'
 
 export type AppView =
+  | 'commands'
   | 'agent-usage'
   | 'opencode'
   | 'chat'

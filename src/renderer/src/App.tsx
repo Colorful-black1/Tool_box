@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { JSX } from 'react'
 import { TodosPage } from './components/todos/todos-page'
+import { CommandsPage } from './components/commands/commands-page'
 import { useTodoStore } from './stores/todo-store'
 import { AppDialog } from './components/app-dialog'
 
@@ -32,6 +33,7 @@ import { usePromptPolishStore } from './stores/prompt-polish-store'
 import { usePasswordAiStore } from './stores/password-ai-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
+  commands: { title: '命令速查', subtitle: 'COMMANDS · 开发常用命令' },
   'agent-usage': { title: 'Token 统计', subtitle: 'USAGE · 本机 Agent 用量' },
   opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
@@ -53,6 +55,7 @@ const RAIL_ITEMS: RailNode[] = [
     children: [
       { view: 'opencode', label: '编程 Agent', icon: 'code' },
       { view: 'agent-usage', label: 'Token 统计', icon: 'stats' },
+      { view: 'commands', label: '命令速查', icon: 'code' },
       { view: 'tools', label: '工具', icon: 'tool' }
     ]
   },
@@ -265,6 +268,7 @@ export default function App(): JSX.Element {
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
                 {view === 'todos' ? <TodosPage /> : null}
+                {view === 'commands' ? <CommandsPage /> : null}
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}
                 {view === 'agent-usage' ? <AgentUsagePage /> : null}

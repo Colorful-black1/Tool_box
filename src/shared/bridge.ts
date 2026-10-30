@@ -67,8 +67,19 @@ import type {
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
+import type {
+  DeveloperCommandInput,
+  DeveloperCommandSnapshot,
+  DeveloperCommandToggle
+} from './developer-commands'
 
 export interface ToolboxBridge {
+  developerCommands: {
+    read(): Promise<DeveloperCommandSnapshot>
+    save(input: DeveloperCommandInput): Promise<DeveloperCommandSnapshot>
+    setFavorite(input: DeveloperCommandToggle): Promise<DeveloperCommandSnapshot>
+    setArchived(input: DeveloperCommandToggle): Promise<DeveloperCommandSnapshot>
+  }
   todos: {
     list(query: TodoQuery): Promise<TodoSnapshot>
     save(input: TodoInput): Promise<TodoView>

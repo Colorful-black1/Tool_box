@@ -17,6 +17,7 @@ const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
 const verifyDeveloperUtilities = require('./developer-utilities.cjs')
+const { verifyDeveloperCommands, verifyDeveloperCommandsRestart } = require('./developer-commands.cjs')
 const { verifyToolExpansion, verifyTodoRestart } = require('./tool-expansion.cjs')
 const { verifyConvenience, verifyConvenienceAfterRestart } = require('./desktop-convenience.cjs')
 const { verifyToolNavigation, verifyToolNavigationAfterRestart } = require('./tool-navigation.cjs')
@@ -78,6 +79,19 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--commands-only')) {
+      await verifyDeveloperCommands({ page, app, check, capture })
+      await check('命令库完整重启后恢复个人记录与收藏', async () => {
+        await app.close()
+        app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
+        const restarted = await app.firstWindow()
+        restarted.on('pageerror', (error) => errors.push(error.message))
+        await verifyDeveloperCommandsRestart(restarted)
+      })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`命令速查验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--chat-tools-only')) {
       await verifyChatTools({ page, app, check, capture })
       assert.deepEqual(errors, [])

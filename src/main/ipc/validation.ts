@@ -1,4 +1,8 @@
 import { APP_THEMES } from '../../shared/appearance'
+import {
+  parseDeveloperCommandInput,
+  parseDeveloperCommandToggle
+} from '../../shared/developer-command-validation'
 import type { TodoInput, TodoQuery } from '../../shared/types'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
@@ -18,6 +22,16 @@ import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
 import { parseAgentDraftDocument } from '../../shared/agent-drafts'
 import type { AgentDraftDocument, AgentDraftSaveInput } from '../../shared/agent-drafts'
 import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
+
+/** 专用 IPC 校验入口，正文不能经 requireString 去除首尾空白。 */
+export const validateDeveloperCommandInput = parseDeveloperCommandInput
+export const validateDeveloperCommandToggle = parseDeveloperCommandToggle
+
+/** 剪贴板写入保留原文，命令缩进和结尾换行不能被字符串通用校验裁掉。 */
+export function validateClipboardText(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('复制内容必须是字符串')
+  return value
+}
 
 /** 统计参数独立校验，不复用只包含两个已接入运行时的枚举。 */
 export function validateUsageClient(value: unknown): UsageClient {

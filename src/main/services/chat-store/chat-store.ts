@@ -169,6 +169,19 @@ export class ToolboxStore {
     return next
   }
 
+  /** 命令库使用独立记录，不通过阅读／外观配置覆盖。 */
+  commandLibraryGet(): string | null {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get('developer_commands_v1') as
+      { value: string } | undefined
+    return row?.value ?? null
+  }
+
+  commandLibrarySet(value: string): void {
+    this.db.prepare(
+      'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    ).run('developer_commands_v1', value)
+  }
+
   /** 独立 kv 记录仅接受密文，不经普通 config 接口返回。 */
   agentDraftCipherGet(): string | null {
     const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get('agent_drafts_v1') as

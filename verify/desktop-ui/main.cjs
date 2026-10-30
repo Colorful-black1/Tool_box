@@ -16,6 +16,7 @@ const bundle = buildSync({
   export { AgentDraftService } from './src/main/services/coding-agents/agent-draft-service'
   export { AgentDraftQuitFlush, registerAgentDraftsIpc } from './src/main/ipc/agent-drafts-ipc'
   export { registerTodosIpc } from './src/main/ipc/todos-ipc'
+  export { registerDeveloperCommandsIpc } from './src/main/ipc/developer-commands-ipc'
   export { TodoService } from './src/main/services/todo-service'
   export { createAgentToolSet } from './src/main/services/agent/tools'
   export { buildLangChainTools } from './src/main/services/agent/tool-registry'
@@ -92,6 +93,17 @@ app.whenReady().then(() => {
   registerAgentDraftsIpc(drafts, quitFlush)
   const todos = new compiled.exports.TodoService(store)
   compiled.exports.registerTodosIpc(store, todos)
+  compiled.exports.registerDeveloperCommandsIpc(store)
+  let failCommandSave = false
+  const commandSave = store.commandLibrarySet.bind(store)
+  store.commandLibrarySet = (value) => {
+    if (failCommandSave) {
+      failCommandSave = false
+      throw new Error('合成命令保存失败')
+    }
+    commandSave(value)
+  }
+  ipcMain.handle('verify:commands:fail-save', () => { failCommandSave = true })
   if (process.env.TOOLBOX_CHAT_TOOLS_VERIFY === '1')
     require('./chat-tools-fixture.cjs')(compiled.exports, store, todos)
   ipcMain.handle('verify:todo:open', (event, id) => event.sender.send('todos:event', { type: 'open', id }))

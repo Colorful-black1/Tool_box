@@ -36,6 +36,7 @@ import { listLocalAddresses } from '../services/developer-tools'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
 import { registerTodosIpc } from './todos-ipc'
+import { registerDeveloperCommandsIpc } from './developer-commands-ipc'
 import type { TodoService } from '../services/todo-service'
 import type { AgentUsageService } from '../services/agent-usage/usage-service'
 import {
@@ -47,7 +48,8 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
-  validateConfigPatch
+  validateConfigPatch,
+  validateClipboardText
 } from './validation'
 
 export interface IpcDependencies {
@@ -63,6 +65,7 @@ export interface IpcDependencies {
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerDeveloperCommandsIpc(dependencies.store)
   registerTodosIpc(dependencies.store, dependencies.todos)
   registerAgentUsageIpc(dependencies.usage)
   registerDeveloperDiagnosticsIpc()
@@ -424,7 +427,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   // ---------- 系统 ----------
   ipcMain.handle(IPC.systemCopy, (_event, text: unknown) => {
-    clipboard.writeText(requireString(text, '复制内容', { allowEmpty: true }))
+    clipboard.writeText(validateClipboardText(text))
   })
 
   // ---------- 全局快捷键 ----------

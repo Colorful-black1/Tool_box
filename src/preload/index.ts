@@ -37,6 +37,12 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  developerCommands: {
+    read: () => ipcRenderer.invoke(IPC.developerCommandsRead),
+    save: (input) => ipcRenderer.invoke(IPC.developerCommandsSave, input),
+    setFavorite: (input) => ipcRenderer.invoke(IPC.developerCommandsFavorite, input),
+    setArchived: (input) => ipcRenderer.invoke(IPC.developerCommandsArchive, input)
+  },
   todos: {
     list: (query) => ipcRenderer.invoke(IPC.todosList, query),
     save: (input) => ipcRenderer.invoke(IPC.todosSave, input),

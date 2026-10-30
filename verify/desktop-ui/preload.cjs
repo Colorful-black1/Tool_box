@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron')
 const fixture = require('./fixture.cjs')()
+fixture.toolbox.developerCommands = {
+  read: () => ipcRenderer.invoke('developer-commands:read'),
+  save: (input) => ipcRenderer.invoke('developer-commands:save', input),
+  setFavorite: (input) => ipcRenderer.invoke('developer-commands:favorite:set', input),
+  setArchived: (input) => ipcRenderer.invoke('developer-commands:archive:set', input)
+}
+fixture.controls.failNextCommandSave = () => ipcRenderer.invoke('verify:commands:fail-save')
 if (process.env.TOOLBOX_USAGE_VERIFY === '1') {
   const usage = require('./agent-usage-fixture.cjs')()
   fixture.toolbox.agentUsage = usage.bridge

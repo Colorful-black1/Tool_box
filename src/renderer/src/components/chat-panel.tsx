@@ -183,7 +183,8 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
 function ApprovalCard({ approval }: { approval: PendingApprovalView }): JSX.Element {
   const respondToolApproval = useAppStore((state) => state.respondToolApproval)
   const labels: Record<string, string> = {
-    notes_edit: '核对笔记修改', todos_save: '保存待办', todos_set_state: '更新待办状态'
+    notes_edit: '核对笔记修改', todos_save: '保存待办', todos_set_state: '更新待办状态',
+    commands_create: '新增到命令速查'
   }
 
   return (

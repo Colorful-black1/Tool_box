@@ -658,6 +658,238 @@
   font-size: 12px;
 }
 
+/* ---- 命令速查 ---- */
+.commands-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.command-toolbar,
+.command-filterbar,
+.command-view-filters,
+.command-entry-head,
+.command-entry-actions,
+.command-entry-meta,
+.command-editor-head,
+.command-editor-row,
+.command-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.command-toolbar {
+  flex-wrap: wrap;
+}
+.command-search {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+}
+.command-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-dim);
+}
+.command-search .field-input {
+  width: 100%;
+  padding-left: 36px;
+}
+.command-filterbar {
+  flex-wrap: wrap;
+}
+.command-count,
+.command-origin {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.command-layout {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.command-categories {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.command-categories .btn-ghost {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.command-view-filters .active,
+.command-categories .active {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+.command-results {
+  min-width: 0;
+  padding: 0 18px;
+}
+.command-entry {
+  padding: 18px 0;
+  min-width: 0;
+}
+.command-entry + .command-entry {
+  border-top: 1px solid var(--gold-line);
+}
+.command-entry-head {
+  flex-wrap: wrap;
+}
+.command-entry-head h2 {
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+}
+.command-entry-title.btn-ghost {
+  border-color: transparent;
+  padding: 3px 0;
+  color: var(--text-hi);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.command-entry-title[aria-expanded="true"] {
+  color: var(--gold);
+}
+.command-entry-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.command-entry-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+}
+.command-entry-actions .icon-btn.is-favorite {
+  color: var(--gold);
+}
+.command-entry-actions .icon-btn.is-favorite svg {
+  fill: rgba(var(--accent-rgb), 0.16);
+}
+.command-code {
+  max-width: 100%;
+  margin: 10px 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: 9px;
+  background: rgba(var(--accent-rgb), 0.05);
+  color: var(--text-hi);
+  font: 12px/1.7 var(--mono);
+  white-space: pre;
+  tab-size: 2;
+}
+.command-code:focus {
+  outline: 1px solid var(--gold);
+}
+.command-entry-meta {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.command-risk {
+  color: var(--gold);
+}
+.command-description {
+  margin: 10px 0 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.command-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-mid);
+}
+.usage-sheet-backdrop.command-editor-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.command-editor {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border-radius: 14px;
+  padding: 22px;
+  background: var(--bg-panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.command-editor-head {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.command-editor-head h2 {
+  margin: 0;
+  color: var(--text-hi);
+  font: 19px var(--serif);
+}
+.command-editor-fields {
+  display: grid;
+  gap: 14px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.command-editor .field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.command-editor .field-input {
+  width: 100%;
+}
+.command-editor textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.command-editor .command-body-input {
+  min-height: 120px;
+  font-family: var(--mono);
+  white-space: pre;
+}
+.command-editor-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.command-editor-row > label {
+  flex: 1;
+}
+.command-editor-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.command-editor-actions > :first-child {
+  margin-right: auto;
+}
+.command-conflict pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1050px) {
+  .command-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .command-categories {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
 /* ---- 会话详情抽屉 ---- */
 .usage-sheet-backdrop {
   position: fixed;

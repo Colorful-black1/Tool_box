@@ -1,4 +1,8 @@
 export const IPC = {
+  developerCommandsRead: 'developer-commands:read',
+  developerCommandsSave: 'developer-commands:save',
+  developerCommandsFavorite: 'developer-commands:favorite:set',
+  developerCommandsArchive: 'developer-commands:archive:set',
   todosList: 'todos:list',
   todosSave: 'todos:save',
   todosComplete: 'todos:complete',

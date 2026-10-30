@@ -6,7 +6,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   const nav = page.getByRole('navigation', { name: '主导航', exact: true })
   const button = (name) => nav.getByRole('button', { name, exact: true })
   const groups = {
-    开发工作台: ['编程 Agent', 'Token 统计', '工具'],
+    开发工作台: ['编程 Agent', 'Token 统计', '命令速查', '工具'],
     阅读空间: ['书架', '统计'],
     个人管理: ['密码箱', '记事本', '待办清单'],
     系统: ['设置']
@@ -135,7 +135,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     await button('个人管理').click()
     await button('收起侧边栏').click()
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 10)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 11)
     await button('工具').click()
     assert.equal(await button('工具').getAttribute('aria-current'), 'page')
     await capture('sidebar-tree-icons')
@@ -146,7 +146,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('窄窗自动显示全部图标，变宽后恢复手动侧栏偏好', async () => {
     await resize(1024, 680)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 10)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 11)
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
     assert.equal(await nav.evaluate((element) => element.scrollWidth > element.clientWidth), false)
     await button('记事本').click()
