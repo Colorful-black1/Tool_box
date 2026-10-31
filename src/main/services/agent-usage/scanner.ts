@@ -82,6 +82,24 @@ async function fingerprint(path: string, database: boolean): Promise<string> {
   return value
 }
 
+/** 只识别完整的根头部；不从正文里的 type 字样猜测超大行是否可忽略。 */
+function ignoredCodexContent(client: UsageClient, prefix: string): boolean {
+  if (client !== 'codex') return false
+  const header = prefix.slice(0, 4096)
+  const payload = /"payload"\s*:/.exec(header)
+  if (!payload) return false
+  try {
+    const parsed: unknown = JSON.parse(header.slice(0, payload.index) + '"payload":null}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+    const type = (parsed as Record<string, unknown>).type
+    // Codex 采集器本来就不消费压缩正文、消息／工具正文，不会漏掉用量事件。
+    return type === 'compacted' || type === 'response_item'
+  } catch {
+    // 头部过长、字段顺序无法确认或格式不合法时，仍按未知超大行告警。
+    return false
+  }
+}
+
 async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
   const parser = new UsageLogParser(client, path)
   const file = createReadStream(path)
@@ -90,11 +108,21 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
   let buffer = ''
   let bytes = 0
   let line = 0
+  let discarding = false
+  let discardedIssue = false
   try {
     for await (const chunk of stream) {
       bytes += chunk.length
       if (bytes > MAX_FILE_BYTES) throw new Error('source size limit')
-      buffer += decoder.write(chunk)
+      const decoded = decoder.write(chunk)
+      if (discarding) {
+        const end = decoded.indexOf('\n')
+        if (end < 0) continue
+        line++
+        if (discardedIssue) parser.issues++
+        discarding = false
+        buffer = decoded.slice(end + 1)
+      } else buffer += decoded
       let end: number
       while ((end = buffer.indexOf('\n')) >= 0) {
         const json = buffer.slice(0, end)
@@ -102,7 +130,7 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
         line++
         if (!json.trim()) continue
         if (json.length > MAX_LINE_BYTES) {
-          parser.issues++
+          if (!ignoredCodexContent(client, json)) parser.issues++
           continue
         }
         try {
@@ -112,7 +140,13 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
           parser.issues++
         }
       }
-      if (buffer.length > MAX_LINE_BYTES) throw new Error('source line limit')
+      if (buffer.length > MAX_LINE_BYTES) {
+        // 丢弃到本行换行处后继续读，不让超大正文使整份文件永远卡在旧快照。
+        // 尚未落完的超大尾行也要等到换行后才判定，不把正常写入当成损坏。
+        discardedIssue = !ignoredCodexContent(client, buffer)
+        discarding = true
+        buffer = ''
+      }
     }
     // 只提交已有换行的记录；末尾半行属于正常写入，不计数也不告警。
     // 补完后文件指纹会变化，下次扫描再读取，不会因缓存跳过新增记录。

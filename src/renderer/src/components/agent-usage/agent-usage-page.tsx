@@ -471,14 +471,6 @@ export function AgentUsagePage(): JSX.Element {
           </button>
         ) : null}
       </div>
-      {report?.partial ? (
-        <div className="status-banner" role="status">
-          <span>部分来源或字段不完整，以下为已知用量。</span>
-          <button type="button" className="btn-ghost" onClick={() => setSourcesOpen(true)}>
-            查看来源
-          </button>
-        </div>
-      ) : null}
       {report?.unknownTime ? (
         <p className="field-hint">
           {report.unknownTime} 条记录时间未知，

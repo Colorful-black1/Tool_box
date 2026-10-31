@@ -35,6 +35,84 @@ const assistant = (id: string, output = 5): string =>
   })
 
 describe('来源文件生命周期', () => {
+  const codexUsage = (ordinal: number): string =>
+    JSON.stringify({
+      timestamp: '2026-10-30T02:00:00Z',
+      ordinal,
+      type: 'token_usage_record',
+      payload: {
+        response_id: `response-${ordinal}`,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cached_input_tokens: 0,
+          reasoning_output_tokens: 0,
+          total_tokens: 15
+        }
+      }
+    })
+  it.each(['compacted', 'response_item'])(
+    'Codex 超大 %s 正文不阻止后续统计，刷新可替换旧缓存',
+    async (type) => {
+      const path = await root()
+      const file = join(path, 'session.jsonl')
+      const scanner = new UsageScanner()
+      await writeFile(file, codexUsage(1) + '\n')
+      expect((await scanner.scan('codex', [path])).records).toHaveLength(1)
+      await appendFile(
+        file,
+        JSON.stringify({
+          timestamp: '2026-10-30T02:00:00Z',
+          ordinal: 2,
+          type,
+          payload: { text: 'x'.repeat(8 * 1024 * 1024 + 100) }
+        }) +
+          '\n' +
+          codexUsage(3) +
+          '\n'
+      )
+      const result = await scanner.scan('codex', [path])
+      expect(result.source.status).toBe('ready')
+      expect(result.records.map((row) => row.id)).toEqual(['response-1', 'response-3'])
+      expect(result.records.every((row) => !row.partial)).toBe(true)
+      expect((await scanner.scan('codex', [path])).records).toEqual(result.records)
+      expect(scanner.snapshot()[0].partial).toBe(false)
+    }
+  )
+  it('超大未知记录仍告警，但前后已提交用量不丢失，正文里的 type 不能伪装根头部', async () => {
+    const path = await root()
+    const file = join(path, 'session.jsonl')
+    await writeFile(
+      file,
+      codexUsage(1) +
+        '\n' +
+        JSON.stringify({
+          payload: { type: 'compacted', text: 'x'.repeat(8 * 1024 * 1024 + 100) },
+          type: 'unknown'
+        }) +
+        '\n' +
+        codexUsage(2) +
+        '\n'
+    )
+    const result = await new UsageScanner().scan('codex', [path])
+    expect(result.source.status).toBe('partial')
+    expect(result.records).toHaveLength(2)
+    expect(result.records.every((row) => row.partial)).toBe(true)
+  })
+  it('超大尾行未提交时不告警，完成后继续处理后面的用量', async () => {
+    const path = await root()
+    const file = join(path, 'session.jsonl')
+    const scanner = new UsageScanner()
+    const large = JSON.stringify({ type: 'unknown', payload: 'x'.repeat(8 * 1024 * 1024 + 100) })
+    await writeFile(file, codexUsage(1) + '\n' + large)
+    const pending = await scanner.scan('codex', [path])
+    expect(pending.source.status).toBe('ready')
+    expect(pending.records).toHaveLength(1)
+    await appendFile(file, '\n' + codexUsage(2) + '\n')
+    const complete = await scanner.scan('codex', [path])
+    expect(complete.source.status).toBe('partial')
+    expect(complete.records).toHaveLength(2)
+  })
   it('重复刷新不累计；追加、截断与删除替换原快照', async () => {
     const path = await root()
     const file = join(path, 'session.jsonl')
