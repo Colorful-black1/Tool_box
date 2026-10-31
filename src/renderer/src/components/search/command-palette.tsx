@@ -55,6 +55,13 @@ function formatDate(ms: number): string {
   ).padStart(2, '0')}`
 }
 
+/** 顶栏按钮通过这个事件打开面板；快捷键之外还需要一个看得见的入口。 */
+const OPEN_EVENT = 'toolbox:palette-open'
+
+export function openCommandPalette(): void {
+  document.dispatchEvent(new Event(OPEN_EVENT))
+}
+
 export function CommandPalette(): JSX.Element | null {
   const favorites = useToolShortcutStore((state) => state.favorites)
   const recent = useToolShortcutStore((state) => state.recent)
@@ -89,7 +96,7 @@ export function CommandPalette(): JSX.Element | null {
 
   useOverlayEscape(() => setOpen(false), open)
 
-  // ⌘K / Ctrl+K 开关面板
+  // ⌘K / Ctrl+K 开关面板；顶栏的搜索按钮通过 OPEN_EVENT 只负责打开。
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (
@@ -101,8 +108,17 @@ export function CommandPalette(): JSX.Element | null {
         setOpen((current) => !current)
       }
     }
+    const onOpen = (): void => {
+      // 确认弹窗是模态的，按钮点不到；避免事件在弹窗之下叠出面板。
+      if (document.querySelector('[data-app-dialog]')) return
+      setOpen(true)
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    document.addEventListener(OPEN_EVENT, onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener(OPEN_EVENT, onOpen)
+    }
   }, [])
 
   // 打开时聚焦输入框

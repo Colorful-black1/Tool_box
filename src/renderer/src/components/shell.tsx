@@ -26,6 +26,8 @@ interface SideRailProps {
   view: AppView
   onChange: (view: AppView) => void
   items: RailNode[]
+  /** 需要提醒用户处理的入口（目前用于 Agent 后台审批 / 提问）。 */
+  alertViews?: AppView[]
 }
 
 function RailIcon({ name }: { name: string }): JSX.Element {
@@ -110,7 +112,7 @@ function RailIcon({ name }: { name: string }): JSX.Element {
   }
 }
 
-export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element {
+export function SideRail({ view, onChange, items, alertViews }: SideRailProps): JSX.Element {
   const collapsed = useRailStore((state) => state.collapsed || state.narrow)
   const toggle = useRailStore((state) => state.toggle)
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({})
@@ -127,19 +129,23 @@ export function SideRail({ view, onChange, items }: SideRailProps): JSX.Element 
     )
   }, [items, activeView])
 
-  const renderItem = (item: RailItem): JSX.Element => (
-    <button
-      type="button"
-      className={`nav-item${activeView === item.view ? ' active' : ''}`}
-      aria-current={activeView === item.view ? 'page' : undefined}
-      aria-label={item.label}
-      title={item.label}
-      onClick={() => onChange(item.view)}
-    >
-      <RailIcon name={item.icon} />
-      <span className="nav-label">{item.label}</span>
-    </button>
-  )
+  const renderItem = (item: RailItem): JSX.Element => {
+    const alert = alertViews?.includes(item.view) ?? false
+    return (
+      <button
+        type="button"
+        className={`nav-item${activeView === item.view ? ' active' : ''}`}
+        aria-current={activeView === item.view ? 'page' : undefined}
+        aria-label={alert ? `${item.label}，有待处理的审批或提问` : item.label}
+        title={item.label}
+        onClick={() => onChange(item.view)}
+      >
+        <RailIcon name={item.icon} />
+        <span className="nav-label">{item.label}</span>
+        {alert ? <span className="nav-alert" aria-hidden="true" /> : null}
+      </button>
+    )
+  }
 
   return (
     <nav className={`side-rail${collapsed ? ' collapsed' : ''}`} aria-label="主导航">

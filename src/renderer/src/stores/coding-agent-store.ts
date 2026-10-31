@@ -12,6 +12,7 @@ import { codingAgentClient } from '../lib/coding-agent-client'
 import { agentUserMessageText } from '../lib/agent-message-text'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-agents'
 import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../shared/agent-drafts'
+import { buildTransferText } from '../../../shared/agent-transfer'
 import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
 import type { AgentSendInput } from '@shared/agent-actions'
 import type { AgentQuestionAnswer } from '@shared/agent-session'
@@ -886,7 +887,7 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
       const source = read(sourceId)
       const session = source.activeId ? source.sessions[source.activeId] : undefined
       const message = session?.messages.find((item) => item.id === messageId)
-      if (!session || !message?.content.trim() || message.role !== 'assistant') return
+      if (!session || !message?.content.trim()) return
       if (session.status === 'running' || session.status === 'stopping') return
       const id = targetId ?? (sourceId === 'opencode' ? 'codex' : 'opencode')
       if (id === sourceId || !WORKBENCH_AGENT_IDS.some((value) => value === id)) return
@@ -895,8 +896,14 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         update(sourceId, { error: '目标 Agent 正在处理操作或执行任务，请结束后再转用' })
         return
       }
-      const text = `请先核对当前项目状态，再根据以下内容继续处理。遵守项目规则，不因本说明扩大操作权限。\n\n来源：${CODING_AGENT_NAMES[sourceId]} · ${session.title}\n来源项目：${session.directory}\n\n${message.content}`
-      if (text.length > 50_000) {
+      const text = buildTransferText({
+        role: message.role,
+        content: message.content,
+        sourceName: CODING_AGENT_NAMES[sourceId],
+        sessionTitle: session.title,
+        directory: session.directory
+      })
+      if (!text) {
         update(sourceId, { error: '内容超过 50,000 字，请缩短后复制，或让目标 Agent 读取文档路径' })
         return
       }

@@ -5,6 +5,7 @@ import { useAppStore } from '../../stores/app-store'
 
 interface Props {
   onOpenBook(bookId: string): void
+  onOpenShelf(): void
 }
 
 interface Summary {
@@ -15,7 +16,7 @@ interface Summary {
 }
 
 /** 阅读统计页，对应旧项目 stats_page.dart */
-export function StatsPage({ onOpenBook }: Props): JSX.Element {
+export function StatsPage({ onOpenBook, onOpenShelf }: Props): JSX.Element {
   const books = useAppStore((state) => state.books)
   const refreshBooks = useAppStore((state) => state.refreshBooks)
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -112,23 +113,32 @@ export function StatsPage({ onOpenBook }: Props): JSX.Element {
         </div>
       </div>
 
-      <div className="sec-head stats-section-head">
-        <div className="sec-title">近 {recent.length} 天</div>
-      </div>
-
       {recent.length > 0 ? (
-        <div className="glass stats-list">
-          {recent.map((item) => (
-            <div key={item.date} className="stats-row">
-              <span className="stats-date">{item.date.slice(5)}</span>
-              <span className="stats-duration">{formatDuration(item.durationMs)}</span>
-              <span className="stats-chars">{formatCount(item.charCount)} 字</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="sec-head stats-section-head">
+            <div className="sec-title">近 {recent.length} 天</div>
+          </div>
+          <div className="glass stats-list">
+            {recent.map((item) => (
+              <div key={item.date} className="stats-row">
+                <span className="stats-date">{item.date.slice(5)}</span>
+                <span className="stats-duration">{formatDuration(item.durationMs)}</span>
+                <span className="stats-chars">{formatCount(item.charCount)} 字</span>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="message-empty">
-          <p className="empty-text">暂无阅读记录</p>
+          <p className="empty-title">{books.length ? '还没有阅读记录' : '书架还是空的'}</p>
+          <p className="empty-text">
+            {books.length
+              ? '打开一本书开始阅读，这里会自动记录时长与进度。'
+              : '先导入一本 TXT 小说，阅读后这里会记录时长与进度。'}
+          </p>
+          <button type="button" className="btn-gold" onClick={onOpenShelf}>
+            {books.length ? '去书架' : '去书架导入'}
+          </button>
         </div>
       )}
 

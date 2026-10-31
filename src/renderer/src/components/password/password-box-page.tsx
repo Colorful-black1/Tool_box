@@ -182,7 +182,15 @@ export function PasswordBoxPage(): JSX.Element {
           void togglePasswordFavorite(entry.id, !entry.isFavorite)
         }
         onCopyPassword={async () => {
-          if (!entry.password) return
+          // 解密失败的条目在列表里看起来与正常条目一样，直接 return 会让「复制」像坏掉了。
+          if (!entry.isDecryptable) {
+            toast('该条目解密失败，无法复制；打开详情可查看原因')
+            return
+          }
+          if (!entry.password) {
+            toast('该条目没有保存密码')
+            return
+          }
           await copyText(entry.password)
           toast('已复制密码')
         }}
@@ -323,7 +331,10 @@ function PasswordRow(props: {
         <span className="pwd-avatar">{entry.firstLetter || '#'}</span>
         <span className="pwd-text">
           <span className="pwd-title">{entry.title}</span>
-          <span className="pwd-sub">{entry.url || '软件（无网址）'}</span>
+          {/* 解密失败要能在列表里直接看出来，否则用户得逐条点开详情才知道哪些不可用。 */}
+          <span className={`pwd-sub${entry.isDecryptable ? '' : ' unreadable'}`}>
+            {entry.isDecryptable ? entry.url || '软件（无网址）' : '解密失败 · 打开详情查看原因'}
+          </span>
         </span>
       </button>
       <div className="pwd-actions">
@@ -686,7 +697,7 @@ function PasswordDetailSheet(props: {
 
         {!entry.isDecryptable ? (
           <div className="status-banner" role="alert">
-            该条目解密失败：密钥不可用或数据损坏（主密钥绑定本机）
+            该条目解密失败：密钥不可用或数据损坏（主密钥绑定本机）。为避免覆盖原密文，编辑已暂停；如需重建，请删除后重新添加。
           </div>
         ) : null}
 
@@ -757,7 +768,17 @@ function PasswordDetailSheet(props: {
           <button type="button" className="btn-ghost" onClick={props.onClose}>
             关闭
           </button>
-          <button type="button" className="btn-gold" onClick={props.onEdit}>
+          <button
+            type="button"
+            className="btn-gold"
+            disabled={!entry.isDecryptable}
+            title={
+              entry.isDecryptable
+                ? undefined
+                : '解密失败时保存会用占位内容覆盖原密文，已暂停编辑'
+            }
+            onClick={props.onEdit}
+          >
             编辑
           </button>
         </div>

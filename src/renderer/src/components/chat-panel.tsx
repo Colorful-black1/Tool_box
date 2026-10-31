@@ -6,6 +6,7 @@ import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
 import type { PendingApprovalView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
+import { buildMessageNote } from '@shared/message-note'
 import { openAppReference } from '../lib/open-app-reference'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
@@ -98,6 +99,13 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
   const listRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const following = useRef(true)
+  const settings = useAppStore((state) => state.settings)
+  const setView = useAppStore((state) => state.setView)
+  const activeProfileId = settings?.activeId ?? ''
+  // 与发送时主进程的判定保持一致：有启用中的档案才算配置完成。
+  const configured = Boolean(
+    activeProfileId && settings?.profiles.some((item) => item.id === activeProfileId)
+  )
   const [awayFromBottom, setAwayFromBottom] = useState(false)
 
   const scrollToLatest = useCallback(() => {
@@ -148,10 +156,19 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
           {empty ? (
             <div className="message-empty">
               <div>
-                <p className="empty-title">开始新的星轨对话</p>
-                <p className="empty-text">
-                  先在设置页配置 AI 接口，即可管理书架、笔记和待办，查询 Token 用量。
+                <p className="empty-title">
+                  {configured ? '开始新的星轨对话' : '先完成 AI 配置'}
                 </p>
+                <p className="empty-text">
+                  {configured
+                    ? '输入消息开始对话，也可以让我管理书架、笔记和待办。'
+                    : '配置供应商与 API Key 后即可对话；书架、笔记和待办也可交给 AI 管理。'}
+                </p>
+                {configured ? null : (
+                  <button type="button" className="btn-gold" onClick={() => setView('settings')}>
+                    去设置配置 AI
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -231,13 +248,20 @@ function MessageBubble({
   streaming = false
 }: MessageBubbleProps): JSX.Element {
   const copyText = useAppStore((state) => state.copyText)
+  const conversationTitle = useAppStore(
+    (state) =>
+      state.conversations.find((item) => item.id === state.activeConversationId)?.title ?? ''
+  )
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [noteState, setNoteState] = useState<'idle' | 'saved' | 'failed'>('idle')
   const [openError, setOpenError] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
+      if (noteTimerRef.current) clearTimeout(noteTimerRef.current)
     }
   }, [])
 
@@ -249,6 +273,26 @@ function MessageBubble({
         timerRef.current = setTimeout(() => setCopyState('idle'), 1500)
       })
       .catch(() => setCopyState('failed'))
+  }
+
+  const saveAsNote = (): void => {
+    const note = buildMessageNote({
+      content,
+      origin: conversationTitle ? `星轨对话 · ${conversationTitle}` : '星轨对话'
+    })
+    if (!note) {
+      setNoteState('failed')
+      return
+    }
+    void useAppStore
+      .getState()
+      .saveNote(note)
+      .then(() => {
+        setNoteState('saved')
+        if (noteTimerRef.current) clearTimeout(noteTimerRef.current)
+        noteTimerRef.current = setTimeout(() => setNoteState('idle'), 1500)
+      })
+      .catch(() => setNoteState('failed'))
   }
 
   const isAssistant = role === 'assistant'
@@ -301,6 +345,18 @@ function MessageBubble({
             >
               {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制'}
             </button>
+            <button
+              type="button"
+              className="message-copy"
+              onClick={saveAsNote}
+              aria-label="存入记事本"
+            >
+              {noteState === 'saved'
+                ? '已存入记事本'
+                : noteState === 'failed'
+                  ? '保存失败'
+                  : '存入记事本'}
+            </button>
           </div>
         ) : null}
       </div>
@@ -322,6 +378,17 @@ function Composer(): JSX.Element {
   const stopGeneration = useAppStore((state) => state.stopGeneration)
   const value = useAppStore((state) => state.chatDraft)
   const setValue = useAppStore((state) => state.setChatDraft)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 从阅读器「问 AI」或发送失败带着草稿回到对话时，焦点已经落到 body，
+  // 直接按 Enter 不会发送。挂载时若已有草稿就把焦点和光标放到末尾；只在挂载时执行，避免抢焦点。
+  useEffect(() => {
+    const draft = useAppStore.getState().chatDraft
+    const input = inputRef.current
+    if (!input || !draft.trim()) return
+    input.focus()
+    input.setSelectionRange(draft.length, draft.length)
+  }, [])
 
   const isStreaming = streaming !== null
   const canSend = !isStreaming && activeConversationId !== null && value.trim().length > 0
@@ -348,6 +415,7 @@ function Composer(): JSX.Element {
         <textarea
           id="chat-input"
           className="composer-input"
+          ref={inputRef}
           rows={3}
           value={value}
           placeholder="输入消息，Enter 发送，Shift + Enter 换行"

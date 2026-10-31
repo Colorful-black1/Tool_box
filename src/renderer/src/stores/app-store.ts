@@ -356,7 +356,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         pendingApproval: null
       }))
     } catch (error) {
-      set({ error: toErrorMessage(error) })
+      // 输入框在提交时已清空；发送失败要把原文还回去，避免配置未就绪或网络失败后重打长文。
+      // 用户若已在等待期间输入新内容，保留新内容。
+      set((state) => ({
+        error: toErrorMessage(error),
+        chatDraft: state.chatDraft.trim() ? state.chatDraft : content
+      }))
     }
   },
 

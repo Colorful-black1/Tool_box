@@ -3,7 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 
 import type { NoteView } from '../../../../shared/types'
+import { mergeNotes } from '../../../../shared/notes-merge'
+import { planNoteTodos } from '@shared/note-todos'
 import { useAppStore } from '../../stores/app-store'
+import { useTodoStore } from '../../stores/todo-store'
 import { renderMarkdown } from '../../lib/markdown'
 
 /** 记事本：列表 + 搜索 + 导入 + 编辑页（Markdown 预览 / 导出 / 删除），对应旧项目 notes 两页 */
@@ -12,6 +15,7 @@ export function NotesPage(): JSX.Element {
   const refreshNotes = useAppStore((state) => state.refreshNotes)
   const importNote = useAppStore((state) => state.importNote)
   const deleteNote = useAppStore((state) => state.deleteNote)
+  const saveNote = useAppStore((state) => state.saveNote)
   const searchTarget = useAppStore((state) => state.searchTarget)
   const clearSearchTarget = useAppStore((state) => state.clearSearchTarget)
 
@@ -19,9 +23,27 @@ export function NotesPage(): JSX.Element {
   const [editing, setEditing] = useState<NoteView | 'new' | null>(null)
   const [searchRevision, setSearchRevision] = useState(0)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [mergeMode, setMergeMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [merging, setMerging] = useState(false)
   const [flash, setFlash] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  // 行内确认会整行替换，原来获得焦点的「删除」随子树卸载；记录它以便取消后回到原处。
+  const cancelRef = useRef<HTMLButtonElement | null>(null)
+  const deleteRefs = useRef(new Map<string, HTMLButtonElement | null>())
+  const restoreFocusId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (confirmId) {
+      cancelRef.current?.focus()
+      return
+    }
+    if (restoreFocusId.current) {
+      deleteRefs.current.get(restoreFocusId.current)?.focus()
+      restoreFocusId.current = null
+    }
+  }, [confirmId])
 
   const reload = async (): Promise<void> => {
     setLoading(true)
@@ -66,6 +88,41 @@ export function NotesPage(): JSX.Element {
   function toast(message: string): void {
     setFlash(message)
     window.setTimeout(() => setFlash(''), 1600)
+  }
+
+  const toggleMergeMode = (): void => {
+    setMergeMode((active) => !active)
+    setSelectedIds(new Set())
+  }
+
+  const toggleSelected = (id: string): void => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // 合并结果直接进入编辑页：用户可以改标题、补一句总结再保存，不必回列表再打开。
+  const mergeSelected = async (): Promise<void> => {
+    const chosen = notes.filter((note) => selectedIds.has(note.id))
+    const merged = mergeNotes(chosen)
+    if (!merged) {
+      toast('至少选择两条有内容的笔记')
+      return
+    }
+    setMerging(true)
+    try {
+      const saved = await saveNote(merged)
+      setMergeMode(false)
+      setSelectedIds(new Set())
+      setEditing(saved)
+    } catch (error) {
+      toast(error instanceof Error ? error.message : '合并失败，请重试')
+    } finally {
+      setMerging(false)
+    }
   }
 
   if (editing !== null) {
@@ -116,22 +173,55 @@ export function NotesPage(): JSX.Element {
         />
         <div className="toolbar-grow" />
         {flash ? <span className="toast-inline">{flash}</span> : null}
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() =>
-            void (async () => {
-              const note = await importNote()
-              if (note) setEditing(note)
-            })()
-          }
-        >
-          导入 .md
-        </button>
-        <button type="button" className="btn-gold" onClick={() => setEditing('new')}>
-          ＋ 新建笔记
-        </button>
+        {/* 合并模式下只保留与选择相关的操作，避免两个金色主按钮并列、中途误开草稿。 */}
+        {mergeMode ? null : (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() =>
+              void (async () => {
+                const note = await importNote()
+                if (note) setEditing(note)
+              })()
+            }
+          >
+            导入 .md
+          </button>
+        )}
+        {notes.length > 1 ? (
+          <button
+            type="button"
+            className="btn-ghost"
+            aria-pressed={mergeMode}
+            onClick={toggleMergeMode}
+          >
+            {mergeMode ? '退出合并' : '合并笔记'}
+          </button>
+        ) : null}
+        {mergeMode ? null : (
+          <button type="button" className="btn-gold" onClick={() => setEditing('new')}>
+            ＋ 新建笔记
+          </button>
+        )}
       </div>
+
+      {mergeMode ? (
+        <div className="toolbar-row note-merge-bar">
+          <span className="note-merge-count">已选 {selectedIds.size} 条</span>
+          <div className="toolbar-grow" />
+          <button
+            type="button"
+            className="btn-gold"
+            disabled={selectedIds.size < 2 || merging}
+            onClick={() => void mergeSelected()}
+          >
+            {merging ? '合并中…' : '合并为新笔记'}
+          </button>
+          <button type="button" className="btn-ghost" onClick={toggleMergeMode}>
+            取消
+          </button>
+        </div>
+      ) : null}
 
       {filtered.length === 0 ? (
         <div className="message-empty">
@@ -166,7 +256,11 @@ export function NotesPage(): JSX.Element {
                   <button
                     type="button"
                     className="btn-ghost"
-                    onClick={() => setConfirmId(null)}
+                    ref={cancelRef}
+                    onClick={() => {
+                      restoreFocusId.current = note.id
+                      setConfirmId(null)
+                    }}
                   >
                     取消
                   </button>
@@ -176,29 +270,44 @@ export function NotesPage(): JSX.Element {
                   className="glass note-row"
                   onContextMenu={(event) => {
                     event.preventDefault()
+                    if (mergeMode) return
                     setConfirmId(note.id)
                   }}
-                  title="右键删除"
+                  title={mergeMode ? undefined : '右键删除'}
                 >
                   <button
                     type="button"
                     className="note-row-main"
-                    onClick={() => setEditing(note)}
+                    aria-pressed={mergeMode ? selectedIds.has(note.id) : undefined}
+                    onClick={() => {
+                      if (mergeMode) toggleSelected(note.id)
+                      else setEditing(note)
+                    }}
                   >
-                    <span className="note-row-title">{note.title || '（无标题）'}</span>
+                    <span className="note-row-title">
+                      {mergeMode && selectedIds.has(note.id) ? '✓ ' : ''}
+                      {note.title || '（无标题）'}
+                    </span>
                     <span className="note-row-preview">
                       {note.content.replace(/\s+/g, ' ').trim() || '（空笔记）'}
                     </span>
                   </button>
                   <span className="note-row-time">{formatNoteTime(note.updatedAtMs)}</span>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-danger note-row-delete"
-                    aria-label={`删除 ${note.title || '无标题'}`}
-                    onClick={() => setConfirmId(note.id)}
-                  >
-                    删除
-                  </button>
+                  {/* hover 才显现的删除键在选择模式下会贴着正在点的行，先收起，避免误删。 */}
+                  {mergeMode ? null : (
+                    <button
+                      type="button"
+                      className="btn-ghost btn-danger note-row-delete"
+                      aria-label={`删除 ${note.title || '无标题'}`}
+                      ref={(element) => {
+                        if (element) deleteRefs.current.set(note.id, element)
+                        else deleteRefs.current.delete(note.id)
+                      }}
+                      onClick={() => setConfirmId(note.id)}
+                    >
+                      删除
+                    </button>
+                  )}
                 </div>
               )}
             </li>
@@ -210,7 +319,7 @@ export function NotesPage(): JSX.Element {
 }
 
 const EDITOR_PLACEHOLDER =
-  '支持 Markdown：\n# 一级标题\n- 列表项\n**加粗** *斜体*\n`行内代码`'
+  '支持 Markdown：\n# 一级标题\n- 列表项\n- [ ] 清单项（可加入待办）\n**加粗** *斜体*\n`行内代码`'
 
 function NoteEditor(props: {
   note: NoteView | null
@@ -226,6 +335,7 @@ function NoteEditor(props: {
   const [content, setContent] = useState(props.note?.content ?? '')
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [todoBusy, setTodoBusy] = useState(false)
   const [flash, setFlash] = useState('')
   const [dirty, setDirty] = useState(false)
   // 保存后仍留在编辑页，后续保存必须继续更新同一条笔记，而不是再建一条。
@@ -243,6 +353,8 @@ function NoteEditor(props: {
     () => (preview ? renderMarkdown(content) : ''),
     [preview, content]
   )
+  // 工具栏只在正文真有未完成清单项时出现入口，避免空按钮占位。
+  const todoCount = useMemo(() => planNoteTodos(content).items.length, [content])
 
   /** 保存但不离开编辑页；返回值和提示分开，供保存按钮与返回按钮复用。 */
   async function persist(): Promise<'saved' | 'empty' | 'unchanged' | 'failed'> {
@@ -288,6 +400,48 @@ function NoteEditor(props: {
     }
     const outcome = await persist()
     if (outcome === 'saved' || outcome === 'unchanged') await props.onSaved()
+  }
+
+  /** 把正文里未完成的清单项写进待办清单，已有同名待办不重复创建。 */
+  async function pushNoteTodos(): Promise<void> {
+    if (todoBusy) return
+    if (!window.toolbox?.todos) {
+      setFlash('桌面桥接未就绪，暂时无法加入待办')
+      return
+    }
+    setTodoBusy(true)
+    try {
+      const snapshot = await window.toolbox.todos.list({
+        filter: 'all',
+        search: '',
+        offset: 0,
+        limit: 100
+      })
+      const plan = planNoteTodos(
+        content,
+        snapshot.items.map((item) => item.title)
+      )
+      if (!plan.items.length) {
+        setFlash(plan.skipped ? '清单项都已在待办中' : '正文里没有未完成的清单项')
+        return
+      }
+      for (const item of plan.items) {
+        await window.toolbox.todos.save({
+          title: item,
+          details: `来自笔记：${title.trim() || '（无标题）'}`,
+          priority: 'normal',
+          startAtMs: null,
+          dueAtMs: null,
+          remind: true
+        })
+      }
+      void useTodoStore.getState().load()
+      setFlash(`已加入待办 · ${plan.items.length} 条`)
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : '加入待办失败，请重试')
+    } finally {
+      setTodoBusy(false)
+    }
   }
 
   async function handleExport(): Promise<void> {
@@ -353,6 +507,16 @@ function NoteEditor(props: {
         >
           {preview ? '编辑' : '预览'}
         </button>
+        {todoCount > 0 ? (
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={todoBusy}
+            onClick={() => void pushNoteTodos()}
+          >
+            {todoBusy ? '加入中…' : `清单加入待办 · ${todoCount}`}
+          </button>
+        ) : null}
         {noteId ? (
           <>
             <button

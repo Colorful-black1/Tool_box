@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
+import { useAppStore } from '../../stores/app-store'
+import { agentUserMessageText } from '../../lib/agent-message-text'
+import { buildSessionNote } from '@shared/agent-session-note'
 import { CODING_AGENT_NAMES } from '@shared/coding-agents'
 import { Dropdown } from '../dropdown'
 import { OpenCodeConnection } from './opencode-connection'
@@ -71,6 +74,30 @@ export function OpenCodeWorkbench(): JSX.Element {
     setWorkspaceStatus('')
   }, [activeId, runtimeId])
 
+  /** 整段会话按发言顺序整理成一条笔记，空消息与本地技能提示行不写入。 */
+  const saveSessionNote = async (): Promise<void> => {
+    if (!session) return
+    const draft = buildSessionNote({
+      agentName: name,
+      sessionTitle: session.title,
+      directory: session.directory,
+      messages: session.messages.map((message) => ({
+        role: message.role,
+        content: message.role === 'user' ? agentUserMessageText(message.content) : message.content
+      }))
+    })
+    if (!draft) {
+      setWorkspaceStatus('当前会话没有可保存的内容')
+      return
+    }
+    try {
+      await useAppStore.getState().saveNote({ title: draft.title, content: draft.content })
+      setWorkspaceStatus(`已存入记事本 · ${draft.count} 条消息`)
+    } catch {
+      setWorkspaceStatus('保存笔记失败，请重试')
+    }
+  }
+
   return (
     <div className="opencode-page view-enter">
       <OpenCodeConnection />
@@ -97,8 +124,10 @@ export function OpenCodeWorkbench(): JSX.Element {
             )}
             canSync={!busy && !locked}
             canAttachWorkspace={Boolean(session && info?.connected && !busy && !locked)}
+            canSaveNote={Boolean(session?.messages.some((message) => message.content.trim()))}
             onSummarize={() => void summarize()}
             onSync={() => void inspect(true)}
+            onSaveNote={() => void saveSessionNote()}
             onAttachWorkspace={
               runtimeId === 'dsh'
                 ? () => {
@@ -112,9 +141,11 @@ export function OpenCodeWorkbench(): JSX.Element {
           <span className="chat-status opencode-session-state" data-status={session?.status}>
             {session?.questions?.length
               ? '等待回答'
-              : session
-                ? OPENCODE_STATUS[session.status]
-                : '等待输入'}
+              : session?.approvals.length
+                ? '等待审批'
+                : session
+                  ? OPENCODE_STATUS[session.status]
+                  : '等待输入'}
           </span>
         </div>
         <section
@@ -124,7 +155,7 @@ export function OpenCodeWorkbench(): JSX.Element {
           aria-label={`${name} 工作台`}
         >
           <h2 className="sr-only">{session?.title ?? '新对话'}</h2>
-          {runtimeId === 'dsh' && workspaceStatus ? (
+          {workspaceStatus ? (
             <p className="status-banner success-banner" role="status">
               {workspaceStatus}
             </p>

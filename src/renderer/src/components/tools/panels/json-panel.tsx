@@ -5,19 +5,21 @@ import { useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import { expandJsonStrings, extractJsonPath, formatLosslessJson } from '@shared/json-tools'
+import { generateTypeScriptTypes } from '@shared/json-to-ts'
 
 import { Dropdown } from '../../dropdown'
 import { useToolTransferStore } from '../../../stores/tool-transfer-store'
 import { Workbench } from '../workbench'
 import { ToolOutputActions } from '../output-actions'
 
-type JsonMode = 'format' | 'minify' | 'sort' | 'expand' | 'path'
+type JsonMode = 'format' | 'minify' | 'sort' | 'expand' | 'path' | 'types'
 const MODES = [
   { value: 'format', label: '格式化' },
   { value: 'minify', label: '压缩' },
   { value: 'sort', label: '字段排序' },
   { value: 'expand', label: '解除转义 / 展开' },
-  { value: 'path', label: 'JSONPath 提取' }
+  { value: 'path', label: 'JSONPath 提取' },
+  { value: 'types', label: '生成 TS 类型' }
 ]
 
 export function JsonPanel(): JSX.Element {
@@ -39,7 +41,9 @@ export function JsonPanel(): JSX.Element {
           ? expandJsonStrings(input)
           : mode === 'path'
             ? extractJsonPath(input, path)
-            : formatLosslessJson(input, mode === 'minify' ? 0 : 2, mode === 'sort')
+            : mode === 'types'
+              ? generateTypeScriptTypes(input)
+              : formatLosslessJson(input, mode === 'minify' ? 0 : 2, mode === 'sort')
       return { output, error: undefined }
     } catch (error) {
       return { output: '', error: error instanceof Error ? error.message : 'JSON 处理失败' }
@@ -55,7 +59,11 @@ export function JsonPanel(): JSX.Element {
           options={MODES}
           onChange={(value) => setMode(value as JsonMode)}
         />
-        <span className="field-hint">保留长整数与小数原文 · 最多 20 万字符</span>
+        <span className="field-hint">
+          {mode === 'types'
+            ? '对象生成 interface，同形状复用同一个类型 · 最多 20 万字符'
+            : '保留长整数与小数原文 · 最多 20 万字符'}
+        </span>
       </div>
       {mode === 'path' ? (
         <label className="tool-path-field">

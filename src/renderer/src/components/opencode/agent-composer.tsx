@@ -3,6 +3,8 @@ import type { JSX, KeyboardEvent, ReactNode } from 'react'
 import type { AgentCatalog, AgentFileSearchResult, AgentReference } from '@shared/agent-actions'
 import { CODING_AGENT_NAMES } from '@shared/coding-agents'
 import { normalizeDraftDirectory } from '@shared/agent-drafts'
+import { buildNoteContext } from '@shared/agent-note-context'
+import type { NoteView } from '@shared/types'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { codingAgentClient } from '../../lib/coding-agent-client'
 import {
@@ -18,7 +20,7 @@ import { AgentComposerTools } from './agent-composer-tools'
 import { confirmDialog } from '../../stores/dialog-store'
 import { CloseIcon, SendIcon, StopIcon } from '../icons'
 
-type Menu = 'commands' | 'files' | 'skills' | 'mcp'
+type Menu = 'commands' | 'files' | 'skills' | 'mcp' | 'notes'
 
 /** 输入区沿用一次发送准备流程，候选不创建空会话或主动执行模型任务。 */
 export function AgentComposer({
@@ -41,6 +43,9 @@ export function AgentComposer({
   const recallSequence = useCodingAgentStore((state) => state.recallSequence)
   const cancelRecall = useCodingAgentStore((state) => state.cancelRecall)
   const runningSession = useCodingAgentStore((state) => state.runs[state.runtimeId]?.sessionId)
+  const runningTitle = useCodingAgentStore((state) =>
+    runningSession ? (state.sessions[runningSession]?.title ?? '') : ''
+  )
   const preparing = useCodingAgentStore((state) => state.preparations[state.runtimeId])
   const session = useCodingAgentStore((state) => (activeId ? state.sessions[activeId] : undefined))
   const setDraft = useCodingAgentStore((state) => state.setDraft)
@@ -59,6 +64,7 @@ export function AgentComposer({
   const [manual, setManual] = useState(false)
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null)
   const [files, setFiles] = useState<AgentFileSearchResult>({ files: [], limited: false })
+  const [notes, setNotes] = useState<NoteView[]>([])
   const [references, setReferences] = useState<AgentReference[]>([])
   const recalledReferences = useRef<{
     draft: string
@@ -129,7 +135,7 @@ export function AgentComposer({
     if (!draft) setReferences([])
   }, [draft])
   useEffect(() => {
-    if (!mode || mode === 'files') return
+    if (!mode || mode === 'files' || mode === 'notes') return
     let cancelled = false
     setLoading(true)
     setError('')
@@ -203,6 +209,30 @@ export function AgentComposer({
       window.clearTimeout(timer)
     }
   }, [mode, runtimeId, directory, query, refresh])
+  // 记事本条目只在打开菜单时读取一次，避免每次输入都跨进程取全量笔记。
+  useEffect(() => {
+    if (mode !== 'notes') return
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    void (async () => {
+      try {
+        if (!window.toolbox) throw new Error('记事本暂不可用')
+        const list = await window.toolbox.notes.list()
+        if (!cancelled) setNotes(list)
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setNotes([])
+          setError(error instanceof Error ? error.message : '笔记读取失败')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mode, refresh])
   const focusInput = (): void => {
     requestAnimationFrame(() => input.current?.focus())
   }
@@ -230,6 +260,25 @@ export function AgentComposer({
           ? draft
           : `${draft}${draft ? ' ' : ''}${marker} `
     )
+    close()
+    focusInput()
+  }
+  /** 笔记以纯文本插入草稿：编码 Agent 不认得记事本条目，只认最终发出的文字。 */
+  const addNote = (note: NoteView): void => {
+    const context = buildNoteContext({ title: note.title, content: note.content })
+    if (!context) {
+      setError('该笔记没有内容，未插入')
+      return
+    }
+    const trigger = selection.current
+    const next = trigger
+      ? `${draft.slice(0, trigger.start)}${context}${draft.slice(trigger.end)}`
+      : `${draft}${draft ? '\n\n' : ''}${context}`
+    if (next.length > 50_000) {
+      setError('插入后草稿超过 50,000 字，请先精简草稿')
+      return
+    }
+    setDraft(next)
     close()
     focusInput()
   }
@@ -288,43 +337,50 @@ export function AgentComposer({
     ]
   })
   const choices: AgentActionChoice[] =
-    mode === 'files'
-      ? files.files.map((item) => ({
-          id: item.id,
-          label: item.label,
-          description: '当前项目 · 路径引用',
-          choose: () => addReference(item)
+    mode === 'notes'
+      ? notes.map((note) => ({
+          id: `note-${note.id}`,
+          label: note.title.trim() || '未命名笔记',
+          description: `记事本 · ${note.content.replace(/\s+/g, ' ').trim().slice(0, 40) || '无内容'}`,
+          choose: () => addNote(note)
         }))
-      : mode === 'skills'
-        ? [
-            ...skillChoices,
-            ...(runtimeId !== 'codex' && runtimeId !== 'dsh'
-              ? (catalog?.commands ?? []).map((item) => ({
-                  id: item.id,
-                  label: `/${item.name}`,
-                  description: `原生命令 · ${item.description}`,
-                  choose: () => chooseCommand(item.name)
-                }))
-              : [])
-          ]
-        : mode === 'mcp'
-          ? mcpChoices
-          : [
-              ...LOCAL_AGENT_COMMANDS.map((item) => ({
-                id: `local-${item.name}`,
-                label: `/${item.name} · ${item.label}`,
-                description: item.description,
-                choose: () => local(item.name)
-              })),
-              ...(catalog?.commands ?? []).map((item) => ({
-                id: item.id,
-                label: `/${item.name}${item.targetFile ? ` · ${item.targetFile}` : ''}`,
-                description: `${item.kind === 'workflow' ? '工具箱工作流' : '原生命令'} · ${item.description}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
-                choose: () => chooseCommand(item.name)
-              })),
+      : mode === 'files'
+        ? files.files.map((item) => ({
+            id: item.id,
+            label: item.label,
+            description: '当前项目 · 路径引用',
+            choose: () => addReference(item)
+          }))
+        : mode === 'skills'
+          ? [
               ...skillChoices,
-              ...mcpChoices
+              ...(runtimeId !== 'codex' && runtimeId !== 'dsh'
+                ? (catalog?.commands ?? []).map((item) => ({
+                    id: item.id,
+                    label: `/${item.name}`,
+                    description: `原生命令 · ${item.description}`,
+                    choose: () => chooseCommand(item.name)
+                  }))
+                : [])
             ]
+          : mode === 'mcp'
+            ? mcpChoices
+            : [
+                ...LOCAL_AGENT_COMMANDS.map((item) => ({
+                  id: `local-${item.name}`,
+                  label: `/${item.name} · ${item.label}`,
+                  description: item.description,
+                  choose: () => local(item.name)
+                })),
+                ...(catalog?.commands ?? []).map((item) => ({
+                  id: item.id,
+                  label: `/${item.name}${item.targetFile ? ` · ${item.targetFile}` : ''}`,
+                  description: `${item.kind === 'workflow' ? '工具箱工作流' : '原生命令'} · ${item.description}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
+                  choose: () => chooseCommand(item.name)
+                })),
+                ...skillChoices,
+                ...mcpChoices
+              ]
   const visible = (loading && mode !== 'commands' ? [] : choices)
     .filter(
       (item) =>
@@ -409,6 +465,14 @@ export function AgentComposer({
       }}
     >
       {children}
+      {runningSession && runningSession !== activeId ? (
+        // 同一 Agent 一次只跑一个会话；切到别的标签后发送被锁，按钮变灰但没有原因。
+        <div className="status-banner" role="status">
+          <span>
+            「{runningTitle || '另一个会话'}」正在执行任务，当前会话暂不能发送；可等待完成，或在上方停止该任务。
+          </span>
+        </div>
+      ) : null}
       {recall ? (
         <div className="status-banner opencode-desktop-hint" role="status">
           <span title="原有文件与 Skill 引用需重新选择">
@@ -581,6 +645,7 @@ export function AgentComposer({
           title={
             {
               files: '项目文件',
+              notes: '引用笔记',
               commands: '快捷命令',
               skills: runtimeId === 'codex' ? 'Skill' : 'Skill / 命令',
               mcp: 'MCP 工具'
@@ -601,16 +666,20 @@ export function AgentComposer({
           onRefresh={() => setRefresh((old) => old + 1)}
           onKeyDown={onKey}
           notices={
-            mode === 'files'
-              ? files.limited
-                ? ['仅显示部分结果，请继续输入路径片段。']
+            mode === 'notes'
+              ? !loading && !notes.length
+                ? ['记事本还没有内容，可在记事本页新建后再来引用。']
                 : []
-              : [
-                  ...(catalog?.notices ?? []),
-                  ...(mode === 'mcp'
-                    ? (catalog?.mcp ?? []).map((item) => `${item.name}：${item.status}`)
-                    : [])
-                ]
+              : mode === 'files'
+                ? files.limited
+                  ? ['仅显示部分结果，请继续输入路径片段。']
+                  : []
+                : [
+                    ...(catalog?.notices ?? []),
+                    ...(mode === 'mcp'
+                      ? (catalog?.mcp ?? []).map((item) => `${item.name}：${item.status}`)
+                      : [])
+                  ]
           }
         />
       ) : null}

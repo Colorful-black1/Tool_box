@@ -11,7 +11,8 @@ import { ConversationSidebar } from './components/conversation-sidebar'
 import { NotesPage } from './components/notes/notes-page'
 import { PasswordBoxPage } from './components/password/password-box-page'
 import { Reader } from './components/reader/reader'
-import { CommandPalette } from './components/search/command-palette'
+import { CommandPalette, openCommandPalette } from './components/search/command-palette'
+import { SearchIcon } from './components/icons'
 import { SideRail, TopBar } from './components/shell'
 import type { RailNode } from './components/shell'
 import { StatsPage } from './components/stats/stats-page'
@@ -20,6 +21,7 @@ import { ToolsPage } from './components/tools/tools-page'
 import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
 import { AgentUsagePage } from './components/agent-usage/agent-usage-page'
 import { useCodingAgentStore } from './stores/coding-agent-store'
+import { WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
 import { codingAgentClient } from './lib/coding-agent-client'
 import { startAgentDraftSync, flushAgentDrafts } from './lib/agent-draft-sync'
 import { SettingsPage } from './routes/settings-page'
@@ -31,6 +33,7 @@ import { useConfigStore } from './stores/config-store'
 import { useRailStore } from './stores/rail-store'
 import { usePromptPolishStore } from './stores/prompt-polish-store'
 import { usePasswordAiStore } from './stores/password-ai-store'
+import { confirmDialog } from './stores/dialog-store'
 
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   commands: { title: '命令速查', subtitle: 'COMMANDS · 开发常用命令' },
@@ -94,6 +97,29 @@ export default function App(): JSX.Element {
   }), [])
   const view = useAppStore((state) => state.view)
   const setView = useAppStore((state) => state.setView)
+  // 侧栏切页会卸载编辑器；与命令面板、AI 结果链接使用同一套未保存确认。
+  const navigate = async (next: AppView): Promise<void> => {
+    if (next === view) return
+    if (
+      useAppStore.getState().hasUnsavedChanges &&
+      !(await confirmDialog('当前有未保存的编辑，切换页面将放弃这些内容。是否继续？'))
+    )
+      return
+    setView(next)
+  }
+  // 切到其他页面后工作台会被卸载，但任务仍在后台等待审批 / 回答；
+  // 侧栏入口给一个小圆点，避免用户错过停在半路的任务。
+  const agentNeedsAttention = useCodingAgentStore((state) => {
+    for (const id of WORKBENCH_AGENT_IDS) {
+      const run = state.runs[id]
+      if (!run) continue
+      const session = (
+        id === state.runtimeId ? state.sessions : state.workspaces[id]?.sessions
+      )?.[run.sessionId]
+      if (session?.questions?.length || session?.approvals.length) return true
+    }
+    return false
+  })
   const loading = useAppStore((state) => state.loading)
   const error = useAppStore((state) => state.error)
   const activeBookId = useAppStore((state) => state.activeBookId)
@@ -220,11 +246,26 @@ export default function App(): JSX.Element {
       <div className={`app-shell${railCollapsed ? ' rail-collapsed' : ' rail-expanded'}`}>
         <SideRail
           view={view}
-          onChange={setView}
+          onChange={(next) => void navigate(next)}
           items={RAIL_ITEMS}
+          alertViews={agentNeedsAttention ? ['opencode'] : undefined}
         />
         <div className="main">
-          <TopBar title={meta.title} subtitle={meta.subtitle} />
+          <TopBar title={meta.title} subtitle={meta.subtitle}>
+            {/* 命令面板原本只有快捷键，首次使用发现不了；顶栏给一个可点入口。 */}
+            <button
+              type="button"
+              className="btn-ghost top-search"
+              title="搜索书籍、笔记、密码、工具（Ctrl+K / ⌘K）"
+              onClick={openCommandPalette}
+            >
+              <SearchIcon />
+              搜索
+              <span className="top-search-kbd" aria-hidden="true">
+                Ctrl K
+              </span>
+            </button>
+          </TopBar>
 
           <main className="viewport">
             {loading ? (
@@ -263,7 +304,10 @@ export default function App(): JSX.Element {
                 ) : null}
                 {view === 'shelf' ? <BookshelfPage /> : null}
                 {view === 'stats' ? (
-                  <StatsPage onOpenBook={(bookId) => openReader(bookId)} />
+                  <StatsPage
+                    onOpenBook={(bookId) => openReader(bookId)}
+                    onOpenShelf={() => setView('shelf')}
+                  />
                 ) : null}
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}

@@ -10,8 +10,18 @@ function DialogContent(): JSX.Element | null {
   const answer = useDialogStore((state) => state.answer)
   const ref = useRef<HTMLDivElement>(null)
   const [value, setValue] = useState('')
+  // 弹层挂载时焦点还在触发它的控件上；关闭后还回去，键盘用户不必从头 Tab。
+  // （触发控件可能随操作一起消失，例如删除某一行，此时焦点保持默认行为。）
+  const [restoreTo] = useState<HTMLElement | null>(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null
+  )
   useModalFocus(ref, true, true)
   useOverlayEscape(() => answer(null))
+  useEffect(() => {
+    return () => {
+      if (restoreTo?.isConnected) restoreTo.focus()
+    }
+  }, [restoreTo])
   if (!request) return null
   return createPortal(
     <div

@@ -3,6 +3,8 @@ import type { JSX } from 'react'
 import type { OpenCodeSession } from '@shared/types'
 import { renderMarkdown } from '../../lib/markdown'
 import { agentUserMessageText } from '../../lib/agent-message-text'
+import { buildMessageNote } from '@shared/message-note'
+import { useAppStore } from '../../stores/app-store'
 import { CodeIcon } from '../icons'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
@@ -22,6 +24,7 @@ export function OpenCodeMessages({
   const following = useRef(true)
   const [away, setAway] = useState(false)
   const [copied, setCopied] = useState<{ id: string; message: string } | null>(null)
+  const [noteState, setNoteState] = useState<{ id: string; message: string } | null>(null)
   const runtimeId = useCodingAgentStore((state) => state.runtimeId)
   const transferMessage = useCodingAgentStore((state) => state.transferMessage)
   const recallMessage = useCodingAgentStore((state) => state.recallMessage)
@@ -42,6 +45,22 @@ export function OpenCodeMessages({
       setCopied({ id: messageId, message: '已复制' })
     } catch {
       setCopied({ id: messageId, message: '复制失败，请选中文字后复制' })
+    }
+  }
+  const saveNote = async (messageId: string, content: string): Promise<void> => {
+    const note = buildMessageNote({
+      content,
+      origin: `${agentName} · ${session?.title ?? '编程会话'}`
+    })
+    if (!note) {
+      setNoteState({ id: messageId, message: '没有可保存的内容' })
+      return
+    }
+    try {
+      await useAppStore.getState().saveNote(note)
+      setNoteState({ id: messageId, message: '已存入记事本' })
+    } catch {
+      setNoteState({ id: messageId, message: '保存失败，请重试' })
     }
   }
   useEffect(() => {
@@ -100,6 +119,14 @@ export function OpenCodeMessages({
                   >
                     复制
                   </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    aria-label="存入记事本"
+                    onClick={() => void saveNote(message.id, message.content)}
+                  >
+                    {noteState?.id === message.id ? noteState.message : '存入记事本'}
+                  </button>
                   {message.role === 'user' ? (
                     <>
                       <button
@@ -134,33 +161,30 @@ export function OpenCodeMessages({
                         </>
                       ) : null}
                     </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        disabled={session.status === 'running' || session.status === 'stopping'}
-                        onClick={() => transferMessage(message.id, targetId)}
-                      >
-                        用于 <AgentIdentity agent={targetId} label={targetName} />
-                      </button>
-                      <Dropdown
-                        ariaLabel="其他消息转用目标"
-                        value=""
-                        placeholder="其他 Agent"
-                        options={WORKBENCH_AGENT_IDS.filter(
-                          (id) => id !== runtimeId && id !== targetId
-                        ).map((value) => ({
-                          value,
-                          label: `用于 ${CODING_AGENT_NAMES[value]}`,
-                          icon: <AgentMark agent={value} />
-                        }))}
-                        disabled={session.status === 'running' || session.status === 'stopping'}
-                        onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
-                        align="left"
-                      />
-                    </>
-                  )}
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={session.status === 'running' || session.status === 'stopping'}
+                    onClick={() => transferMessage(message.id, targetId)}
+                  >
+                    用于 <AgentIdentity agent={targetId} label={targetName} />
+                  </button>
+                  <Dropdown
+                    ariaLabel="其他消息转用目标"
+                    value=""
+                    placeholder="其他 Agent"
+                    options={WORKBENCH_AGENT_IDS.filter(
+                      (id) => id !== runtimeId && id !== targetId
+                    ).map((value) => ({
+                      value,
+                      label: `用于 ${CODING_AGENT_NAMES[value]}`,
+                      icon: <AgentMark agent={value} />
+                    }))}
+                    disabled={session.status === 'running' || session.status === 'stopping'}
+                    onChange={(id) => transferMessage(message.id, id as CodingAgentId)}
+                    align="left"
+                  />
                   {copied?.id === message.id ? <span role="status">{copied.message}</span> : null}
                 </div>
               ) : null}

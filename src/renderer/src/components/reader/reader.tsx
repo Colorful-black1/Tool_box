@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 
 import { READER_PADDING_H, READER_PADDING_V } from '../../../../shared/constants'
+import { buildReaderExcerpt, buildReaderQuestion } from '../../../../shared/reader-excerpt'
 import { effectiveReaderTheme } from '../../../../shared/types'
 import type { Bookmark, ChapterContent, ChapterMeta } from '../../../../shared/types'
 import { paginate } from '../../lib/paginator'
 import { splitReaderParagraphs } from '../../lib/reader-text'
+import { useAppStore } from '../../stores/app-store'
 import { useConfigStore } from '../../stores/config-store'
 import { useReaderStore } from '../../stores/reader-store'
 import { ReadSettingsPanel } from './read-settings-panel'
@@ -21,6 +23,12 @@ export interface ReaderProps {
 }
 
 /**
+ * 滚动模式没有「当前页」，书签去重键借用一个大页码前缀 + 章内千分比生成。
+ * 分页模式的真实页号远小于这个基数，两种模式的书签不会互相覆盖，且仍满足 IPC 的非负整数校验。
+ */
+const SCROLL_BOOKMARK_PAGE_BASE = 1_000_000
+
+/**
  * 阅读器：对应旧项目 reader_page.dart + reader_menu.dart。
  * 布局 = 顶部浮层菜单 + 正文区分页/滚动 + 目录抽屉 + 书内搜索 + 阅读设置面板。
  */
@@ -33,6 +41,7 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
   const pageIdx = useReaderStore((state) => state.pageIdx)
   const bookmarks = useReaderStore((state) => state.bookmarks)
   const bookPercent = useReaderStore((state) => state.bookPercent)
+  const seekSequence = useReaderStore((state) => state.seekSequence)
 
   const liveConfig = useConfigStore((state) => state.config)
 
@@ -49,7 +58,13 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
 
   const viewportRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  /** 代码要写入的 scrollTop；停在它上面的 scroll 事件不当作阅读行为。 */
+  const programmaticTarget = useRef<number | null>(null)
   const [pageCount, setPageCount] = useState(1)
+  /** 正文选区与浮出按钮的位置（相对阅读器容器）；没有选区时为 null。 */
+  const [excerpt, setExcerpt] = useState<{ text: string; top: number; left: number } | null>(null)
+  const [excerptSaving, setExcerptSaving] = useState(false)
+  const [excerptFlash, setExcerptFlash] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -135,6 +150,9 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
   // 点击分区：三种模式统一为 左 30% 上一页 / 右 30% 下一页 / 中间 40% 切换菜单
   const onTapZone = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      // 拖选文字结束时浏览器仍会派发 click，此时不应翻页或收起菜单。
+      const selection = window.getSelection()
+      if (selection && !selection.isCollapsed && selection.toString().trim()) return
       const rect = event.currentTarget.getBoundingClientRect()
       const ratio = (event.clientX - rect.left) / rect.width
       if (ratio < 0.3) goPage(-1)
@@ -147,9 +165,39 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
   useEffect(() => {
     if (tocOpen || searchOpen || settingsOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft') goPage(-1)
-      else if (event.key === 'ArrowRight') goPage(1)
-      else if (event.key === 'Escape' && menuVisible) {
+      // 命令面板、确认弹窗等模态层打开时按键归它们所有。阅读器监听挂在 window 上，
+      // 不拦的话在搜索框里按 ← → 会把背后的章节翻走。
+      if (document.querySelector('[data-modal-owner]')) return
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        // 菜单里的进度滑块用 ← → 调进度，放行给它，否则会一边调进度一边翻页。
+        // Shift + ← → 用来扩展文字选区，交给浏览器，不翻页。
+        const target = event.target
+        if (
+          event.shiftKey ||
+          (target instanceof HTMLElement &&
+            target.closest('input, textarea, select, [contenteditable="true"]'))
+        )
+          return
+        goPage(event.key === 'ArrowLeft' ? -1 : 1)
+      } else if (event.key === ' ' || event.key === 'PageDown' || event.key === 'PageUp') {
+        // 阅读器视口不可聚焦，空格本身不会滚动它；交给控件的情况（按钮 / 输入框里
+        // 空格等于激活或输入）必须先放行，否则会既翻页又触发控件。
+        const target = event.target
+        if (
+          target instanceof HTMLElement &&
+          target.closest('button, input, textarea, select, [contenteditable="true"]')
+        )
+          return
+        // Ctrl/Alt + 空格常用于输入法切换或系统快捷方式，不抢。
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+        event.preventDefault()
+        goPage(event.key === 'PageUp' || (event.key === ' ' && event.shiftKey) ? -1 : 1)
+      } else if (event.key === 'm' || event.key === 'M') {
+        // 菜单收起后只剩点击屏幕中间能唤回，键盘用户会被卡在没有入口的正文里。
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+        event.preventDefault()
+        setMenuVisible((visible) => !visible)
+      } else if (event.key === 'Escape' && menuVisible) {
         event.preventDefault()
         setMenuVisible(false)
       }
@@ -158,18 +206,152 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
     return () => window.removeEventListener('keydown', onKey)
   }, [goPage, tocOpen, searchOpen, settingsOpen, menuVisible])
 
+  // 选中正文文字后浮出「存入记事本 / 问 AI」入口。拖选过程中只在选区清空时收起，
+  // 定位推迟到松开鼠标 / 按键后，避免长篇正文跟着每个 selectionchange 重渲染。
+  useEffect(() => {
+    const locate = (): void => {
+      const viewport = viewportRef.current
+      const selection = window.getSelection()
+      if (!viewport || !selection || selection.isCollapsed || !selection.rangeCount) {
+        setExcerpt(null)
+        return
+      }
+      const node = selection.focusNode
+      const text = selection.toString().trim()
+      if (!node || !viewport.contains(node) || !text) {
+        setExcerpt(null)
+        return
+      }
+      const rect = selection.getRangeAt(0).getBoundingClientRect()
+      const host = viewport.getBoundingClientRect()
+      if (!rect.width && !rect.height) {
+        setExcerpt(null)
+        return
+      }
+      // 选区贴近底部时按钮翻到上方，左右各留出按钮宽度，避免被容器裁掉。
+      const above = rect.bottom + 44 > host.bottom
+      const top = above
+        ? Math.max(8, rect.top - host.top - 42)
+        : Math.min(rect.bottom - host.top + 10, host.height - 42)
+      const left = Math.min(Math.max(rect.left - host.left + rect.width / 2, 96), host.width - 96)
+      setExcerpt({ text, top, left })
+    }
+    const onSelectionChange = (): void => {
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed) setExcerpt(null)
+    }
+    document.addEventListener('selectionchange', onSelectionChange)
+    document.addEventListener('mouseup', locate)
+    document.addEventListener('keyup', locate)
+    // 滚动模式下选区会随内容移动，按钮跟随；滚出可视区时收起。
+    document.addEventListener('scroll', locate, true)
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange)
+      document.removeEventListener('mouseup', locate)
+      document.removeEventListener('keyup', locate)
+      document.removeEventListener('scroll', locate, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!excerptFlash) return
+    const timer = window.setTimeout(() => setExcerptFlash(''), 2400)
+    return () => window.clearTimeout(timer)
+  }, [excerptFlash])
+
+  const onSaveExcerpt = useCallback(async () => {
+    if (!excerpt || excerptSaving) return
+    const note = buildReaderExcerpt({
+      bookTitle,
+      chapterTitle: chapter?.title ?? '',
+      chapterIdx,
+      selectedText: excerpt.text
+    })
+    if (!note) return
+    if (!window.toolbox) {
+      setExcerptFlash('记事本暂不可用，请稍后重试')
+      return
+    }
+    setExcerptSaving(true)
+    try {
+      await useAppStore.getState().saveNote(note)
+      setExcerptFlash('已存入记事本')
+      setExcerpt(null)
+      window.getSelection()?.removeAllRanges()
+    } catch {
+      // 保存失败的原因（通道异常等）对用户没有可操作价值，只给重试提示。
+      setExcerptFlash('保存失败，请重试')
+    } finally {
+      setExcerptSaving(false)
+    }
+  }, [excerpt, excerptSaving, bookTitle, chapter?.title, chapterIdx])
+
+  // 问 AI 不直接发送：把原文与来源放进对话草稿，用户确认措辞后再发。
+  const onAskAi = useCallback(() => {
+    if (!excerpt) return
+    const question = buildReaderQuestion({
+      bookTitle,
+      chapterTitle: chapter?.title ?? '',
+      chapterIdx,
+      selectedText: excerpt.text
+    })
+    if (!question) return
+    useAppStore.getState().setChatDraft(question)
+    useAppStore.getState().setView('chat')
+    setExcerpt(null)
+    window.getSelection()?.removeAllRanges()
+  }, [excerpt, bookTitle, chapter?.title, chapterIdx])
+
   const onScroll = useCallback(() => {
     const viewport = viewportRef.current
     if (!viewport) return
+    // 打开书籍 / 跳转时由代码写入的位置不是用户阅读行为，不记入进度与阅读字数。
+    // 一次赋值可能触发多个 scroll 事件，只要还停在目标位置就都忽略。
+    const target = programmaticTarget.current
+    if (target !== null) {
+      if (Math.abs(viewport.scrollTop - target) < 1) return
+      programmaticTarget.current = null
+    }
     const maxScroll = viewport.scrollHeight - viewport.clientHeight
     useReaderStore.getState().setScrollRatio(maxScroll <= 0 ? 0 : viewport.scrollTop / maxScroll)
   }, [])
 
+  // 滚动模式里视口自己持有滚动位置：进度条、书签、搜索和切章只改 store 的比例，
+  // 不落到 scrollTop 画面就不会动（旧实现里这些跳转在该模式下不生效）。
+  // 字号 / 行距 / 字体改变会重排内容，滚动位置也要按比例重算，否则阅读位置会漂移。
+  useEffect(() => {
+    if (config.pageMode !== 'scroll') return
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const frame = requestAnimationFrame(() => {
+      const maxScroll = Math.max(viewport.scrollHeight - viewport.clientHeight, 0)
+      const target = useReaderStore.getState().scrollRatio * maxScroll
+      // 位置没变时浏览器不会发 scroll 事件，不设标记，免得挡住之后的真实滚动。
+      if (Math.abs(viewport.scrollTop - target) < 1) return
+      programmaticTarget.current = target
+      viewport.scrollTop = target
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [
+    seekSequence,
+    config.pageMode,
+    config.fontSize,
+    config.lineSpacing,
+    config.fontFamily,
+    chapter?.id
+  ])
+
   useEffect(() => useReaderStore.getState().startStats(), [])
 
+  const scrollMode = config.pageMode === 'scroll'
+  // 滚动模式没有页码，星标按「本章是否有书签」显示；分页模式仍精确到当前页。
   const currentBookmarked = useMemo(
-    () => bookmarks.some((b) => b.chapterIdx === chapterIdx && b.pageIdx === pageIdx),
-    [bookmarks, chapterIdx, pageIdx]
+    () =>
+      bookmarks.some(
+        (bookmark) =>
+          bookmark.chapterIdx === chapterIdx && (scrollMode || bookmark.pageIdx === pageIdx)
+      ),
+    [bookmarks, chapterIdx, pageIdx, scrollMode]
   )
 
   // 章节正文按 TXT 原有换行切成段落，渲染层统一做首行缩进与段间距，
@@ -181,15 +363,40 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
 
   const onToggleBookmark = useCallback(async () => {
     if (!chapter) return
-    const { pageIdx: currentPage, pageOffsets } = useReaderStore.getState()
-    await useReaderStore.getState().toggleBookmark({
+    const store = useReaderStore.getState()
+    const snippet = chapter.content.slice(0, 60).replace(/\s+/g, ' ').trim()
+
+    if (config.pageMode === 'scroll') {
+      // 滚动模式下 pageIdx 恒为 0：旧实现把书签存到 chapterIdx + 0，回跳总是章首。
+      const ratio = store.scrollRatio
+      const nearest = bookmarks
+        .filter((bookmark) => bookmark.chapterIdx === chapterIdx)
+        .sort(
+          (a, b) => Math.abs(a.pageIdxRatio - ratio) - Math.abs(b.pageIdxRatio - ratio)
+        )[0]
+      if (nearest) {
+        // 星标在本章已亮起，再点表示取消：删掉离当前位置最近的一条。
+        await store.deleteBookmark(nearest.id)
+        return
+      }
+      await store.toggleBookmark({
+        bookId,
+        chapterIdx,
+        pageIdx: SCROLL_BOOKMARK_PAGE_BASE + Math.floor(ratio * 1000),
+        pageIdxRatio: ratio,
+        snippet
+      })
+      return
+    }
+
+    await store.toggleBookmark({
       bookId,
       chapterIdx,
-      pageIdx: currentPage,
-      pageIdxRatio: pageOffsets[currentPage] ?? 0,
-      snippet: chapter.content.slice(0, 60).replace(/\s+/g, ' ').trim()
+      pageIdx: store.pageIdx,
+      pageIdxRatio: store.pageOffsets[store.pageIdx] ?? 0,
+      snippet
     })
-  }, [chapter, bookId, chapterIdx])
+  }, [bookmarks, chapter, bookId, chapterIdx, config.pageMode])
 
   if (loading) {
     return (
@@ -283,6 +490,35 @@ export function Reader({ bookId, bookTitle, initialChapterIdx, onBack }: ReaderP
         onNextChapter={() => void useReaderStore.getState().goChapter(chapterIdx + 1)}
         onSeek={(ratio) => useReaderStore.getState().seek(ratio)}
       />
+
+      {/* 抽屉 / 设置打开时选区入口会让位给模态层，关闭后重新选字即可再次出现。 */}
+      {excerpt && !tocOpen && !searchOpen && !settingsOpen ? (
+        <div className="reader-excerpt-actions" style={{ top: excerpt.top, left: excerpt.left }}>
+          <button
+            type="button"
+            className="reader-excerpt-btn"
+            disabled={excerptSaving}
+            // 按下时保留选区：默认行为会先清空选区，导致要保存的文字消失。
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void onSaveExcerpt()}
+          >
+            存入记事本
+          </button>
+          <button
+            type="button"
+            className="reader-excerpt-btn"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onAskAi}
+          >
+            问 AI
+          </button>
+        </div>
+      ) : null}
+      {excerptFlash ? (
+        <div className="reader-excerpt-flash" role="status">
+          {excerptFlash}
+        </div>
+      ) : null}
 
       <div
         ref={viewportRef}

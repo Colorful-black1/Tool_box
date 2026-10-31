@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { JSX } from 'react'
 import type { CodingAgentSessionView } from '@shared/coding-agents'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
@@ -14,7 +15,11 @@ export function AgentRunRecovery({
   )
   const refresh = useCodingAgentStore((state) => state.refreshSession)
   const recall = useCodingAgentStore((state) => state.recallMessage)
+  // 结算状态只属于当次任务；用户核对过或不想再看时可以收起，换会话或下次结算会重新出现。
+  const [dismissed, setDismissed] = useState<string | null>(null)
   if (!session || running || !session.outcome || session.outcome === 'completed') return null
+  const noticeKey = `${session.id}:${session.outcome}`
+  if (dismissed === noticeKey) return null
   const message = [...session.messages].reverse().find((item) => item.role === 'user')
   const unknown = session.outcome === 'unknown'
   return (
@@ -39,6 +44,9 @@ export function AgentRunRecovery({
           取回最近提问
         </button>
       ) : null}
+      <button type="button" className="btn-ghost" onClick={() => setDismissed(noticeKey)}>
+        关闭提示
+      </button>
     </div>
   )
 }

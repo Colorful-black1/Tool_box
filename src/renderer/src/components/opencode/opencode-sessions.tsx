@@ -113,6 +113,16 @@ export function OpenCodeSessions({
   const visible = [...items.values()].filter((item) =>
     item.title.toLowerCase().includes(query.trim().toLowerCase())
   )
+  // 未打开的历史条目在执行中 / 未连接 / 不支持恢复时是禁用的。
+  // 按钮禁用后没有任何反馈，用户只会以为点了没反应，这里直接说明原因。
+  const historyBlocked = visible.some((item) => !item.ref && (running || !info?.canLoadSession))
+  const historyNotice = !historyBlocked
+    ? ''
+    : running
+      ? '任务执行中，结束后才能切换会话。'
+      : !info?.connected
+        ? 'Agent 未连接，连接后才能打开历史会话。'
+        : '当前 Agent 不支持在应用内恢复历史会话，请在其原生界面打开。'
   useEffect(() => {
     const selected = tabs.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -268,6 +278,7 @@ export function OpenCodeSessions({
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
+            {historyNotice ? <p className="field-hint">{historyNotice}</p> : null}
             <div className="opencode-session-list" id="opencode-session-list" aria-busy={busy}>
               {!visible.length ? (
                 <p className="opencode-session-empty">

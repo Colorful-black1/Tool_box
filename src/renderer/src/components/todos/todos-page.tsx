@@ -2,7 +2,9 @@ import { confirmDialog } from '../../stores/dialog-store'
 import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { TodoFilter, TodoInput, TodoView } from '@shared/types'
+import { buildTodoDigest } from '@shared/todo-digest'
 import { zonedDateTimeToMs } from '@shared/timezone-tools'
+import { useAppStore } from '../../stores/app-store'
 import { useTodoStore } from '../../stores/todo-store'
 import { Dropdown } from '../dropdown'
 import { DatePicker } from '../date-picker'
@@ -59,7 +61,16 @@ export function TodosPage(): JSX.Element {
   const [dateError, setDateError] = useState('')
   const [invalidDates, setInvalidDates] = useState({ start: false, due: false })
   const [dateRevision, setDateRevision] = useState(0)
+  const [digestBusy, setDigestBusy] = useState(false)
+  const [digestMessage, setDigestMessage] = useState('')
+  const digestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  useEffect(
+    () => () => {
+      if (digestTimer.current) clearTimeout(digestTimer.current)
+    },
+    []
+  )
   useEffect(() => {
     void load()
   }, [load])
@@ -82,6 +93,41 @@ export function TodosPage(): JSX.Element {
     setInvalidDates({ start: false, due: false })
     setDateRevision((revision) => revision + 1)
   }
+  const flashDigest = (message: string): void => {
+    setDigestMessage(message)
+    if (digestTimer.current) clearTimeout(digestTimer.current)
+    digestTimer.current = setTimeout(() => setDigestMessage(''), 2000)
+  }
+
+  /**
+   * 本周完成的待办整理成一条周报笔记：单独查已完成分页，不受当前筛选影响；
+   * 只读已读条目，不改待办本身。
+   */
+  const saveWeeklyDigest = async (): Promise<void> => {
+    if (digestBusy || !window.toolbox?.todos) return
+    setDigestBusy(true)
+    setDigestMessage('')
+    try {
+      const snapshot = await window.toolbox.todos.list({
+        filter: 'completed',
+        search: '',
+        offset: 0,
+        limit: 100
+      })
+      const digest = buildTodoDigest(snapshot.items, Date.now())
+      if (!digest) {
+        flashDigest('本周还没有完成的任务')
+        return
+      }
+      await useAppStore.getState().saveNote({ title: digest.title, content: digest.content })
+      flashDigest(`已存入记事本 · ${digest.count} 条`)
+    } catch {
+      flashDigest('生成周报失败，请重试')
+    } finally {
+      setDigestBusy(false)
+    }
+  }
+
   const date = (key: 'startAtMs' | 'dueAtMs', value: string): void => {
     try {
       const ms = value
@@ -286,6 +332,15 @@ export function TodosPage(): JSX.Element {
             >
               刷新
             </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={digestBusy || !window.toolbox?.todos}
+              onClick={() => void saveWeeklyDigest()}
+            >
+              {digestBusy ? '生成中…' : '本周完成 → 记事本'}
+            </button>
+            {digestMessage ? <span className="toast-inline">{digestMessage}</span> : null}
           </div>
           <div className="todo-list" ref={listRef}>
             {!items.length ? (

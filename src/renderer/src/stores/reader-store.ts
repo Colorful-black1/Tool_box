@@ -7,6 +7,7 @@ import type {
   ChapterContent,
   ChapterMeta
 } from '../../../shared/types'
+import { locate } from '../lib/paginator'
 
 interface ReaderState {
   book: BookSummary | null
@@ -17,6 +18,8 @@ interface ReaderState {
   pageCount: number
   pageOffsets: number[]
   scrollRatio: number
+  /** 每次跳转（进度条 / 书签 / 搜索 / 切章）自增，供滚动模式把比例落到实际视口。 */
+  seekSequence: number
   bookmarks: Bookmark[]
   bookPercent: number
 
@@ -54,6 +57,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   pageCount: 1,
   pageOffsets: [0],
   scrollRatio: 0,
+  seekSequence: 0,
   bookmarks: [],
   bookPercent: 0,
   // config 由阅读器直接订阅 config-store，这里不再复制一份
@@ -75,6 +79,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const target = chapters[startIdx]
     const chapter = target ? await bridge.books.chapterContent(target.id) : null
 
+    // 进度只存全书比例：章内位置可由 percent × 总章数 − 章序反推。
+    // 重开书籍（未指定初始章）时按它恢复，否则每次都从章首开始。
+    const restoredRatio =
+      initialChapterIdx === undefined
+        ? Math.min(1, Math.max(0, (progress?.percent ?? 0) * chapters.length - startIdx))
+        : 0
+
     // 以恢复的进度作为本次会话起点，不计入已读字数
     sessionMaxRatio = progress?.percent ?? 0
 
@@ -85,7 +96,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       chapterIdx: startIdx,
       pageIdx: 0,
       pageOffsets: [0],
-      scrollRatio: 0,
+      scrollRatio: restoredRatio,
       bookmarks,
       bookPercent: progress?.percent ?? 0
     })
@@ -101,7 +112,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const chapter = await bridge.books.chapterContent(target.id)
     const toLast = options?.toLast === true
 
-    set({ chapter, chapterIdx: idx, pageIdx: 0, scrollRatio: 0 })
+    set({
+      chapter,
+      chapterIdx: idx,
+      pageIdx: 0,
+      scrollRatio: 0,
+      seekSequence: get().seekSequence + 1
+    })
 
     // 等分页测量完成后再定位到目标位置
     window.setTimeout(() => {
@@ -129,19 +146,24 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     void get().saveProgress()
   },
 
-  setPagination: (pageCount, offsets) => set({ pageCount, pageOffsets: offsets }),
+  setPagination: (pageCount, offsets) =>
+    set((state) => ({
+      pageCount,
+      pageOffsets: offsets,
+      // 字号 / 行距 / 字体 / 窗口大小变化都会重新分页：按当前阅读比例重新定位，
+      // 否则页码不变，但同一页已经换成了别处的内容。
+      pageIdx: locate(offsets, state.scrollRatio)
+    })),
 
   seek: async (ratio) => {
     const clamped = Math.min(1, Math.max(0, ratio))
-    const { pageOffsets, pageCount } = get()
-    let target = pageCount - 1
-    for (let index = 0; index < pageOffsets.length; index += 1) {
-      if (pageOffsets[index] > clamped) {
-        target = index
-        break
-      }
-    }
-    set({ pageIdx: Math.max(target, 0), scrollRatio: clamped })
+    // 复用分页引擎的「比例 → 页码」规则：起始偏移 ≤ 比例 的最后一页，避免落到下一页。
+    const target = locate(get().pageOffsets, clamped)
+    set({
+      pageIdx: target,
+      scrollRatio: clamped,
+      seekSequence: get().seekSequence + 1
+    })
     advanceTo(clamped)
     void get().saveProgress()
   },
@@ -156,18 +178,17 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const chapter = await bridge.books.chapterContent(target.id)
     const clamped = Math.min(1, Math.max(0, ratio))
 
-    set({ chapter, chapterIdx, pageIdx: 0, scrollRatio: clamped })
+    set({
+      chapter,
+      chapterIdx,
+      pageIdx: 0,
+      scrollRatio: clamped,
+      seekSequence: get().seekSequence + 1
+    })
 
     window.setTimeout(() => {
-      const { pageOffsets, pageCount } = get()
-      let page = pageCount - 1
-      for (let index = 0; index < pageOffsets.length; index += 1) {
-        if (pageOffsets[index] > clamped) {
-          page = index
-          break
-        }
-      }
-      set({ pageIdx: Math.max(page, 0) })
+      // 与 seek 同一套定位规则：书签 / 搜索结果应落在包含目标比例的那一页，而不是它的下一页。
+      set({ pageIdx: locate(get().pageOffsets, clamped) })
       void get().saveProgress()
     }, 80)
 

@@ -118,6 +118,20 @@ export function BookshelfPage(): JSX.Element {
     window.setTimeout(() => setNotice(''), 1800)
   }
 
+  // 主进程解析失败（如空文件）会让 invoke 直接 reject；不接住的话点击「导入 TXT」后毫无反应。
+  async function handleImport(): Promise<void> {
+    try {
+      await importBook()
+    } catch (error) {
+      // Electron 会把通道名拼进 message，展示前去掉，避免暴露内部通道。
+      const message =
+        error instanceof Error
+          ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
+          : ''
+      toast(message || '导入失败，请重试')
+    }
+  }
+
   function toggleSelect(id: string): void {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -243,7 +257,7 @@ export function BookshelfPage(): JSX.Element {
             <button
               type="button"
               className="btn-gold"
-              onClick={() => void importBook()}
+              onClick={() => void handleImport()}
             >
               导入 TXT
             </button>
@@ -319,7 +333,10 @@ export function BookshelfPage(): JSX.Element {
                 onToggleSelect={() => toggleSelect(book.id)}
                 onDetail={() => setDetail(book)}
                 onDelete={async () => {
-                  const ok = await confirmDialog(`确定删除「${book.title}」吗？该操作不可恢复。`)
+                  // 与批量移除的说法保持一致：删除的是书库记录，磁盘上的 TXT 仍保留。
+                  const ok = await confirmDialog(
+                    `确定从书架移除「${book.title}」吗？\n阅读进度、书签与章节记录会一并删除，磁盘上的 TXT 文件保留。`
+                  )
                   if (!ok) return
                   await deleteBook(book.id)
                   toast('已删除')
@@ -422,7 +439,15 @@ function BookCard(props: BookCardProps): JSX.Element {
       }}
     >
       <div className="book-cover-wrap">
-        <button type="button" className="book-cover" onClick={props.onOpen}>
+        {/* 管理模式下整块封面就是多选控件：鼠标点哪都能勾，键盘也能 Tab 到并用空格切换。 */}
+        <button
+          type="button"
+          className="book-cover"
+          role={props.editing ? 'checkbox' : undefined}
+          aria-checked={props.editing ? props.selected : undefined}
+          aria-label={props.editing ? `选择 ${book.title}` : undefined}
+          onClick={props.editing ? props.onToggleSelect : props.onOpen}
+        >
           {book.coverPath ? (
             <img src={toFileUrl(book.coverPath)} alt={book.title} />
           ) : (
@@ -440,16 +465,7 @@ function BookCard(props: BookCardProps): JSX.Element {
           )}
 
           {props.editing ? (
-            <span
-              className={`select-check${props.selected ? ' on' : ''}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                props.onToggleSelect()
-              }}
-              role="checkbox"
-              aria-checked={props.selected}
-              aria-label={`选择 ${book.title}`}
-            />
+            <span className={`select-check${props.selected ? ' on' : ''}`} aria-hidden="true" />
           ) : null}
         </button>
 

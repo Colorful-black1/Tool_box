@@ -98,6 +98,11 @@ export function OpenCodeActivity({
               拒绝操作
             </button>
           </div>
+          {approval.canAllow ? null : (
+            <p className="field-hint">
+              当前请求不支持「允许」，只能拒绝；如确需放行，请到原生 Agent 中处理。
+            </p>
+          )}
         </section>
       ) : null}
     </>

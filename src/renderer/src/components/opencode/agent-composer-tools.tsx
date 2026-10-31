@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
-import { CodeIcon, FolderIcon, PlusIcon } from '../icons'
+import { CodeIcon, EditIcon, FolderIcon, PlusIcon } from '../icons'
 import { Popover } from '../popover'
 
-type InputTool = 'files' | 'commands' | 'skills' | 'mcp'
+type InputTool = 'files' | 'commands' | 'skills' | 'mcp' | 'notes'
 const INPUT_TOOLS: Array<{ id: InputTool; label: string; key: string }> = [
   { id: 'files', label: '引用文件', key: '@' },
+  { id: 'notes', label: '引用笔记', key: '' },
   { id: 'commands', label: '命令', key: '/' },
   { id: 'skills', label: 'Skill', key: '' },
   { id: 'mcp', label: 'MCP', key: '' }
@@ -86,7 +87,13 @@ export function AgentComposerTools({
                   onChoose(tool.id)
                 }}
               >
-                {tool.id === 'files' ? <FolderIcon /> : <CodeIcon />}
+                {tool.id === 'files' ? (
+                  <FolderIcon />
+                ) : tool.id === 'notes' ? (
+                  <EditIcon />
+                ) : (
+                  <CodeIcon />
+                )}
                 <span>{tool.label}</span>
                 <kbd>{tool.key}</kbd>
               </button>

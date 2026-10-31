@@ -107,6 +107,7 @@ export function ReaderMenu(props: ReaderMenuProps): JSX.Element {
 
         <div className="reader-meta-row">
           <span className="reader-page-label">{chapterLabel}</span>
+          <span className="reader-menu-hint">M 收起 / 唤出菜单</span>
           <button type="button" className="reader-link-btn" onClick={props.onOpenSettings}>
             阅读设置
           </button>

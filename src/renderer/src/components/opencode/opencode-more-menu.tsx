@@ -8,16 +8,20 @@ export function OpenCodeMoreMenu({
   canSummarize,
   canSync,
   canAttachWorkspace = false,
+  canSaveNote = false,
   onSummarize,
   onSync,
-  onAttachWorkspace
+  onAttachWorkspace,
+  onSaveNote
 }: {
   canSummarize: boolean
   canSync: boolean
   canAttachWorkspace?: boolean
+  canSaveNote?: boolean
   onSummarize(): void
   onSync(): void
   onAttachWorkspace?: () => void
+  onSaveNote?: () => void
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -91,6 +95,17 @@ export function OpenCodeMoreMenu({
             >
               生成交接说明
             </button>
+            {onSaveNote ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-ghost"
+                disabled={!canSaveNote}
+                onClick={() => choose(onSaveNote)}
+              >
+                整段会话存入记事本
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"

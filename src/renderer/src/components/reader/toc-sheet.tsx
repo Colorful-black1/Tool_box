@@ -1,5 +1,5 @@
 ﻿import { useModalFocus } from '../../lib/use-modal-focus'
-import { useRef, useMemo, useState } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { Bookmark, ChapterMeta, ReaderTheme } from '../../../../shared/types'
@@ -23,10 +23,25 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [descending, setDescending] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // 确认行会整行替换书签行，原来的删除按钮随子树卸载；记录它以便取消后回到原处。
+  const cancelRef = useRef<HTMLButtonElement | null>(null)
+  const deleteRefs = useRef(new Map<string, HTMLButtonElement | null>())
+  const restoreFocusId = useRef<string | null>(null)
 
   const modalRef = useRef<HTMLDivElement>(null)
   useModalFocus(modalRef)
   useOverlayEscape(props.onClose)
+
+  useEffect(() => {
+    if (confirmId) {
+      cancelRef.current?.focus()
+      return
+    }
+    if (restoreFocusId.current) {
+      deleteRefs.current.get(restoreFocusId.current)?.focus()
+      restoreFocusId.current = null
+    }
+  }, [confirmId])
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase()
@@ -149,7 +164,11 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
                           <button
                             type="button"
                             className="btn-ghost"
-                            onClick={() => setConfirmId(null)}
+                            ref={cancelRef}
+                            onClick={() => {
+                              restoreFocusId.current = bookmark.id
+                              setConfirmId(null)
+                            }}
                           >
                             取消
                           </button>
@@ -173,6 +192,10 @@ export function TocSheet(props: TocSheetProps): JSX.Element {
                             type="button"
                             className="icon-btn"
                             aria-label={`删除书签 ${chapterName}`}
+                            ref={(element) => {
+                              if (element) deleteRefs.current.set(bookmark.id, element)
+                              else deleteRefs.current.delete(bookmark.id)
+                            }}
                             onClick={() => setConfirmId(bookmark.id)}
                           >
                             ×

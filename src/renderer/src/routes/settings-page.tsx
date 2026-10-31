@@ -13,6 +13,7 @@ import type {
 import { DEFAULT_SHORTCUT_CONFIG, SHORTCUT_ACCELERATORS } from '@shared/types'
 import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
+import { confirmDialog } from '../stores/dialog-store'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
 import { Dropdown } from '../components/dropdown'
 
@@ -22,6 +23,12 @@ const ACCELERATOR_LABELS: Record<string, string> = {
   'Control+Shift+K': 'Ctrl + Shift + K',
   'Control+Alt+T': 'Ctrl + Alt + T',
   'Alt+Space': 'Alt + 空格'
+}
+
+/** 主进程抛出的错误会带上 Electron 的通道前缀，展示前去掉，避免向用户暴露内部通道。 */
+const errorText = (error: unknown, fallback: string): string => {
+  if (!(error instanceof Error) || !error.message) return fallback
+  return error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
 }
 
 /** 表单草稿：与落盘档案解耦，未保存的修改不会污染 store */
@@ -121,7 +128,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       setShortcut(result.config)
       if (!result.ok) setShortcutError(result.error ?? '设置失败')
     } catch (error) {
-      setShortcutError(error instanceof Error ? error.message : '设置失败')
+      setShortcutError(errorText(error, '设置失败'))
     }
   }
 
@@ -209,13 +216,20 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     } catch (error) {
       setStatus({
         type: 'error',
-        message: error instanceof Error && error.message ? error.message : '保存失败'
+        message: errorText(error, '保存失败')
       })
     }
   }
 
   const onDelete = async (): Promise<void> => {
     if (!draft?.id || status.type === 'saving') return
+    // 删除会连加密后的 API Key 一起清掉，无法从界面找回；这里必须二次确认。
+    const active = draft.id === settings.activeId
+    const confirmed = await confirmDialog(
+      `确定删除配置「${draft.name || '未命名配置'}」吗？\n已保存的 API Key 会一并删除且无法恢复。` +
+        (active ? '\n当前使用中的配置会切换到其它配置；没有其它配置时需重新添加。' : '')
+    )
+    if (!confirmed) return
     setStatus({ type: 'saving' })
     try {
       await removeProfile(draft.id)
@@ -224,7 +238,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     } catch (error) {
       setStatus({
         type: 'error',
-        message: error instanceof Error && error.message ? error.message : '删除失败'
+        message: errorText(error, '删除失败')
       })
     }
   }
@@ -263,7 +277,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       setModelList({
         count: 0,
         source: 'preset',
-        message: error instanceof Error ? error.message : '获取失败'
+        message: errorText(error, '获取失败')
       })
     } finally {
       setLoadingModels(false)
@@ -292,7 +306,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     } catch (error) {
       setStatus({
         type: 'error',
-        message: error instanceof Error && error.message ? error.message : '切换失败'
+        message: errorText(error, '切换失败')
       })
     }
   }

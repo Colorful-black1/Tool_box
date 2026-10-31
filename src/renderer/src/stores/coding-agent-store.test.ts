@@ -330,6 +330,22 @@ describe('工作台按需准备与明确发送', () => {
     expect(store.getState().draft).toBe('新输入')
     expect(store.getState().recall).toBeNull()
   })
+  it('用户消息也能转用，目标草稿按任务说明带入原文', async () => {
+    await store.getState().openSession('same-native-id')
+    store.getState().receive({
+      kind: 'session',
+      session: {
+        ...session('opencode', 'opencode-ref', 3),
+        messages: [{ id: 'user-1', role: 'user', content: '修复 ABI 构建失败' }]
+      }
+    })
+    await store.getState().transferMessage('user-1', 'codex')
+    expect(store.getState().runtimeId).toBe('codex')
+    expect(store.getState().draft).toContain('请在同一项目中处理以下任务。')
+    expect(store.getState().draft).toContain('修复 ABI 构建失败')
+    expect(api.send).not.toHaveBeenCalled()
+  })
+
   it('未打开过的目标先只读检查记忆，取消不创建或修改目标工作台', async () => {
     await store.getState().openSession('same-native-id')
     api.inspect.mockResolvedValueOnce({
