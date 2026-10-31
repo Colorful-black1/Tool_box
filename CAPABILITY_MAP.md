@@ -1,5 +1,14 @@
 # Capability Map: Tool_box
 
+## 2026-10-31 能力扩展第一批
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| password-health | 渲染层健康分析、无明文报告、详情定位 | shared, renderer-ui | [批次计划](docs/PLAN-capability-batch-1.md) |
+| clipboard-history | 默认关闭的内存纯文本历史、复制排除、暂停与忽略规则 | electron-shell, shared, renderer-ui | 同上 |
+| duplicate-finder | 系统目录引用、只读枚举与流式哈希、取消与进度 | electron-shell, shared, renderer-ui | 同上 |
+| local-snapshots | SQLite 一致快照、资源清单、前置快照、校验与恢复回退 | persistence, electron-shell, shared | 同上 |
+
 ## 2026-10-25 首批工具与待办提醒
 
 | Module id | Responsibility | Depends on | Spec |

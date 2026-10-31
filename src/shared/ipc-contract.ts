@@ -120,6 +120,17 @@ export const IPC = {
   backgroundClear: 'background:clear',
 
   systemCopy: 'system:copy',
+  clipboardList: 'system:clipboard:list',
+  clipboardClear: 'system:clipboard:clear',
+  clipboardPin: 'system:clipboard:pin',
+  clipboardEnabled: 'system:clipboard:set-enabled',
+  clipboardPause: 'system:clipboard:pause',
+  filesChooseDirectory: 'files:choose-directory',
+  filesFindDuplicates: 'files:find-duplicates',
+  filesCancelScan: 'files:cancel-scan',
+  backupChooseFolder: 'backup:choose-folder',
+  backupExport: 'backup:export',
+  backupRestore: 'backup:restore',
   systemShortcutGet: 'system:shortcut:get',
   systemShortcutSet: 'system:shortcut:set'
 } as const
@@ -135,6 +146,8 @@ export const CHAT_EVENT = {
 } as const
 
 export const WINDOW_EVENT = {
+  clipboard: 'system:clipboard:event',
+  fileScan: 'files:event:scan',
   todo: 'todos:event',
   agentDraftFlush: 'agent-draft:event:flush',
   codingAgent: 'coding-agent:event:state',

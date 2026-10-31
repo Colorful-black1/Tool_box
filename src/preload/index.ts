@@ -24,6 +24,8 @@ import type {
   TodoEvent
 } from '../shared/types'
 import type { ToolboxBridge } from '../shared/bridge'
+import type { ClipboardHistorySnapshot } from '../shared/clipboard'
+import type { FileScanSnapshot } from '../shared/file-tools'
 import type { CodingAgentEvent } from '../shared/coding-agents'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -37,6 +39,25 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const bridge: ToolboxBridge = {
+  backup: {
+    chooseFolder: (purpose) => ipcRenderer.invoke(IPC.backupChooseFolder, purpose),
+    export: (token) => ipcRenderer.invoke(IPC.backupExport, token),
+    restore: (token) => ipcRenderer.invoke(IPC.backupRestore, token)
+  },
+  files: {
+    chooseDirectory: () => ipcRenderer.invoke(IPC.filesChooseDirectory),
+    findDuplicates: (token) => ipcRenderer.invoke(IPC.filesFindDuplicates, token),
+    cancelScan: () => ipcRenderer.invoke(IPC.filesCancelScan),
+    onScan: (listener) => subscribe<FileScanSnapshot>(WINDOW_EVENT.fileScan, listener)
+  },
+  clipboardHistory: {
+    list: () => ipcRenderer.invoke(IPC.clipboardList),
+    clear: (id) => ipcRenderer.invoke(IPC.clipboardClear, id),
+    pin: (id, pinned) => ipcRenderer.invoke(IPC.clipboardPin, { id, pinned }),
+    setEnabled: (config) => ipcRenderer.invoke(IPC.clipboardEnabled, config),
+    pause: () => ipcRenderer.invoke(IPC.clipboardPause),
+    onEvent: (listener) => subscribe<ClipboardHistorySnapshot>(WINDOW_EVENT.clipboard, listener)
+  },
   developerCommands: {
     read: () => ipcRenderer.invoke(IPC.developerCommandsRead),
     save: (input) => ipcRenderer.invoke(IPC.developerCommandsSave, input),

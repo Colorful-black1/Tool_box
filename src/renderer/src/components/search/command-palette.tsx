@@ -1,4 +1,5 @@
 import { confirmDialog } from '../../stores/dialog-store'
+import { useClipboardStore } from '../../stores/clipboard-store'
 /**
  * 命令面板（⌘K / Ctrl+K）。
  *
@@ -23,6 +24,7 @@ import { shortcutToolIds } from '../../../../shared/tool-shortcuts'
 
 /** 面板里能执行的动作 */
 type PaletteAction =
+  | { type: 'clipboard' }
   | { type: 'view'; view: AppView }
   | { type: 'openBook'; bookId: string }
   | { type: 'openConversation'; conversationId: string }
@@ -138,7 +140,9 @@ export function CommandPalette(): JSX.Element | null {
 
   /** 候选集合：命令 + 工具 + 本地数据 */
   const sources = useMemo<PaletteSource[]>(() => {
-    const list: PaletteSource[] = []
+    const list: PaletteSource[] = [
+      { kind: 'command', id: 'clipboard-history', title: '剪贴板历史', action: { type: 'clipboard' } }
+    ]
     for (const command of VIEW_COMMANDS) {
       list.push({
         kind: 'command',
@@ -265,6 +269,10 @@ export function CommandPalette(): JSX.Element | null {
       useAppStore.setState({ error: error instanceof Error ? error.message : '无法打开目标，请重试' })
     }
     switch (action.type) {
+      case 'clipboard':
+        // 等命令面板卸载归还焦点后再打开，避免两个模态焦点范围重叠。
+        window.setTimeout(() => useClipboardStore.getState().setOpen(true), 0)
+        break
       case 'view':
         setView(action.view)
         break

@@ -27,6 +27,7 @@ async function main() {
   const tempRoot = path.resolve(os.tmpdir())
   const profile = await fs.mkdtemp(path.join(tempRoot, 'toolbox-ui-'))
   const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
+  if (process.argv.includes('--capability-batch-only')) env.TOOLBOX_CAPABILITY_VERIFY = '1'
   if (process.argv.includes('--agent-usage-only')) env.TOOLBOX_USAGE_VERIFY = '1'
   if (process.argv.includes('--chat-tools-only')) {
     env.TOOLBOX_CHAT_TOOLS_VERIFY = '1'
@@ -79,6 +80,18 @@ async function main() {
         return element && element.scrollHeight - element.clientHeight - element.scrollTop < 2
       })
 
+    if (process.argv.includes('--capability-batch-only')) {
+      await require('./capability-batch.cjs')({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`能力批次一验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--themes-only')) {
+      await verifyThemes({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`桌面主题验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
     if (process.argv.includes('--commands-only')) {
       await verifyDeveloperCommands({ page, app, check, capture })
       await check('命令库完整重启后恢复个人记录与收藏', async () => {
@@ -495,7 +508,39 @@ async function main() {
     await verifyToolNavigation({ page, app, check, capture })
     await verifyDevTools({ page, app, check, capture })
     await verifyAiStream({ page, check, capture })
-    await verifyOpenCode({ page, app, check, capture })
+    // 全量回归使用当前统一协议；旧 OpenCode 桥接没有项目记忆接口，不能承担现行主流程验收。
+    // 独立配置避免前面的 Prompt／草稿交接场景污染首次连接与会话计数断言。
+    const agentProfile = await fs.mkdtemp(path.join(tempRoot, 'toolbox-ui-agents-'))
+    let agentApp
+    try {
+      agentApp = await _electron.launch({
+        args: [path.join(__dirname, 'main.cjs')],
+        env: { ...env, TOOLBOX_UI_VERIFY_PROFILE: agentProfile, TOOLBOX_CODING_AGENT_VERIFY: '1' }
+      })
+      const agentPage = await agentApp.firstWindow()
+      agentPage.setDefaultTimeout(10000)
+      agentPage.on('pageerror', (error) => errors.push(error.message))
+      await verifyCodingAgents({
+        page: agentPage,
+        app: agentApp,
+        check,
+        capture: async (name) => {
+          if (!process.argv.includes('--screenshots')) return
+          await fs.mkdir(artifactDir, { recursive: true })
+          await agentPage.screenshot({
+            path: path.join(artifactDir, `${name}.png`),
+            animations: 'disabled'
+          })
+        }
+      })
+    } finally {
+      if (agentApp) await agentApp.close()
+      if (
+        path.dirname(path.resolve(agentProfile)) === tempRoot &&
+        path.basename(agentProfile).startsWith('toolbox-ui-agents-')
+      )
+        await fs.rm(agentProfile, { recursive: true, force: true })
+    }
     await verifyThemes({ page, app, check, capture })
     await check('重启 Electron 后恢复主题和动效设置', async () => {
       await app.close()

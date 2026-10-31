@@ -18,6 +18,7 @@ import { ShortcutManager } from './shortcuts'
 import { createTray, showMainWindow } from './tray'
 import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
+import { recoverInterruptedRestore } from './services/backup/backup-service'
 
 // 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
 // 还会让数据库、AI 配置和密码箱状态混在一起。测试入口若已显式 setPath，则保留其隔离目录。
@@ -95,6 +96,7 @@ function createMainWindow(): BrowserWindow {
 
 function initializeServices(): void {
   const userDataDir = app.getPath('userData')
+  recoverInterruptedRestore(userDataDir)
   const promptDir = join(app.getAppPath(), 'assets/prompts')
   const settings = new SettingsService(userDataDir, safeStorageAdapter)
   const secretBox = new SafeStorageSecretBox(userDataDir, safeStorageAdapter)

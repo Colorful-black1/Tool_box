@@ -59,5 +59,8 @@ fixture.controls.openTodo = (id) => ipcRenderer.invoke('verify:todo:open', id)
 if (process.env.TOOLBOX_CHAT_TOOLS_VERIFY === '1')
   require('./chat-tools-preload.cjs')(fixture, ipcRenderer)
 
+if (process.env.TOOLBOX_CAPABILITY_VERIFY === '1')
+  require('./capability-batch-fixture.cjs')(fixture)
+
 contextBridge.exposeInMainWorld('toolbox', fixture.toolbox)
 contextBridge.exposeInMainWorld('uiVerification', fixture.controls)

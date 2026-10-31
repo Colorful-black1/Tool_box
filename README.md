@@ -21,6 +21,24 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 | Token 统计 | 独立读取 Codex、OpenCode、Claude Code、Kimi Code、Pi、WorkBuddy、DeepSeek Harness、ZCode 等 14 类本机来源，无需连接 Agent；支持周期 / Agent / 项目 / 模型筛选、趋势与排行、可排序明细和 CSV 导出；仅显示 OpenCode 原生上报花费，不做价格估算 |
 | 全局搜索 | **⌘K / Ctrl+K** 唤起命令面板：搜书架、记事本（正文也搜）、密码箱、分组、会话，并直接执行命令（切模块、开工具、新建对话）；数据全在内存，输入即出结果 |
 
+### 本机能力扩展
+
+- 密码箱顶部「健康检查」打开右侧报告：统计重复、弱密码、空密码、超过 365 天未改与解密失败；点击标题打开原详情。只在渲染层内存计算，报告不含密码明文，不发网络。
+- Ctrl+K 搜索「剪贴板历史」：默认关闭，确认后记录本次运行的纯文本；支持搜索、固定、回填系统剪贴板、删除、清空、暂停 30 分钟及关键词／前缀忽略。最多 200 条，每条最多 10,000 字符；固定项不淘汰，固定满 200 条时暂停新增。应用自身复制的内容跳过，图片、富文本及文件列表不采集；退出后历史和规则清空。其他应用复制的密码仍可能进入历史，请按需开启。
+- 工具 → 文件 →「重复文件查找」：系统选目录后只读枚举，按大小及流式 SHA-256 分组，支持进度和取消。最多 20,000 文件、12 层目录；跳过链接、跨盘目录、点开头或带 Windows 隐藏属性的目录及 `.git` / `node_modules` / `out` / `release`。Windows 隐藏属性通过固定的系统 PowerShell 只读查询，不把路径拼入命令；系统接口不可用时跳过未确认的子目录并提示。0 字节文件不分组；权限失败、深度与文件数限制会明确提示。可释放大小仅为估计，不提供删除或移动。
+
+### 备份与恢复
+
+设置 →「数据与备份」提供**本机快照**，仅可在原电脑、原系统用户与原安全存储环境下恢复，不能用于换机迁移。重装系统可能丢失 DPAPI 解密条件；单独保留主密钥文件不能保证重装系统后解密。
+
+导出时在用户选择的文档目录内新建独立文件夹，使用 SQLite `db.backup()` 生成包含 WAL 已提交数据的一致性快照，复制封面、背景及已有的 `ai-settings.json`、`password-master-key.json`；从未使用加密数据时主密钥文件可能尚未生成，不为导出创建新密钥。`manifest.json` 记录格式／schema／程序版本、时间、仅本机标记、文件大小与 SHA-256；不覆盖已有目录，不打包 zip。**快照含敏感配置与系统封装的主密钥，请勿上传网盘或发给他人。**
+
+恢复前先校验版本、实际数据库结构、文件清单与哈希，拒绝链接、路径穿越、异机标记及高于当前程序的 schema；再经系统弹窗二次确认，在应用数据目录 `backups/before-restore-*` 自动保存当前快照。新数据先暂存，关闭数据库后同步安装；失败回退，意外中断时下次启动在开库前按恢复日志回退。恢复完成后提示并退出应用，请手动重新打开；不会静默重启。
+
+前置快照与 `.snapshot-restore-*` 暂存记录保留，便于故障恢复，也占用磁盘并含敏感数据。空间／权限或前置快照失败时不会开始覆盖。快照包含本应用数据库与两类受管图片资源，不包含外部编程 Agent 的原生会话目录和模型配置文件；非本批次的统计缓存与来源配置沿用本机现状。
+
+隔离验证与边界见 [能力批次一交付记录](docs/capability-batch-1-verification.md)。
+
 ### 桌面端常驻与快捷键
 
 - **单实例启动**：同一版本再次点击桌面或开始菜单快捷方式会显示并聚焦已有窗口；最小化时先还原，托盘隐藏时直接唤回，不重复创建窗口或托盘。
@@ -440,7 +458,10 @@ node verify/desktop-ui/run.cjs
 node verify/desktop-ui/run.cjs --screenshots  # 可选：截图写入 .playwright-mcp/desktop-ui/
 node verify/desktop-ui/run.cjs --tools-only --screenshots  # 工具导航与 Java / AI 首批工具
 node verify/desktop-ui/run.cjs --tool-navigation-only --screenshots  # 工具搜索、排序及重启恢复
-node verify/desktop-ui/run.cjs --opencode-only --screenshots  # 只验收 OpenCode 工作台
+node verify/desktop-ui/run.cjs --coding-agents-only --screenshots  # 当前统一编程工作台
+node verify/desktop-ui/run.cjs --capability-batch-only --screenshots  # 密码健康／剪贴板／文件查重／备份入口
+node verify/capability-batch.cjs  # 生产 IPC、真实 SQLite 与 DPAPI，隔离数据恢复及重启
+node verify/capability-batch.cjs --dialog-failure  # 恢复结果系统提示异常仍安全退出
 node verify/desktop-ui/run.cjs --sidebar-only --screenshots  # 树形侧栏、键盘、页面跳转及窄栏
 ```
 

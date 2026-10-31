@@ -4,7 +4,16 @@ const assert = require('node:assert/strict')
 
 module.exports = async function verifyCodingAgents({ page, app, check, capture }) {
   const draft = () => page.getByRole('textbox', { name: '编程任务草稿', exact: true })
-  const agent = (name) => page.getByRole('button', { name, exact: true }).click()
+  // 用户消息也提供转用操作，回复交接场景明确定位最后一条助手消息。
+  const replyAction = (name) =>
+    page
+      .locator('.opencode-messages .message.assistant')
+      .last()
+      .getByRole('button', { name, exact: true })
+  const agent = (name) =>
+    name.startsWith('用于 ')
+      ? replyAction(name).click()
+      : page.getByRole('button', { name, exact: true }).click()
   const calls = () => page.evaluate(() => window.uiVerification.agentCalls())
   const count = async (action) => (await calls()).filter((item) => item.action === action).length
   await agent('编程 Agent')
@@ -49,7 +58,7 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
   })
   await check('明确回复两步转用，目标未连接也不要求准备会话或填写表单', async () => {
     const before = await calls()
-    await page.getByRole('button', { name: '用于 Codex', exact: true }).click()
+    await replyAction('用于 Codex').click()
     assert.deepEqual(await calls(), before)
     assert.ok((await draft().inputValue()).includes('已完成实现'))
     assert.equal(
@@ -82,10 +91,7 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
     await page.getByText('Codex 流式第一段', { exact: true }).waitFor()
     await page.getByText('执行详情 · 0 项工具 / 1 项子任务', { exact: true }).click()
     await page.getByText('检查器', { exact: false }).waitFor()
-    assert.equal(
-      await page.getByRole('button', { name: '用于 OpenCode', exact: true }).isDisabled(),
-      true
-    )
+    assert.equal(await replyAction('用于 OpenCode').isDisabled(), true)
   })
   await check('后台任务可定位和停止，停止命中原任务且不抢占当前 Agent', async () => {
     await agent('OpenCode')

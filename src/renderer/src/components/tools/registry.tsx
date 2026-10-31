@@ -25,6 +25,7 @@ import { JwtCertificatePanel } from './panels/jwt-certificate-panel'
 import { MyBatisPanel } from './panels/mybatis-panel'
 import { ColorPanel } from './panels/color-panel'
 import { ConverterPanel } from './panels/converter-panel'
+import { DuplicatePanel } from './panels/duplicate-panel'
 
 /** 一个工具 */
 export interface ToolDefinition {
@@ -168,6 +169,19 @@ export const TOOL_GROUPS: ToolGroup[] = [
         name: '单位与进制换算',
         description: '长度、质量、温度、字节单位与 2–36 进制大整数转换',
         render: () => <ConverterPanel />
+      }
+    ]
+  },
+  {
+    id: 'files',
+    name: '文件',
+    description: '本机文件只读分析',
+    tools: [
+      {
+        id: 'duplicates',
+        name: '重复文件查找',
+        description: '按大小与 SHA-256 内容哈希查找重复文件，只读不删除',
+        render: () => <DuplicatePanel />
       }
     ]
   }

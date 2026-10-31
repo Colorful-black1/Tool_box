@@ -15,6 +15,7 @@ import { applyModelToggle } from '@shared/model-list'
 import { useAppStore } from '../stores/app-store'
 import { confirmDialog } from '../stores/dialog-store'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
+import { BackupSettings } from '../components/settings/backup-settings'
 import { Dropdown } from '../components/dropdown'
 
 /** 快捷键的中文说明（accelerator 本身是技术写法，界面上给中文） */
@@ -333,6 +334,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   return (
     <div className="settings-layout settings-layout-wide settings-stack view-enter">
       <AppearanceSettings />
+      <BackupSettings />
       <section className="glass settings-card" aria-label="AI 设置">
         <div className="sec-head">
           <h2 className="sec-title">星轨链路</h2>

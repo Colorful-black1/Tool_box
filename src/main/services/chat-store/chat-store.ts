@@ -1022,8 +1022,51 @@ export class ToolboxStore {
 
   // ==================== 生命周期 ====================
 
+  /** SQLite 在线备份 API 会处理 WAL，不能直接复制正在使用的数据库文件。 */
+  async backupTo(path: string): Promise<number> {
+    await this.db.backup(path)
+    // 只把独立快照改成单文件日志模式，避免只读校验在目标目录留下 WAL/SHM。
+    const snapshot = new Database(path, { fileMustExist: true })
+    try {
+      snapshot.pragma('journal_mode = DELETE')
+      return snapshot.pragma('user_version', { simple: true }) as number
+    } finally { snapshot.close() }
+  }
+
+  /** 恢复前只读检查独立快照，失败不得触碰当前数据库。 */
+  static inspectSnapshot(path: string): number {
+    const database = new Database(path, { readonly: true, fileMustExist: true })
+    try {
+      if (database.pragma('quick_check', { simple: true }) !== 'ok') throw new Error('快照数据库损坏')
+      const version = database.pragma('user_version', { simple: true }) as number
+      if (version < 1 || version > SCHEMA_VERSION) throw new Error('快照数据库版本不受支持')
+      // 固定 SQL 白名单验证该版本业务会读取的核心表与字段，不只相信 user_version。
+      const checks: Array<[number, string]> = [
+        [1, 'SELECT id, title, created_at_ms, updated_at_ms FROM conversations LIMIT 0'],
+        [1, 'SELECT id, conversation_id, role, content, created_at_ms FROM messages LIMIT 0'],
+        [2, 'SELECT id, title, created_at_ms, updated_at_ms FROM books LIMIT 0'],
+        [2, 'SELECT id, book_id, idx, title, body, word_count FROM chapters LIMIT 0'],
+        [2, 'SELECT book_id, chapter_idx, updated_at_ms FROM reading_progress LIMIT 0'],
+        [2, 'SELECT id, title, url, secret, is_favorite, created_at_ms, updated_at_ms FROM password_entries LIMIT 0'],
+        [2, 'SELECT id, title, content, created_at_ms, updated_at_ms FROM notes LIMIT 0'],
+        [3, 'SELECT author, cover_path, sort_index, group_id FROM books LIMIT 0'],
+        [3, 'SELECT percent FROM reading_progress LIMIT 0'],
+        [3, 'SELECT first_letter FROM password_entries LIMIT 0'],
+        [3, 'SELECT key, value FROM kv LIMIT 0'],
+        [3, 'SELECT id, name, sort_index FROM book_groups LIMIT 0'],
+        [3, 'SELECT id, book_id, chapter_idx, page_idx, page_idx_ratio, snippet, created_at_ms FROM bookmarks LIMIT 0'],
+        [3, 'SELECT date, duration_ms, char_count FROM reading_stats LIMIT 0'],
+        [5, 'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0']
+      ]
+      for (const [minimum, sql] of checks) {
+        if (version >= minimum) database.prepare(sql).all()
+      }
+      return version
+    } finally { database.close() }
+  }
+
   close(): void {
-    this.db.close()
+    if (this.db.open) this.db.close()
   }
 
   // ==================== 迁移 ====================

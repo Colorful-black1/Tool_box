@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, dialog, ipcMain, app } from 'electron'
+import { BrowserWindow, dialog, ipcMain, app } from 'electron'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
@@ -37,6 +37,9 @@ import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
 import { registerTodosIpc } from './todos-ipc'
 import { registerDeveloperCommandsIpc } from './developer-commands-ipc'
+import { registerClipboardIpc } from './clipboard-ipc'
+import { registerFileToolsIpc } from './file-tools-ipc'
+import { registerBackupIpc } from './backup-ipc'
 import type { TodoService } from '../services/todo-service'
 import type { AgentUsageService } from '../services/agent-usage/usage-service'
 import {
@@ -48,8 +51,7 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
-  validateConfigPatch,
-  validateClipboardText
+  validateConfigPatch
 } from './validation'
 
 export interface IpcDependencies {
@@ -65,6 +67,8 @@ export interface IpcDependencies {
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
+  registerClipboardIpc()
+  registerFileToolsIpc()
   registerDeveloperCommandsIpc(dependencies.store)
   registerTodosIpc(dependencies.store, dependencies.todos)
   registerAgentUsageIpc(dependencies.usage)
@@ -85,6 +89,10 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
     new AgentProjectMemory(dependencies.store)
   )
   registerCodingAgentsIpc(codingAgents)
+  registerBackupIpc(
+    dependencies.store,
+    () => !dependencies.aiGateway.hasActiveRuns() && !codingAgents.hasActiveRuns()
+  )
   registerOpenCodeIpc(dependencies.opencode, codingAgents)
   const { settings, store, aiGateway, importService, passwordAi, shortcuts } = dependencies
   registerAiOutputIpc({
@@ -424,11 +432,6 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   })
 
   ipcMain.handle(IPC.backgroundClear, () => undefined)
-
-  // ---------- 系统 ----------
-  ipcMain.handle(IPC.systemCopy, (_event, text: unknown) => {
-    clipboard.writeText(validateClipboardText(text))
-  })
 
   // ---------- 全局快捷键 ----------
   ipcMain.handle(IPC.systemShortcutGet, () => shortcuts.read())

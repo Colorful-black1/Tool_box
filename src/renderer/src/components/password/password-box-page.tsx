@@ -12,6 +12,7 @@ import {
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 import { useAppStore } from '../../stores/app-store'
 import { PasswordImportSheet } from './password-import-sheet'
+import { PasswordHealthSheet } from './password-health-sheet'
 
 type SortMode = 'all' | 'favorite'
 
@@ -42,6 +43,7 @@ export function PasswordBoxPage(): JSX.Element {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [healthOpen, setHealthOpen] = useState(false)
   const [flash, setFlash] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -234,6 +236,9 @@ export function PasswordBoxPage(): JSX.Element {
         </div>
         <div className="toolbar-grow" />
         {flash ? <span className="toast-inline">{flash}</span> : null}
+        <button type="button" className="btn-ghost" onClick={() => setHealthOpen(true)}>
+          健康检查
+        </button>
         <button
           type="button"
           className="btn-ghost"
@@ -274,6 +279,17 @@ export function PasswordBoxPage(): JSX.Element {
             await savePasswordEntry(input)
             setEditing(null)
             toast('已保存')
+          }}
+        />
+      ) : null}
+
+      {healthOpen ? (
+        <PasswordHealthSheet
+          entries={entries}
+          onClose={() => setHealthOpen(false)}
+          onOpen={(id) => {
+            setHealthOpen(false)
+            setDetailId(id)
           }}
         />
       ) : null}

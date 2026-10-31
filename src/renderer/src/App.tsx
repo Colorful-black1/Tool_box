@@ -4,6 +4,9 @@ import { TodosPage } from './components/todos/todos-page'
 import { CommandsPage } from './components/commands/commands-page'
 import { useTodoStore } from './stores/todo-store'
 import { AppDialog } from './components/app-dialog'
+import { ClipboardPanel } from './components/tools/panels/clipboard-panel'
+import { useClipboardStore } from './stores/clipboard-store'
+import { useFileToolsStore } from './stores/file-tools-store'
 
 import { BookshelfPage } from './components/bookshelf/bookshelf-page'
 import { ChatPanel } from './components/chat-panel'
@@ -87,6 +90,11 @@ const RAIL_ITEMS: RailNode[] = [
 ]
 
 export default function App(): JSX.Element {
+  const clipboardOpen = useClipboardStore((state) => state.open)
+  useEffect(() => window.toolbox?.files?.onScan((snapshot) =>
+    useFileToolsStore.getState().receive(snapshot)), [])
+  useEffect(() => window.toolbox?.clipboardHistory?.onEvent((snapshot) =>
+    useClipboardStore.getState().receive(snapshot)), [])
   useEffect(() => window.toolbox?.todos?.onEvent((event) => {
     if (event.type === 'open') {
       useTodoStore.getState().open(event.id)
@@ -243,6 +251,7 @@ export default function App(): JSX.Element {
       {/* 全局命令面板：⌘K / Ctrl+K 唤起，挂在壳层外，任何页面都能用 */}
       <CommandPalette />
       <AppDialog />
+      {clipboardOpen ? <ClipboardPanel /> : null}
       <div className={`app-shell${railCollapsed ? ' rail-collapsed' : ' rail-expanded'}`}>
         <SideRail
           view={view}

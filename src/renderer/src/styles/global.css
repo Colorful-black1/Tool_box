@@ -7788,3 +7788,30 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
     transform: none;
   }
 }
+
+/* 能力扩展面板沿用星轨令牌与现有 Sheet，右侧展示且适配桌面窄窗。 */
+.sheet-panel.capability-sheet {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(580px, 100%);
+  height: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--gold-line);
+  border-radius: 10px 0 0 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.capability-sheet .sheet-toolbar { align-items: center; justify-content: space-between; }
+.capability-sheet .sheet-scroll { overflow-wrap: anywhere; }
+.capability-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.capability-list { list-style: none; padding: 0; }
+.capability-list > li { padding: 12px 0; border-bottom: 1px solid var(--gold-line); }
+.capability-list .btn-ghost { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.clipboard-preview { width: 100%; }
+.capability-sheet details { margin: 12px 0; }
+.capability-sheet summary { cursor: pointer; color: var(--gold); }
+.capability-sheet .field-input { margin: 8px 0; }
+.capability-path { overflow-wrap: anywhere; font-family: var(--mono); color: var(--text-mid); }
+.capability-tool { min-width: 0; color: var(--text-hi); }
+.duplicate-group { padding: 14px 0; border-bottom: 1px solid var(--gold-line); }
+.duplicate-group summary { cursor: pointer; color: var(--gold); }

@@ -830,6 +830,11 @@ export class CodingAgentService {
     }
   }
 
+  /** 快照恢复只检查运行态，不代替用户停止原生 Agent。 */
+  hasActiveRuns(): boolean {
+    return this.active.size > 0 || [...this.runtimes.values()].some((state) => state.legacySending)
+  }
+
   private requireRuntime(id: CodingAgentId): RuntimeState {
     const state = this.runtimes.get(id)
     if (!state) throw new CodingAgentError('此 Agent 尚未接入，请选择已支持的运行时')

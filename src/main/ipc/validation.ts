@@ -1,4 +1,6 @@
 import { APP_THEMES } from '../../shared/appearance'
+import type { ClipboardHistoryConfig } from '../../shared/clipboard'
+
 import {
   parseDeveloperCommandInput,
   parseDeveloperCommandToggle
@@ -22,6 +24,34 @@ import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
 import { parseAgentDraftDocument } from '../../shared/agent-drafts'
 import type { AgentDraftDocument, AgentDraftSaveInput } from '../../shared/agent-drafts'
 import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
+
+/** 新增内存服务入参统一在主进程做类型、数量与长度检查。 */
+export function validateClipboardConfig(value: unknown): ClipboardHistoryConfig {
+  const input = assertObject(value, '剪贴板设置')
+  return {
+    enabled: requireBoolean(input.enabled, '启用状态'),
+    keywords: validateClipboardRules(input.keywords),
+    prefixes: validateClipboardRules(input.prefixes)
+  }
+}
+
+function validateClipboardRules(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 50) throw new Error('忽略规则最多 50 条')
+  return value.map((item) => requireString(item, '忽略规则', { maxLength: 200 }))
+}
+
+export function requireBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${label}必须是布尔值`)
+  return value
+}
+
+export function validateClipboardPin(value: unknown): { id: string; pinned: boolean } {
+  const input = assertObject(value, '固定记录')
+  return {
+    id: requireString(input.id, '记录标识', { maxLength: 64 }),
+    pinned: requireBoolean(input.pinned, '固定状态')
+  }
+}
 
 /** 专用 IPC 校验入口，正文不能经 requireString 去除首尾空白。 */
 export const validateDeveloperCommandInput = parseDeveloperCommandInput

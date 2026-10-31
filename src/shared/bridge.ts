@@ -7,6 +7,9 @@ import type {
   AgentSendInput
 } from './agent-actions'
 import type { AgentQuestionAnswer } from './agent-session'
+import type { ClipboardHistoryConfig, ClipboardHistorySnapshot } from './clipboard'
+import type { FileDirectoryReference, FileScanSnapshot } from './file-tools'
+import type { BackupFolderReference, BackupResult } from './backup'
 import type {
   AiOutputEvent,
   AgentPermission,
@@ -76,6 +79,25 @@ import type {
 } from './developer-commands'
 
 export interface ToolboxBridge {
+  backup: {
+    chooseFolder(purpose: 'export' | 'restore'): Promise<BackupFolderReference | null>
+    export(token: string): Promise<BackupResult>
+    restore(token: string): Promise<BackupResult | null>
+  }
+  files: {
+    chooseDirectory(): Promise<FileDirectoryReference | null>
+    findDuplicates(token: string): Promise<FileScanSnapshot>
+    cancelScan(): Promise<void>
+    onScan(listener: (snapshot: FileScanSnapshot) => void): () => void
+  }
+  clipboardHistory: {
+    list(): Promise<ClipboardHistorySnapshot>
+    clear(id?: string): Promise<ClipboardHistorySnapshot>
+    pin(id: string, pinned: boolean): Promise<ClipboardHistorySnapshot>
+    setEnabled(config: ClipboardHistoryConfig): Promise<ClipboardHistorySnapshot>
+    pause(): Promise<ClipboardHistorySnapshot>
+    onEvent(listener: (snapshot: ClipboardHistorySnapshot) => void): () => void
+  }
   developerCommands: {
     read(): Promise<DeveloperCommandSnapshot>
     save(input: DeveloperCommandInput): Promise<DeveloperCommandSnapshot>

@@ -122,6 +122,11 @@ export class AiGateway {
     this.gate.rejectConversation(conversationId)
   }
 
+  /** 恢复本机快照前不得让仍在写入对话的任务被退出流程中断。 */
+  hasActiveRuns(): boolean {
+    return this.active.size > 0
+  }
+
   /** 渲染层对写 / 破坏性工具审批的回执 */
   approveTool(input: AgentToolApprovalInput): void {
     this.gate.settle(input.callId, input.approved === true)

@@ -129,6 +129,9 @@ module.exports = async function verifyDeveloperUtilities({ page, app, check, cap
     await page.getByRole('checkbox', { name: '仅 TCP 监听与 UDP 绑定' }).uncheck()
     assert.equal(await table.getByRole('row').count(), 4)
     await textbox('筛选端口或进程').fill('java')
+    // 当前端口页只在 Enter / 手动查询时应用输入条件。
+    await textbox('筛选端口或进程').press('Enter')
+    await table.getByText('java', { exact: true }).waitFor()
     assert.equal(await table.getByRole('row').count(), 2)
     await button('复制筛选结果').click()
     assert.match(await page.evaluate(() => window.uiVerification.copiedText()), /8080.*1200.*java/)
