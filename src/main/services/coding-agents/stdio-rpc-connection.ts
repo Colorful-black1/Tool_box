@@ -158,12 +158,16 @@ export class StdioRpcConnection {
         if (!pending) continue
         clearTimeout(pending.timer)
         this.pending.delete(message.id)
-        if (message.error)
-          pending.reject(this.makeError(`${this.runtimeName} 请求失败，请检查登录、模型和项目配置`))
+        if (message.error) pending.reject(this.requestError(message.error))
         else if (Object.hasOwn(message, 'result')) pending.resolve(message.result)
         else pending.reject(this.makeError(`${this.runtimeName} 返回了无效响应`))
       }
     }
+  }
+
+  /** 适配器可将已知错误映射为固定文案；默认不透传第三方错误正文。 */
+  protected requestError(_error: unknown): Error {
+    return this.makeError(`${this.runtimeName} 请求失败，请检查登录、模型和项目配置`)
   }
 
   private async handleRequest(id: number | string, method: string, params: unknown): Promise<void> {

@@ -85,6 +85,40 @@ describe('OpenCode ACP 连接', () => {
     })`)
     await expect(connection.request('test', {})).rejects.toThrow('检查登录')
   })
+  it.each([
+    { message: 'This Go model trains on request data. fixture-private-detail' },
+    {
+      message: 'Internal error',
+      data: { details: 'Account.TrainingNotAllowed fixture-private-detail' }
+    }
+  ])('隐私限制映射为固定提示，不透传原始内容 %j', async (error) => {
+    const { connection } = connect(`process.stdin.once('data', data => {
+      const m = JSON.parse(data)
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, error: ${JSON.stringify(error)} }) + '\\n')
+    })`)
+    const failure = await connection.request('test', {}).catch((cause: unknown) => cause)
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toContain('工作区隐私设置')
+    expect((failure as Error).message).toContain('未自动重发')
+    expect((failure as Error).message).not.toContain('fixture-private-detail')
+  })
+  it.each([
+    { message: 'Upstream request failed: Insufficient account funds fixture-private-detail' },
+    {
+      message: 'Internal error',
+      data: { details: 'Insufficient account funds fixture-private-detail' }
+    }
+  ])('余额不足提示当前供应商计费问题且不透传正文 %j', async (error) => {
+    const { connection } = connect(`process.stdin.once('data', data => {
+      const m = JSON.parse(data)
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, error: ${JSON.stringify(error)} }) + '\\n')
+    })`)
+    const failure = await connection.request('test', {}).catch((cause: unknown) => cause)
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toContain('账户余额不足')
+    expect((failure as Error).message).toContain('未自动重发')
+    expect((failure as Error).message).not.toContain('fixture-private-detail')
+  })
   it('权限请求交给显式审批回调，通知保持独立', async () => {
     const request = vi.fn().mockResolvedValue({ outcome: { outcome: 'cancelled' } })
     const notification = vi.fn()
