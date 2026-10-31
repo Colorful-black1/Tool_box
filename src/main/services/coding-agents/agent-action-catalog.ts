@@ -11,6 +11,8 @@ export interface NativeAgentCatalog {
   >
   notices: string[]
   extensionsEnabled?: boolean
+  /** 原生已禁用的 Skill 不得通过本机路径引用重新出现。 */
+  disabledSkillNames?: string[]
 }
 
 /** 非终端界面不提供改变身份、认证、权限或文件回滚的原生快捷命令。 */

@@ -65,7 +65,7 @@ export class OpenCodeAdapter implements CodingAgentAdapter {
       mcp: [],
       notices: [
         id
-          ? '命令来自当前 ACP 会话；未公布的 Skill 不显示为可调用。ACP 未提供 MCP 状态查询。'
+          ? '原生命令来自当前 ACP 会话；ACP 未提供独立 Skill 目录或 MCP 状态查询。'
           : '原生命令在首次对话建立后读取；本次未创建会话。ACP 未提供 MCP 状态查询。'
       ]
     }

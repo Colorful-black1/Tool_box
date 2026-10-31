@@ -250,6 +250,43 @@ export function AgentComposer({
     close()
     focusInput()
   }
+  const skillChoices: AgentActionChoice[] = (catalog?.skills ?? []).map((item) => ({
+    id: item.id,
+    label: `${item.label} · Skill`,
+    description: `Skill · ${item.description}`,
+    choose: () => addReference(item)
+  }))
+  const mcpChoices: AgentActionChoice[] = (catalog?.mcp ?? []).flatMap((server) => {
+    if (server.tools.length)
+      return server.tools.map((item) => ({
+        id: item.id,
+        label: `${server.name} / ${item.label} · MCP`,
+        description: `${server.status} · ${item.description || '准备工具使用意图'}`,
+        choose: () => addReference(item)
+      }))
+    return [
+      {
+        id: `mcp-server:${server.name}`,
+        label: `${server.name} · MCP 服务`,
+        description: `${server.status} · 未提供工具列表，仅准备可用性检查请求`,
+        choose: () => {
+          if (server.status.includes('已禁用')) {
+            setError('此 MCP 服务在本机配置中已禁用，请在对应原生程序配置中启用后刷新')
+            return
+          }
+          const text = `请检查当前 Agent 是否已加载 MCP 服务 ${JSON.stringify(server.name)}，可用时使用其相关工具完成任务；不可用时说明原因。`
+          const trigger = selection.current
+          setDraft(
+            trigger
+              ? `${draft.slice(0, trigger.start)}${text} ${draft.slice(trigger.end)}`
+              : `${draft}${draft ? '\n' : ''}${text}`
+          )
+          close()
+          focusInput()
+        }
+      }
+    ]
+  })
   const choices: AgentActionChoice[] =
     mode === 'files'
       ? files.files.map((item) => ({
@@ -258,43 +295,36 @@ export function AgentComposer({
           description: '当前项目 · 路径引用',
           choose: () => addReference(item)
         }))
-      : mode === 'skills' && runtimeId !== 'codex' && runtimeId !== 'dsh'
-        ? (catalog?.commands ?? []).map((item) => ({
-            id: item.id,
-            label: `/${item.name}`,
-            description: `可调用项 · ${item.description}`,
-            choose: () => chooseCommand(item.name)
-          }))
-        : mode === 'skills'
-          ? (catalog?.skills ?? []).map((item) => ({
-              id: item.id,
-              label: item.label,
-              description: item.description,
-              choose: () => (runtimeId === 'codex' ? addReference(item) : chooseCommand(item.label))
-            }))
-          : mode === 'mcp'
-            ? (catalog?.mcp ?? []).flatMap((server) =>
-                server.tools.map((item) => ({
+      : mode === 'skills'
+        ? [
+            ...skillChoices,
+            ...(runtimeId !== 'codex' && runtimeId !== 'dsh'
+              ? (catalog?.commands ?? []).map((item) => ({
                   id: item.id,
-                  label: `${server.name} / ${item.label}`,
-                  description: `${server.status} · ${item.description || '填入工具使用意图，实际调用以原生执行为准'}`,
-                  choose: () => addReference(item)
-                }))
-              )
-            : [
-                ...LOCAL_AGENT_COMMANDS.map((item) => ({
-                  id: `local-${item.name}`,
-                  label: `/${item.name} · ${item.label}`,
-                  description: item.description,
-                  choose: () => local(item.name)
-                })),
-                ...(catalog?.commands ?? []).map((item) => ({
-                  id: item.id,
-                  label: `/${item.name}${item.targetFile ? ` · ${item.targetFile}` : ''}`,
-                  description: `${item.kind === 'workflow' ? '工具箱工作流' : '原生命令'} · ${item.description}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
+                  label: `/${item.name}`,
+                  description: `原生命令 · ${item.description}`,
                   choose: () => chooseCommand(item.name)
                 }))
-              ]
+              : [])
+          ]
+        : mode === 'mcp'
+          ? mcpChoices
+          : [
+              ...LOCAL_AGENT_COMMANDS.map((item) => ({
+                id: `local-${item.name}`,
+                label: `/${item.name} · ${item.label}`,
+                description: item.description,
+                choose: () => local(item.name)
+              })),
+              ...(catalog?.commands ?? []).map((item) => ({
+                id: item.id,
+                label: `/${item.name}${item.targetFile ? ` · ${item.targetFile}` : ''}`,
+                description: `${item.kind === 'workflow' ? '工具箱工作流' : '原生命令'} · ${item.description}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
+                choose: () => chooseCommand(item.name)
+              })),
+              ...skillChoices,
+              ...mcpChoices
+            ]
   const visible = (loading && mode !== 'commands' ? [] : choices)
     .filter(
       (item) =>

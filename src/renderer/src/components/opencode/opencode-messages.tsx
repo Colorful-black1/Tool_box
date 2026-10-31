@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { OpenCodeSession } from '@shared/types'
 import { renderMarkdown } from '../../lib/markdown'
+import { agentUserMessageText } from '../../lib/agent-message-text'
 import { CodeIcon } from '../icons'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
@@ -30,6 +31,11 @@ export function OpenCodeMessages({
   const targetName = CODING_AGENT_NAMES[targetId]
   const id = session?.id
   const lastText = session?.messages.at(-1)?.content
+  const messages = (session?.messages ?? []).map((message) =>
+    message.role === 'user'
+      ? { ...message, content: agentUserMessageText(message.content) }
+      : message
+  )
   const copyMessage = async (messageId: string, content: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(content)
@@ -74,7 +80,7 @@ export function OpenCodeMessages({
             <h3>开始新对话</h3>
           </div>
         ) : (
-          session.messages.map((message) => (
+          messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <div className="message-meta">{message.role === 'user' ? '你' : agentName}</div>
               {message.role === 'assistant' ? (

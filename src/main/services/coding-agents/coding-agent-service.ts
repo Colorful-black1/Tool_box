@@ -8,6 +8,8 @@ import type {
   AgentSendInput
 } from '../../../shared/agent-actions'
 import { AgentProjectFiles, withinProject } from './agent-project-files'
+import { discoverLocalSkills, resolveLocalSkill } from './local-skill-catalog'
+import { discoverConfiguredMcp } from './local-mcp-catalog'
 import type { AgentProjectMemory } from './agent-project-memory'
 import type { AgentQuestionAnswer } from '../../../shared/agent-session'
 import { nativeCommands, unavailableCatalog } from './agent-action-catalog'
@@ -104,7 +106,10 @@ export class CodingAgentService {
     string,
     {
       view: AgentCatalog
-      bindings: Map<string, { kind: 'command' | 'skill' | 'tool'; name: string; path?: string }>
+      bindings: Map<
+        string,
+        { kind: 'command' | 'skill' | 'tool'; name: string; path?: string; local?: boolean }
+      >
     }
   >()
 
@@ -367,10 +372,17 @@ export class CodingAgentService {
         if (!binding || binding.kind !== item.kind)
           throw new CodingAgentError('扩展引用已失效，请重新选择；草稿已保留')
         if (item.kind === 'skill') {
-          if (state.adapter.id !== 'codex')
-            throw new CodingAgentError('此 Skill 请通过原生命令调用')
-          context.skills!.push({ name: binding.name, path: binding.path! })
-          additions.push(`$${binding.name}`)
+          if (binding.local) {
+            const path = await resolveLocalSkill(binding.path!)
+            additions.push(
+              `用户明确选择本机 Skill ${JSON.stringify(binding.name)}。请先按原生文件读取权限读取 ${JSON.stringify(path)} 的完整说明，并按其中的相对目录寻找资源；不要仅凭名称猜测步骤。读取被拒绝或不支持时明确告知用户，不宣称已调用。`
+            )
+          } else {
+            if (state.adapter.id !== 'codex')
+              throw new CodingAgentError('此 Skill 请通过原生命令调用')
+            context.skills!.push({ name: binding.name, path: binding.path! })
+            additions.push(`$${binding.name}`)
+          }
         } else
           additions.push(
             `请优先使用已配置的 MCP 工具 ${JSON.stringify(binding.name)} 完成任务；实际调用仍遵守原生权限。`
@@ -395,20 +407,45 @@ export class CodingAgentService {
       const native = state.adapter.catalog
         ? await state.adapter.catalog(session?.nativeSessionId)
         : unavailableCatalog('当前接入未提供命令、Skill 或 MCP 状态查询')
+      const [local, configured] = await Promise.all([
+        discoverLocalSkills(id, state.info.directory),
+        discoverConfiguredMcp(id, state.info.directory)
+      ])
+      const nativeSkills = new Set(native.skills.map((skill) => skill.name))
+      const blocked = new Set(native.disabledSkillNames ?? [])
+      const localSkills = local.skills.filter(
+        (skill) => !nativeSkills.has(skill.name) && !blocked.has(skill.name)
+      )
+      const skills = [...native.skills, ...localSkills]
+      const localEntries = new Set(localSkills)
+      const nativeServers = new Set(native.mcp.map((server) => server.name))
+      const servers = [
+        ...native.mcp,
+        ...configured.mcp.filter((server) => !nativeServers.has(server.name))
+      ]
       if (connection !== state.info.connectionId || !state.info.connected)
         throw new CodingAgentError('连接已变化，请重新读取能力')
       const key = this.catalogKey(state, ref)
       const previous = this.catalogs.get(key)
       const bindings = new Map<
         string,
-        { kind: 'command' | 'skill' | 'tool'; name: string; path?: string }
+        { kind: 'command' | 'skill' | 'tool'; name: string; path?: string; local?: boolean }
       >()
-      const bind = (kind: 'command' | 'skill' | 'tool', name: string, path?: string): string => {
+      const bind = (
+        kind: 'command' | 'skill' | 'tool',
+        name: string,
+        path?: string,
+        local = false
+      ): string => {
         const old = [...(previous?.bindings ?? [])].find(
-          ([, item]) => item.kind === kind && item.name === name && item.path === path
+          ([, item]) =>
+            item.kind === kind &&
+            item.name === name &&
+            item.path === path &&
+            Boolean(item.local) === local
         )
         const token = old?.[0] ?? randomUUID()
-        bindings.set(token, { kind, name, path })
+        bindings.set(token, { kind, name, path, local })
         return token
       }
       const commands = nativeCommands(native.commands).map((item) => ({
@@ -423,16 +460,16 @@ export class CodingAgentService {
         connectionId: connection,
         sessionId: ref ?? '',
         commands,
-        skills: native.skills
+        skills: skills
           .slice(0, 300)
           .filter((item) => item.name && item.path)
           .map((item) => ({
-            id: bind('skill', item.name, item.path),
+            id: bind('skill', item.name, item.path, localEntries.has(item)),
             kind: 'skill',
             label: item.name.slice(0, 120),
             description: item.description.slice(0, 500)
           })),
-        mcp: native.mcp.slice(0, 100).map((server) => ({
+        mcp: servers.slice(0, 100).map((server) => ({
           name: server.name.slice(0, 120),
           status: server.status.slice(0, 40),
           tools: server.tools.slice(0, 200).map((item) => ({
@@ -442,7 +479,18 @@ export class CodingAgentService {
             description: item.description.slice(0, 500)
           }))
         })),
-        notices: native.notices.slice(0, 8).map((item) => item.slice(0, 300)),
+        notices: [
+          ...local.notices,
+          ...configured.notices,
+          ...(localSkills.length
+            ? [
+                '本机 Skill 以文件引用提供，选择后由 Agent 按原生权限读取；未加载用户 hooks 或启动 MCP。'
+              ]
+            : []),
+          ...native.notices
+        ]
+          .slice(0, 8)
+          .map((item) => item.slice(0, 300)),
         extensionsEnabled: native.extensionsEnabled === true
       }
       if (!commands.some((item) => item.name === 'init'))

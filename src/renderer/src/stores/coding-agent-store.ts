@@ -1,4 +1,3 @@
-import { agentUserMessageText } from '../lib/agent-message-text'
 import { confirmDialog } from './dialog-store'
 import { create } from 'zustand'
 import { CODING_AGENT_NAMES } from '../../../shared/coding-agents'
@@ -10,6 +9,7 @@ import type {
   CodingAgentSessionView
 } from '@shared/coding-agents'
 import { codingAgentClient } from '../lib/coding-agent-client'
+import { agentUserMessageText } from '../lib/agent-message-text'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-agents'
 import { draftEntryKey, draftIdentity, normalizeDraftDirectory } from '../../../shared/agent-drafts'
 import type { AgentDraft, AgentDraftDocument } from '@shared/agent-drafts'
@@ -696,13 +696,14 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         (item) => item.id === messageId && item.role === 'user'
       )
       if (!message?.content || !sameDirectory(session!.directory, before.directory)) return
-      if (message.content.length > 50_000) {
+      const content = agentUserMessageText(message.content)
+      if (content.length > 50_000) {
         update(id, { error: '这条消息超过 50,000 字符，请复制后截取需要的内容' })
         return
       }
       if (
         before.draft.trim() &&
-        before.draft !== message.content &&
+        before.draft !== content &&
         !(await confirmDialog(
           '输入框已有草稿，是否先保留它并取回这条消息？取消取回时可恢复原草稿。'
         ))
@@ -713,12 +714,12 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         return
       }
       update(id, {
-        draft: message.content,
+        draft: content,
         transferred: false,
         recall: {
           previousDraft: before.recall?.previousDraft ?? before.draft,
           previousTransferred: before.recall?.previousTransferred ?? before.transferred,
-          text: message.content
+          text: content
         },
         recallSequence: before.recallSequence + 1
       })

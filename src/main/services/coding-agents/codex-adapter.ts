@@ -437,6 +437,7 @@ export class CodexAdapter implements CodingAgentAdapter {
           const item = codexObject(value)
           const path = codexText(item?.path, 4096)
           const name = codexText(item?.name, 120)
+          if (name && item?.enabled === false) (result.disabledSkillNames ??= []).push(name)
           if (name && isAbsolute(path) && item?.enabled !== false)
             result.skills.push({ name, path, description: codexText(item?.description, 500) })
         }

@@ -229,6 +229,30 @@ describe('Codex 原生 App Server 适配', () => {
     await f.service.previewRevert('t1', 'user-1')
     f.service.disconnect()
   })
+  it('能力目录保留原生禁用名称，供共享目录合并时继续屏蔽', async () => {
+    const f = fixture()
+    await f.service.connect(f.directory)
+    const original = f.calls.getMockImplementation()!
+    f.calls.mockImplementation(async (method, params) => {
+      if (method === 'skills/list')
+        return {
+          data: [
+            {
+              cwd: f.directory,
+              skills: [
+                { name: 'blocked', path: '/skills/blocked/SKILL.md', enabled: false },
+                { name: 'enabled', path: '/skills/enabled/SKILL.md', enabled: true }
+              ]
+            }
+          ]
+        }
+      return original(method, params)
+    })
+    const catalog = await f.service.catalog()
+    expect(catalog.disabledSkillNames).toEqual(['blocked'])
+    expect(catalog.skills.map((item) => item.name)).toEqual(['enabled'])
+    f.service.disconnect()
+  })
   it('turn/start 响应前的旧用量不认领新运行，当前用量按响应 ID 消费', async () => {
     const f = fixture()
     await f.service.connect(f.directory)

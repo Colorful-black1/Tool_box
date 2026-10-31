@@ -209,17 +209,14 @@ module.exports = function codingAgentsFixture() {
                   targetFile: 'AGENTS.md'
                 }
               ],
-        skills:
-          id === 'dsh'
-            ? []
-            : [
-                {
-                  id: 'fixture-skill',
-                  kind: 'skill',
-                  label: 'fixture-verify',
-                  description: '项目校验 Skill'
-                }
-              ],
+        skills: [
+          {
+            id: 'fixture-skill',
+            kind: 'skill',
+            label: 'fixture-verify',
+            description: id === 'codex' ? '项目校验 Skill' : '本机文件引用 · 项目校验 Skill'
+          }
+        ],
         mcp:
           id === 'dsh'
             ? []
@@ -235,7 +232,8 @@ module.exports = function codingAgentsFixture() {
                       description: '检索合成文档'
                     }
                   ]
-                }
+                },
+                { name: 'configured-browser', status: '仅发现配置 · 未验证连接', tools: [] }
               ],
         notices: id === 'dsh' ? ['官方 DSH ACP 未提供命令与 MCP 状态查询'] : [],
         extensionsEnabled: states.get(id)?.extensionsEnabled ?? false

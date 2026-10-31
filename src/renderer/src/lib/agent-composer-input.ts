@@ -14,7 +14,7 @@ export function agentInputTrigger(
     (prefix.split('\n').at(-1)?.match(/`/g)?.length ?? 0) % 2
   )
     return null
-  const slash = /^\/([\w:.-]*)$/.exec(prefix)
+  const slash = /^\/([^\s/]*)$/.exec(prefix)
   if (slash) return { kind: 'commands', query: slash[1], start: 0, end: cursor }
   const file = /(?:^|\s)@([^\s@]*)$/.exec(prefix)
   if (file)

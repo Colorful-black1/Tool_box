@@ -80,3 +80,47 @@
 7. 长历史显示上限和引用重启后重新选择的限制保留。压缩不等于解除显示上限，MCP 元数据 / 使用意图不等于某次工具已经执行。
 
 建议手动验证：选择真实项目 → `@` 选一个普通文本文件并提问 → `/skills` 选择本机可用项 → 在已结束会话执行 `/compact` → 在临时项目使用计划模式 `/init`，再按需要切换既有写入权限验证创建。检查已有 AGENTS.md / CLAUDE.md 不会被初始化覆盖；Claude 两入口分别核对项目、供应商和扩展范围。
+
+## 个人 Skill 与斜杠检索补充（2026-10-30）
+
+### 原因与改动
+
+`/` 主列表原先只展示本地快捷操作与 `catalog.commands`，没有合并独立 Skill／MCP 目录。除此之外，OpenCode 的 ACP、DSH 没有原生 Skill 发现接口，Claude 扩展默认隔离；CC Switch 集中管理和链接分发的个人技能无法仅靠这些原生接口完整发现。
+
+现在统一搜索快捷操作、原生命令、Skill 和 MCP，支持中文用途检索。新增主进程只读索引，按项目专用目录 → 项目 `.agents/skills` → 对应用户目录 → 用户 `.agents/skills` → `.cc-switch/skills` 顺序发现个人 Skill。读取有界 frontmatter，支持 Windows symlink／junction，规范路径必须位于已知技能根内；同名原生 Skill 优先，原生明确禁用项与 `user-invocable: false` 不被文件引用重新开放。
+
+个人 Skill 标记「本机文件引用」。选择只加入临时引用，发送时重新检查规范路径与文件状态，由原生 Agent 按权限读取完整 `SKILL.md` 及相对资源；不是安装、复制或直接执行技能。Codex 原生 Skill 继续使用结构化引用，其他原生命令保留。目录发现不启动 MCP、不加载 hooks、不改变 Claude 扩展开关，不修改用户配置。
+
+MCP 合并原生状态与当前运行时的本机配置元数据：Codex `config.toml`，OpenCode 用户／项目 JSON(C)，Claude CLI `.claude.json` 与项目 `.mcp.json`。Claude Desktop 仅补充项目 `.mcp.json`，不混用 CLI 用户 MCP；DSH 无可靠的本机 MCP 配置发现接口。配置索引只返回名称／开关，绝不返回 command、URL、env、headers 或认证。未查询到工具列表的服务标注「仅发现配置 · 未验证连接」，选择只准备检查请求，不伪造可调用工具。
+
+### 验证
+
+本补充自身超过 500 行有效改动且超过 10 个代码文件，满足仓库验证门槛；不将已有 Token 统计改动计入门槛。
+
+- `npm run typecheck`、`npm run lint -- --ignore-pattern "mobile/**"` 通过。
+- `npm run test -- --exclude "mobile/**"`：个人技能与目录合并版 122 文件／922 项通过；其后补充隐私错误映射，最终结果见下方。
+- `npm run build` 通过。
+- `node verify/desktop-ui/run.cjs --agent-actions-only --screenshots`：12 项通过，页面异常 0；包含各 Agent 的个人技能、斜杠直接搜索、MCP 配置与调用意图区分、选择不发送和三套主题 1280×820。已目视检查弹层位于输入区上方、无窗口溢出。
+- 本机只读核对：OpenCode、Codex、Claude Code、Claude Desktop、DSH 各发现截图中的全部 15 个个人 Skill，包括 CC Switch 集中管理的 `dogfood`、`impeccable`；无发现错误。只输出名称与状态，不读取凭据、不创建会话或发送模型任务。
+
+边界：发现文件不代表原生 Agent 已执行；外部目录权限、模型是否可用、Skill 实际步骤仍由真实任务验证。链接被替换、文件删除或读取受限时保留草稿并提示刷新。少见 YAML／TOML 语法、嵌套技能目录不做推测解析。已有 Token 统计改动保留，未提交 Git。
+
+### OpenCode Go 模型隐私限制
+
+用户真实 Skill 测试被 Go 上游拒绝：`Account.TrainingNotAllowed`／`This Go model trains on request data.`，属于工作区模型隐私限制，并非 Skill 路径错误。参考 [OpenCode Go 官方说明](https://opencode.ai/v2/docs/console/go/)，用户可更换模型，或自行在控制台 Settings → Privacy 确认是否允许请求数据用于训练；工具箱不会修改这一设置。
+
+ACP 以前将请求错误统一收敛为通用提示。现仅在 OpenCode 返回的 message／data.message／data.details 含已知标记时映射为固定中文说明；不透传其他正文、凭据或 stderr，不自动重发。若 ACP 只返回通用错误，仍需在原生客户端查看原因。新增两种错误载荷及脱敏回归。
+
+补充映射后的最终检查：typecheck、桌面 lint、build 均通过；桌面单元测试 122 文件／924 项全部通过。测试进程仍有既有 `--localstorage-file` 路径警告，无失败项。`git diff --check` 通过，仅有工作区既有 LF／CRLF 转换提示。没有更改数据库、IPC、依赖、隐私设置或真实供应商配置。
+
+### 后续余额不足报错（2026-10-30）
+
+用户切换为 DeepSeek 后，原生客户端的新错误为 `Insufficient account funds`，与之前隐私限制不同。仅补充这一固定错误标记的中文映射，明确是当前模型供应商返回余额不足；保留未知错误脱敏、任务结果核对和不自动重发。修改 `opencode/acp-connection.ts` 并补充两种错误载荷的回归用例，不更改计费、供应商配置、IPC 或数据库。
+
+本次增量只做静态调用链与 diff 检查；不足编译测试门槛，不运行新增用例或构建。**本次修改影响范围有限，未执行编译验证。** 上述 924 项历史结果不包含本次新增的两个用例。映射只有在 ACP 返回已知标记时可用；若仅返回通用错误，仍需在原生客户端核对。主进程变更需更新程序并重启后生效。
+
+### 隐藏 Skill 读取说明（2026-10-30）
+
+按用户要求，工具箱用户消息的展示、复制和取回编辑不再包含自动附加的本机 Skill 读取说明。仅识别消息末尾引用区中与现有生成文案完全匹配的行，保留用户提问、其他文件／工具引用和助手回答。发送载荷与原生历史不修改，因此原生客户端仍可能显示原始说明；这不是撤回或删除原生消息。临时 Skill 引用取回后仍需重新选择。
+
+修改范围为渲染层正文处理、消息组件和取回草稿；没有新增 IPC、数据库或依赖。静态检查调用链及 diff；本次修改影响范围有限，未执行编译验证。不同版本或原生客户端改写过的说明不自动隐藏，避免误删普通内容。

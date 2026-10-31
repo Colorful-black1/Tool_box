@@ -70,6 +70,17 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
     assert.ok((await draft().inputValue()).includes('[MCP:search_docs]'))
     await capture('agent-actions-codex-references')
   })
+  await check('斜杠主列表直接搜索 Skill 和 MCP，选择只准备引用', async () => {
+    const before = (await calls()).filter((item) => item.action === 'send').length
+    await draft().fill('/fixture-verify')
+    await page.getByRole('option', { name: /fixture-verify.*Skill/ }).click()
+    assert.ok((await draft().inputValue()).includes('$fixture-verify'))
+    assert.equal((await calls()).filter((item) => item.action === 'send').length, before)
+    await draft().fill('/search_docs')
+    await page.getByRole('option', { name: /fixture-mcp.*search_docs.*MCP/ }).click()
+    assert.ok((await draft().inputValue()).includes('[MCP:search_docs]'))
+    assert.equal((await calls()).filter((item) => item.action === 'send').length, before)
+  })
   await check('未知命令保留草稿，只有明确选择后才作为文字发送', async () => {
     await draft().fill('/not-a-command 参数')
     await draft().press('Enter')
@@ -83,11 +94,29 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
     await page.evaluate(() => window.uiVerification.agentFinish())
     await button('发送给 Codex').waitFor()
   })
-  await check('DSH 不显示虚假的压缩 / Skill 能力', async () => {
+  await check('仅配置的 MCP 可搜索但只准备检查请求，不伪造工具调用', async () => {
+    const before = (await calls()).filter((item) => item.action === 'send').length
+    await draft().fill('/configured-browser')
+    await page.getByRole('option', { name: /configured-browser.*MCP 服务/ }).click()
+    assert.ok((await draft().inputValue()).includes('请检查当前 Agent 是否已加载 MCP 服务'))
+    assert.equal((await calls()).filter((item) => item.action === 'send').length, before)
+  })
+  await check('各 Agent 均显示个人 Skill，选择保留引用且不自动发送', async () => {
+    const before = (await calls()).filter((item) => item.action === 'send').length
+    for (const name of ['OpenCode', 'Claude Code', 'Claude Desktop', 'DeepSeek Harness']) {
+      await button(name).click()
+      await draft().fill('/fixture-verify')
+      await page.getByRole('option', { name: /fixture-verify.*Skill/ }).click()
+      assert.ok((await draft().inputValue()).includes('$fixture-verify'))
+      assert.equal((await calls()).filter((item) => item.action === 'send').length, before)
+    }
+  })
+  await check('DSH 不显示虚假的原生压缩能力，本机 Skill 仍可发现', async () => {
     await button('DeepSeek Harness').click()
     await commands()
     await page.getByText('官方 DSH ACP 未提供命令与 MCP 状态查询', { exact: true }).waitFor()
     assert.equal(await page.getByRole('option', { name: /compact/ }).count(), 0)
+    assert.equal(await page.getByRole('option', { name: /fixture-verify.*Skill/ }).count(), 1)
     await capture('agent-actions-dsh-limits')
   })
   await page.keyboard.press('Escape')

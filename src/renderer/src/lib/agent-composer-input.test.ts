@@ -10,6 +10,8 @@ describe('编程输入触发位置', () => {
       end: 9
     })
     expect(agentInputTrigger('/comp', 5)).toMatchObject({ kind: 'commands', query: 'comp' })
+    expect(agentInputTrigger('/校验', 3)).toMatchObject({ kind: 'commands', query: '校验' })
+    expect(agentInputTrigger('/开发工具', 5)).toMatchObject({ kind: 'commands', query: '开发工具' })
   })
   it('邮件、代码和正文斜杠不能自动触发命令', () => {
     for (const value of [
