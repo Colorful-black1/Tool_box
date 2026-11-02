@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
-import { AgentIcon, FolderIcon, RefreshIcon, SettingsIcon } from '../icons'
+import { AgentIcon, BranchIcon, FolderIcon, RefreshIcon, SettingsIcon } from '../icons'
 import { AgentIdentity } from '../agent-identity'
 import { AgentExtensionSettings } from './agent-extension-settings'
+
+/** 只取项目目录最后一段作为标题；完整路径仍在旁边显示，便于区分同名目录。 */
+function projectName(directory: string): string {
+  const parts = directory.split(/[\\/]/).filter(Boolean)
+  return parts.at(-1) ?? directory
+}
 
 /** 正常操作只选择 Agent 和项目，程序诊断收进连接设置。 */
 export function OpenCodeConnection(): JSX.Element {
@@ -20,10 +26,19 @@ export function OpenCodeConnection(): JSX.Element {
   const connect = useCodingAgentStore((state) => state.connect)
   const disconnect = useCodingAgentStore((state) => state.disconnect)
   const openDesktop = useCodingAgentStore((state) => state.openDesktop)
+  const git = useCodingAgentStore((state) => state.git)
+  const loadGitStatus = useCodingAgentStore((state) => state.loadGitStatus)
   const [expanded, setExpanded] = useState(false)
   const connected = Boolean(info?.connected && info.directory === directory)
   const showSettings = expanded || Boolean(info && !info.executablePath)
   const name = CODING_AGENT_NAMES[runtimeId]
+  // 切换项目、连接或任务结束后重读；主进程有短缓存，重复调用不会反复起进程。
+  useEffect(() => {
+    if (directory) void loadGitStatus()
+  }, [directory, runtimeId, connected, loadGitStatus])
+  useEffect(() => {
+    if (!running) void loadGitStatus()
+  }, [running, loadGitStatus])
   return (
     <section className="glass opencode-connection" aria-label={`${name} 连接`}>
       <div className="opencode-connection-head">
@@ -49,7 +64,6 @@ export function OpenCodeConnection(): JSX.Element {
               {busy ? '处理中…' : connected ? '已连接' : '发送时连接'}
             </span>
           </div>
-          <p title={directory}>{directory || '未选择项目'}</p>
         </div>
         <div className="opencode-connection-actions">
           <button
@@ -72,6 +86,64 @@ export function OpenCodeConnection(): JSX.Element {
             连接设置
           </button>
         </div>
+      </div>
+      <div className="opencode-project" role="group" aria-label="当前项目">
+        <span className="opencode-project-icon" aria-hidden="true">
+          <FolderIcon />
+        </span>
+        {directory ? (
+          <>
+            <span className="opencode-project-name" title={directory}>
+              {projectName(directory)}
+            </span>
+            <span className="opencode-project-path" title={directory}>
+              {directory}
+            </span>
+            {git ? (
+              <span className="opencode-git" aria-label="项目分支与改动">
+                <span
+                  className="opencode-git-branch"
+                  title={git.detached ? '当前处于分离 HEAD' : `当前分支：${git.branch}`}
+                >
+                  <BranchIcon />
+                  <span className="opencode-git-branch-name">
+                    {git.detached ? '分离 HEAD' : git.branch || '未命名分支'}
+                  </span>
+                </span>
+                {git.ahead > 0 ? (
+                  <span className="opencode-git-track" title={`领先上游 ${git.ahead} 个提交`}>
+                    ↑{git.ahead}
+                  </span>
+                ) : null}
+                {git.behind > 0 ? (
+                  <span className="opencode-git-track" title={`落后上游 ${git.behind} 个提交`}>
+                    ↓{git.behind}
+                  </span>
+                ) : null}
+                <span className="opencode-git-changes">
+                  {git.changedFiles > 0 ? `${git.changedFiles} 个文件已更改` : '工作区干净'}
+                </span>
+                {git.changedFiles > 0 && (git.insertions > 0 || git.deletions > 0) ? (
+                  <span className="opencode-git-stat" title="已跟踪文件的增删行（不含未跟踪文件）">
+                    <span className="opencode-git-add">+{git.insertions}</span>
+                    <span className="opencode-git-del">−{git.deletions}</span>
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="icon-btn opencode-git-refresh"
+                  aria-label="刷新分支信息"
+                  title="刷新分支信息"
+                  onClick={() => void loadGitStatus()}
+                >
+                  <RefreshIcon />
+                </button>
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="opencode-project-empty">未选择项目</span>
+        )}
       </div>
       {showSettings ? (
         <div className="opencode-connection-settings" id="opencode-connection-settings">

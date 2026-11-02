@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { OpenCodeSession } from '../../../shared/types'
 import { acpOptions, acpPreview, applyAcpUpdate } from './acp-codec'
 import { applyAcpUpdate as applyCommonUpdate } from '../coding-agents/acp-codec'
+import { SESSION_KEEP_CHARS } from '../../../shared/coding-agent-messages'
 
 function session(): OpenCodeSession {
   return {
@@ -94,18 +95,25 @@ describe('ACP 外部数据收敛', () => {
     expect(acpPreview({ token: 'fixture-private-value' })).not.toContain('fixture-private-value')
     expect(acpPreview('x'.repeat(20001))).toContain('较长')
   })
-  it('超出总量拒绝继续渲染，非文本消息不执行', () => {
+  it('超出存储预算时丢弃最旧消息并计数，非文本消息不执行', () => {
     const view = session()
     applyAcpUpdate(view, {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'resource', uri: 'file:///test' }
     })
     expect(view.messages).toEqual([])
-    expect(() =>
-      applyAcpUpdate(view, {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: 'x'.repeat(200001) }
-      })
-    ).toThrow('上限')
+    applyAcpUpdate(view, {
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'a'.repeat(10) }
+    })
+    expect(view.messages).toHaveLength(1)
+    // 单条超长消息保留自身，丢弃更早的整条消息，任务不再中断。
+    applyAcpUpdate(view, {
+      sessionUpdate: 'user_message_chunk',
+      content: { type: 'text', text: 'b'.repeat(SESSION_KEEP_CHARS + 1) }
+    })
+    expect(view.messages).toHaveLength(1)
+    expect(view.messages[0].role).toBe('user')
+    expect(view.truncatedMessages).toBe(1)
   })
 })

@@ -17,7 +17,11 @@ import type {
   AgentReference,
   AgentSendInput
 } from '../../shared/agent-actions'
-import type { CodingAgentId, CodingAgentSessionInput } from '../../shared/coding-agents'
+import type {
+  CodingAgentId,
+  CodingAgentMessagesInput,
+  CodingAgentSessionInput
+} from '../../shared/coding-agents'
 import { validateAgentRoles } from '../../shared/agent-handoff'
 import { MAX_TOOL_FAVORITES, MAX_TOOL_RECENT, validateToolIds } from '../../shared/tool-shortcuts'
 import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
@@ -173,6 +177,20 @@ export function validateCodingAgentSession(value: unknown): CodingAgentSessionIn
     runtimeId: validateCodingAgentId(input.runtimeId),
     sessionId: requireCodingAgentText(input.sessionId, '编程会话', 200)
   }
+}
+
+/** 分页游标只接受非负整数；缺失表示取尾页。 */
+export function validateCodingAgentMessages(value: unknown): CodingAgentMessagesInput {
+  const input = codingAgentObject(value)
+  const session = validateCodingAgentSession(input)
+  if (input.beforeSeq === undefined) return session
+  if (
+    typeof input.beforeSeq !== 'number' ||
+    !Number.isSafeInteger(input.beforeSeq) ||
+    input.beforeSeq < 0
+  )
+    throw new CodingAgentValidationError('会话分页游标无效')
+  return { ...session, beforeSeq: input.beforeSeq }
 }
 
 export function validateCodingAgentConnect(value: unknown): {

@@ -68,7 +68,10 @@ import type {
   CodingAgentSessionInput,
   CodingAgentWorkspaceResult,
   CodingAgentRevertInput,
-  CodingAgentRevertPreview
+  CodingAgentRevertPreview,
+  CodingAgentMessagesInput,
+  CodingAgentMessagesPage,
+  GitStatusView
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
@@ -133,6 +136,10 @@ export interface ToolboxBridge {
     disconnect(runtimeId: CodingAgentId): Promise<void>
     listSessions(runtimeId: CodingAgentId): Promise<CodingAgentSessionSummary[]>
     attachWorkspace(input: CodingAgentSessionInput): Promise<CodingAgentWorkspaceResult>
+    /** 读取已连接/已选择项目的 Git 状态；非仓库或未安装 git 时返回 null。 */
+    gitStatus(runtimeId: CodingAgentId): Promise<GitStatusView | null>
+    /** 按 seq 回取更早的正文页；不传 beforeSeq 时返回尾页。 */
+    sessionMessages(input: CodingAgentMessagesInput): Promise<CodingAgentMessagesPage>
     createSession(runtimeId: CodingAgentId): Promise<CodingAgentSessionView>
     resumeSession(input: CodingAgentSessionInput): Promise<CodingAgentSessionView>
     setOption(

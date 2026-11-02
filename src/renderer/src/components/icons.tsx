@@ -19,8 +19,19 @@ export function FolderIcon(): JSX.Element {
   )
 }
 
-export function CalendarIcon(): JSX.Element {
+/** 分支：两个提交节点加一条连线，与 Git 常规图标一致。 */
+export function BranchIcon(): JSX.Element {
   return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <circle cx="7" cy="6" r="2.2" />
+      <circle cx="7" cy="18" r="2.2" />
+      <circle cx="17" cy="8" r="2.2" />
+      <path d="M7 8.2v7.6M9.2 8.6h3.4a2.2 2.2 0 0 0 2.2-2.2v-.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function CalendarIcon(): JSX.Element {  return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M7 3v4m10-4v4M3 11h18m-12 4h2m3 0h2" strokeLinecap="round" />

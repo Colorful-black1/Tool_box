@@ -4410,13 +4410,145 @@ textarea,
   color: var(--text-hi);
 }
 
-.opencode-identity p {
-  margin: 5px 0 0;
+/* 项目条：完整路径 + 分支 + 改动，作为连接卡片的第二条信息层。 */
+.opencode-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
+  border-radius: 10px;
+  background: rgba(var(--neutral-rgb), 0.04);
+}
+
+.opencode-project-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--gold);
+}
+
+.opencode-project-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.opencode-project-name {
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-hi);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opencode-project-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opencode-project-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 分支与改动作为项目条的右侧信息区，用金色细线分隔，不抢路径的视觉重心。 */
+.opencode-git {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--gold-line);
+  font-size: 11px;
+  color: var(--text-mid);
+}
+
+.opencode-git-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 2px 9px;
+  border: 1px solid rgba(var(--accent-rgb), 0.38);
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.1);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.opencode-git-branch svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.opencode-git-branch-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+}
+
+.opencode-git-track {
   color: var(--text-dim);
+}
+
+.opencode-git-changes {
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+
+.opencode-git-stat {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.opencode-git-add {
+  color: var(--success);
+}
+
+.opencode-git-del {
+  color: var(--pink);
+}
+
+.opencode-git-refresh {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--text-dim);
+}
+
+.opencode-git-refresh:hover {
+  color: var(--gold);
+}
+
+/* 窄窗下分支信息换到第二行，避免挤压路径或撑破卡片。 */
+@media (max-width: 1120px) {
+  .opencode-project {
+    flex-wrap: wrap;
+  }
+
+  .opencode-git {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .opencode-connection-status {
@@ -4915,6 +5047,25 @@ textarea,
   right: 20px;
   bottom: 12px;
   background: var(--bg-menu);
+}
+
+.opencode-earlier {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.opencode-earlier-note {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-mid);
+  font-size: 12px;
+  text-align: center;
 }
 
 .opencode-tools,

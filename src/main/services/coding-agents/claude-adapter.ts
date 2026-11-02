@@ -17,6 +17,7 @@ import type {
   CodingAgentSessionSummary
 } from '../../../shared/coding-agents'
 import { normalizeDraftDirectory } from '../../../shared/agent-drafts'
+import { trimOldestMessages } from '../../../shared/coding-agent-messages'
 import { acpPreview } from './acp-codec'
 import type { ToolboxStore } from '../chat-store/chat-store'
 import {
@@ -639,14 +640,6 @@ export class ClaudeAdapter implements CodingAgentAdapter {
     const session = this.session(id)
     if (this.run || this.preparing || !this.sdk)
       throw new CodingAgentError('Claude 正在执行任务或已断开')
-    if (
-      !context?.command &&
-      (session.messages.length >= 200 ||
-        session.messages.reduce((total, message) => total + message.content.length, 0) +
-          content.length >
-          200_000)
-    )
-      throw new CodingAgentError('会话达到显示上限，请开始新对话或在原生客户端继续')
     const controller = new AbortController()
     const generation = this.generation
     const preparing = { sessionId: id, controller }
@@ -1040,11 +1033,11 @@ export class ClaudeAdapter implements CodingAgentAdapter {
           }
           break
         }
-        if (
-          session.messages.length > 200 ||
-          session.messages.reduce((total, message) => total + message.content.length, 0) > 200_000
-        )
-          throw new CodingAgentError('会话达到显示上限，已停止任务，请在原生客户端核对后继续')
+        const trimmed = trimOldestMessages(session.messages)
+        if (trimmed.dropped) {
+          session.messages = trimmed.messages
+          session.truncatedMessages = (session.truncatedMessages ?? 0) + trimmed.dropped
+        }
         if (session.tools.length > 100) session.tools = session.tools.slice(-100)
         this.emit(session, false)
       }

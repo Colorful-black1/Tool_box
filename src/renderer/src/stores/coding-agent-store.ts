@@ -6,8 +6,11 @@ import type {
   CodingAgentId,
   CodingAgentRuntimeView,
   CodingAgentSessionSummary,
-  CodingAgentSessionView
+  CodingAgentSessionView,
+  GitStatusView,
+  SessionMessage as AgentSessionMessage
 } from '@shared/coding-agents'
+import { mergeSessionMessages } from '../../../shared/coding-agent-messages'
 import { codingAgentClient } from '../lib/coding-agent-client'
 import { agentUserMessageText } from '../lib/agent-message-text'
 import { CODING_AGENT_IDS, WORKBENCH_AGENT_IDS } from '../../../shared/coding-agents'
@@ -26,6 +29,15 @@ interface ProjectHandoff {
   connectionReplaced: boolean
 }
 
+/** 向上滚动加载的一页：只保存比事件尾页更早的消息。 */
+interface EarlierMessages {
+  items: AgentSessionMessage[]
+  hasMore: boolean
+  truncated: number
+  loading: boolean
+  failed: boolean
+}
+
 /** 正文只留在内存；未发送草稿由独立协调器加密保存。 */
 interface RuntimeWorkspace {
   info: CodingAgentRuntimeView | null
@@ -35,6 +47,10 @@ interface RuntimeWorkspace {
   projectMemory: string | null | undefined
   handoff: ProjectHandoff | null
   sessions: Record<string, CodingAgentSessionView>
+  /** 当前项目的只读 Git 状态；非仓库或未选择项目时为 null。 */
+  git: GitStatusView | null
+  /** 每个会话已向上加载的更早正文；事件里的尾页不重复放进来。 */
+  earlier: Record<string, EarlierMessages>
   closedSessions: string[]
   activeId: string | null
   history: CodingAgentSessionSummary[]
@@ -66,6 +82,8 @@ interface CodingAgentState extends RuntimeWorkspace {
   preparations: Partial<Record<CodingAgentId, boolean>>
   switchRuntime(id: CodingAgentId): void
   inspect(force?: boolean): Promise<void>
+  /** 刷新当前项目的分支与改动信息；失败时保持上一次结果。 */
+  loadGitStatus(): Promise<void>
   chooseExecutable(): Promise<void>
   chooseDirectory(): Promise<void>
   connect(): Promise<void>
@@ -89,6 +107,8 @@ interface CodingAgentState extends RuntimeWorkspace {
   revertMessage(id: string, edit: boolean): Promise<void>
   cancelRecall(): Promise<void>
   selectSession(id: string): Promise<void>
+  /** 向上加载更早一页正文；到顶或正在加载时直接返回。 */
+  loadEarlier(sessionId?: string): Promise<void>
   closeSession(id: string): boolean
   receive(event: CodingAgentEvent): void
   clearError(): void
@@ -109,6 +129,8 @@ function emptyWorkspace(): RuntimeWorkspace {
     projectMemory: undefined,
     handoff: null,
     sessions: {},
+    git: null,
+    earlier: {},
     closedSessions: [],
     activeId: null,
     history: [],
@@ -134,6 +156,8 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     projectMemory,
     handoff,
     sessions,
+    git,
+    earlier,
     closedSessions,
     activeId,
     history,
@@ -156,6 +180,8 @@ function workspace(state: RuntimeWorkspace): RuntimeWorkspace {
     projectMemory,
     handoff,
     sessions,
+    git,
+    earlier,
     closedSessions,
     activeId,
     history,
@@ -202,6 +228,7 @@ function changeProject(state: RuntimeWorkspace, directory: string): RuntimeWorks
     directory,
     inheritedProject: false,
     handoff: null,
+    git: null,
     activeId: null,
     history: [],
     historyLoaded: false,
@@ -271,8 +298,28 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
     const current = read(id)
     if (current.info?.connectionId !== view.connectionId) return
     if ((current.sessions[view.id]?.revision ?? -1) >= view.revision) return
+    const previous = current.sessions[view.id]
+    const window = view.messageWindow
+    const keepEarlier =
+      previous?.historyRevision === view.historyRevision ? current.earlier[view.id] : undefined
+    // 回退或重读原生历史后旧页已失效，从空页重新加载，避免显示已撤回的消息。
+    const base: EarlierMessages = keepEarlier ?? {
+      items: [],
+      hasMore: window?.hasMore ?? false,
+      truncated: window?.truncated ?? 0,
+      loading: false,
+      failed: false
+    }
+    // 事件只带尾页：尾页滑出的消息降级为"更早"，否则列表顶部会凭空消失一条。
+    const tailIds = new Set(view.messages.map((message) => message.id))
+    const demoted = (previous?.messages ?? []).filter((message) => !tailIds.has(message.id))
+    const earlier: EarlierMessages =
+      demoted.length && keepEarlier
+        ? { ...base, items: mergeSessionMessages(base.items, demoted) }
+        : base
     update(id, (state) => ({
       sessions: { ...state.sessions, [view.id]: view },
+      earlier: { ...state.earlier, [view.id]: earlier },
       history: state.history.map((item) =>
         item.id === view.nativeSessionId ? { ...item, title: view.title } : item
       )
@@ -502,6 +549,22 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
           }
         })
       })
+    },
+    loadGitStatus: async () => {
+      const id = get().runtimeId
+      const directory = read(id).directory
+      if (!directory) {
+        update(id, { git: null })
+        return
+      }
+      try {
+        const git = await codingAgentClient().gitStatus(id)
+        // 请求期间切换项目时丢弃旧结果，避免把上一个项目的分支显示出来。
+        if (!sameDirectory(read(id).directory, directory)) return
+        update(id, { git })
+      } catch {
+        // 非仓库、未安装 git 或旧桥接没有该能力时只是不显示分支条，不打扰用户。
+      }
     },
     chooseExecutable: () =>
       perform(async (id) => {
@@ -815,6 +878,64 @@ export const useCodingAgentStore = create<CodingAgentState>((set, get) => {
         drafts: { ...state.drafts, [draftKey(state)]: draft }
       })),
     selectSession: (id) => activate(get().runtimeId, id),
+    loadEarlier: async (sessionId) => {
+      const id = get().runtimeId
+      const state = read(id)
+      const ref = sessionId ?? state.activeId
+      if (!ref) return
+      const session = state.sessions[ref]
+      if (!session) return
+      // 老路径（直接打开会话）可能还没写入 earlier，用尾页窗口兜底合成一份。
+      const entry: EarlierMessages = state.earlier[ref] ?? {
+        items: [],
+        hasMore: session.messageWindow?.hasMore ?? false,
+        truncated: session.messageWindow?.truncated ?? 0,
+        loading: false,
+        failed: false
+      }
+      if (!entry.hasMore || entry.loading) return
+      const merged = mergeSessionMessages(entry.items, session.messages)
+      const beforeSeq = merged[0]?.seq ?? session.messageWindow?.earliestSeq ?? undefined
+      if (beforeSeq === undefined) return
+      update(id, (current) => ({
+        earlier: { ...current.earlier, [ref]: { ...entry, loading: true, failed: false } }
+      }))
+      try {
+        const page = await codingAgentClient().sessionMessages({
+          runtimeId: id,
+          sessionId: ref,
+          beforeSeq
+        })
+        update(id, (current) => {
+          const latest = current.earlier[ref] ?? entry
+          const seen = new Set(latest.items.map((message) => message.id))
+          const items = [
+            ...page.messages.filter((message) => !seen.has(message.id)),
+            ...latest.items
+          ]
+          return {
+            earlier: {
+              ...current.earlier,
+              [ref]: {
+                items,
+                hasMore: page.hasMore,
+                truncated: page.truncated,
+                loading: false,
+                failed: false
+              }
+            }
+          }
+        })
+      } catch {
+        // 失败保留已加载内容，标记可重试；不弹出全局错误打断阅读。
+        update(id, (current) => ({
+          earlier: {
+            ...current.earlier,
+            [ref]: { ...(current.earlier[ref] ?? entry), loading: false, failed: true }
+          }
+        }))
+      }
+    },
     closeSession: (ref) => {
       const id = get().runtimeId
       const state = read(id)

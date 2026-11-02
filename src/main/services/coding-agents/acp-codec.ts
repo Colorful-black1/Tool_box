@@ -1,6 +1,7 @@
 import type { CodingAgentOption } from '../../../shared/coding-agents'
 import type { NativeCodingSession } from './adapter'
 import { redactData } from '../../../shared/redaction-tools'
+import { trimOldestMessages } from '../../../shared/coding-agent-messages'
 import { acpObject } from './stdio-rpc-connection'
 import { contextUsage } from './agent-session-metrics'
 
@@ -55,7 +56,10 @@ export function acpPreview(value: unknown, agentName = 'Agent'): string {
 
 /** 只消费当前会话的文本、标题、配置及工具状态，外部内容始终作为文本处理。 */
 export function applyAcpUpdate(
-  session: Pick<NativeCodingSession, 'messages' | 'tools' | 'title' | 'options' | 'contextUsage'>,
+  session: Pick<
+    NativeCodingSession,
+    'messages' | 'tools' | 'title' | 'options' | 'contextUsage' | 'truncatedMessages'
+  >,
   raw: unknown,
   agentName = 'Agent'
 ): void {
@@ -66,19 +70,22 @@ export function applyAcpUpdate(
     const content = acpObject(update.content)
     if (content?.type !== 'text' || typeof content.text !== 'string') return
     const role = kind === 'user_message_chunk' ? 'user' : 'assistant'
-    const total = session.messages.reduce((sum, message) => sum + message.content.length, 0)
-    if (total + content.text.length > 200_000) throw new Error('会话内容达到显示上限，请新建会话')
     const nativeId = acpText(update.messageId, 200)
     const messageId = nativeId ? `native-${role}-${nativeId}` : ''
     let last = messageId
       ? session.messages.find((item) => item.id === messageId)
       : session.messages.at(-1)
     if (!last || last.role !== role) {
-      if (session.messages.length >= 200) throw new Error('会话消息达到显示上限，请新建会话')
       last = { id: messageId || `message-${session.messages.length + 1}`, role, content: '' }
       session.messages.push(last)
     }
     last.content += content.text
+    // 超出存储预算时丢最旧消息并计数，不再中断任务；界面会提示更早内容未保留。
+    const trimmed = trimOldestMessages(session.messages)
+    if (trimmed.dropped) {
+      session.messages = trimmed.messages
+      session.truncatedMessages = (session.truncatedMessages ?? 0) + trimmed.dropped
+    }
   } else if (kind === 'usage_update') {
     const usage = contextUsage(update.used, update.size, 'acp', agentName === 'DSH')
     if (usage) session.contextUsage = usage

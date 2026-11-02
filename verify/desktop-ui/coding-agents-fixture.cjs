@@ -122,6 +122,17 @@ module.exports = function codingAgentsFixture() {
   return {
     bridge: {
       listRuntimes: async () => Object.keys(names).map((id) => copy(info(id))),
+      // 合成数据只用于核对分支条布局，不读取真实仓库。
+      gitStatus: async () => ({
+        directory: 'E:\\合成项目',
+        branch: 'feature/session-pagination',
+        detached: false,
+        ahead: 2,
+        behind: 1,
+        changedFiles: 74,
+        insertions: 6412,
+        deletions: 6412
+      }),
       inspect: async (id) =>
         copy({ ...info(id), projectDirectory: projects.get(id) ?? info(id).directory }),
       chooseDirectory: async (id) => {

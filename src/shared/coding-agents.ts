@@ -1,4 +1,7 @@
 import type { AgentContextUsage, AgentQuestionRequest, AgentTurnTiming } from './agent-session'
+import type { SessionMessage } from './coding-agent-messages'
+
+export type { SessionMessage }
 
 /** 首版每种工具一个默认原生 profile；运行时和模型分别选择。 */
 export const CODING_AGENT_IDS = ['opencode', 'codex', 'kimi', 'claude', 'claude-desktop', 'dsh'] as const
@@ -87,7 +90,12 @@ export interface CodingAgentSessionView {
   /** 只在原生分页历史支持对话回退时启用；不包含文件恢复。 */
   canRevert?: boolean
   historyRevision?: string
-  messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>
+  /** 只包含最近一页；更早内容按 `messageWindow.earliestSeq` 分页回取。 */
+  messages: SessionMessage[]
+  /** 尾页窗口元信息；旧桥接可能缺失，缺失时视为已完整显示。 */
+  messageWindow?: CodingAgentMessageWindow
+  /** 超出本机存储预算被丢弃的条数；由主进程维护，不从渲染层写入。 */
+  truncatedMessages?: number
   tools: Array<{ id: string; title: string; status: string }>
   options: CodingAgentOption[]
   approvals: CodingAgentApproval[]
@@ -99,6 +107,43 @@ export interface CodingAgentSessionView {
 export interface CodingAgentSessionSummary {
   id: string
   title: string
+}
+
+/**
+ * 编程工作台显示的项目 Git 状态。
+ *
+ * 只读：分支、跟踪差距、改动文件数与增删行（未跟踪文件计入改动数、不计入行数）。
+ * `directory` 是用户选择的项目目录，不一定是仓库根。
+ */
+export interface GitStatusView {
+  directory: string
+  branch: string
+  detached: boolean
+  ahead: number
+  behind: number
+  changedFiles: number
+  insertions: number
+  deletions: number
+}
+
+/** 尾页窗口：界面据 hasMore 决定是否继续向上加载。 */
+export interface CodingAgentMessageWindow {  hasMore: boolean
+  earliestSeq: number | null
+  latestSeq: number | null
+  totalMessages: number
+  /** 超出本机存储预算被丢弃的条数；大于 0 时界面必须显式提示。 */
+  truncated: number
+}
+
+/** 按 seq 回取更早的一页；不传 beforeSeq 时返回尾页。 */
+export interface CodingAgentMessagesInput extends CodingAgentSessionInput {
+  beforeSeq?: number
+}
+
+export interface CodingAgentMessagesPage {
+  messages: SessionMessage[]
+  hasMore: boolean
+  truncated: number
 }
 
 /** DSH 工作区归组结果；message 为界面可展示的说明。 */

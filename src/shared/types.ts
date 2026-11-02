@@ -113,7 +113,10 @@ export interface OpenCodeSession {
   questions?: import('./agent-session').AgentQuestionRequest[]
   canRevert?: boolean
   historyRevision?: string
-  messages: Array<{ id: string; role: ChatRole; content: string }>
+  messages: Array<{ id: string; role: ChatRole; content: string; seq?: number }>
+  /** 旧 OpenCode IPC 的尾页窗口；完整正文分页见 coding-agent:messages。 */
+  messageWindow?: import('./coding-agents').CodingAgentMessageWindow
+  truncatedMessages?: number
   tools: Array<{ id: string; title: string; status: string }>
   options: OpenCodeOption[]
   approvals: OpenCodeApproval[]

@@ -161,6 +161,16 @@ module.exports = async function verifyCodingAgents({ page, app, check, capture }
           await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
           false
         )
+        // 项目条与分支胶囊在两种尺寸下都要完整落在窗口内。
+        assert.ok(
+          (await page.locator('.opencode-git-branch').textContent()).includes(
+            'feature/session-pagination'
+          )
+        )
+        const gitBar = await page.locator('.opencode-git').boundingBox()
+        assert.ok(gitBar.x >= 0 && gitBar.x + gitBar.width <= width)
+        const projectBar = await page.locator('.opencode-project').boundingBox()
+        assert.ok(projectBar.y + projectBar.height <= height)
         const input = await draft().boundingBox()
         assert.ok(input.height >= 48 && input.y + input.height < height)
         await page.getByRole('button', { name: '更多会话操作', exact: true }).click()

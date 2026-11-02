@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import type { OpenCodeSession } from '@shared/types'
+import type { CodingAgentSessionView } from '@shared/coding-agents'
 import { renderMarkdown } from '../../lib/markdown'
 import { agentUserMessageText } from '../../lib/agent-message-text'
 import { buildMessageNote } from '@shared/message-note'
@@ -8,6 +8,7 @@ import { useAppStore } from '../../stores/app-store'
 import { CodeIcon } from '../icons'
 import { useCodingAgentStore } from '../../stores/coding-agent-store'
 import { CODING_AGENT_NAMES, WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
+import { mergeSessionMessages } from '@shared/coding-agent-messages'
 import { AgentIdentity, AgentMark } from '../agent-identity'
 import type { CodingAgentId } from '@shared/coding-agents'
 import { Dropdown } from '../dropdown'
@@ -17,7 +18,7 @@ export function OpenCodeMessages({
   session,
   agentName = 'OpenCode'
 }: {
-  session: OpenCodeSession | undefined
+  session: CodingAgentSessionView | undefined
   agentName?: string
 }): JSX.Element {
   const container = useRef<HTMLDivElement>(null)
@@ -33,8 +34,18 @@ export function OpenCodeMessages({
   const targetId = runtimeId === 'opencode' ? 'codex' : 'opencode'
   const targetName = CODING_AGENT_NAMES[targetId]
   const id = session?.id
+  const earlier = useCodingAgentStore((state) => (id ? state.earlier[id] : undefined))
+  const loadEarlier = useCodingAgentStore((state) => state.loadEarlier)
+  const pendingHeight = useRef<number | null>(null)
   const lastText = session?.messages.at(-1)?.content
-  const messages = (session?.messages ?? []).map((message) =>
+  const window = session?.messageWindow
+  const hasEarlier = earlier?.hasMore ?? window?.hasMore ?? false
+  const truncated = earlier?.truncated ?? window?.truncated ?? 0
+  const merged = useMemo(
+    () => mergeSessionMessages(earlier?.items ?? [], session?.messages ?? []),
+    [earlier?.items, session?.messages]
+  )
+  const messages = merged.map((message) =>
     message.role === 'user'
       ? { ...message, content: agentUserMessageText(message.content) }
       : message
@@ -78,6 +89,23 @@ export function OpenCodeMessages({
     })
     return () => cancelAnimationFrame(frame)
   }, [lastText])
+  // 插入更早的消息后按高度差补偿滚动位置，阅读位置不跳。
+  useLayoutEffect(() => {
+    const element = container.current
+    if (!element || pendingHeight.current === null) return
+    const previous = pendingHeight.current
+    pendingHeight.current = null
+    element.scrollTop += element.scrollHeight - previous
+  }, [messages.length])
+  const requestEarlier = (): void => {
+    if (!hasEarlier || earlier?.loading) return
+    if (container.current) pendingHeight.current = container.current.scrollHeight
+    void loadEarlier(id)
+  }
+  // 加载失败时清掉待补偿高度，避免下一条新消息到达时误跳。
+  useEffect(() => {
+    if (earlier?.failed) pendingHeight.current = null
+  }, [earlier?.failed])
   return (
     <div className="opencode-messages-wrap">
       <div
@@ -89,9 +117,11 @@ export function OpenCodeMessages({
           if (!element) return
           following.current = element.scrollHeight - element.clientHeight - element.scrollTop < 80
           setAway(!following.current)
+          // 滚到接近顶部时预取上一页；到顶且没有更多时不再请求。
+          if (element.scrollTop < 60) requestEarlier()
         }}
       >
-        {!session?.messages.length ? (
+        {!messages.length || !session ? (
           <div className="opencode-empty" role="status">
             <span className="opencode-empty-icon">
               <CodeIcon />
@@ -99,7 +129,30 @@ export function OpenCodeMessages({
             <h3>开始新对话</h3>
           </div>
         ) : (
-          messages.map((message) => (
+          <>
+            {truncated > 0 ? (
+              <div className="opencode-earlier-note" role="status">
+                更早的 {truncated} 条已超出本机缓存，可在原生 Agent 中查看。
+              </div>
+            ) : null}
+            {hasEarlier ? (
+              <div className="opencode-earlier">
+                {earlier?.loading ? (
+                  <span role="status">正在加载更早消息…</span>
+                ) : earlier?.failed ? (
+                  <button type="button" className="btn-ghost" onClick={requestEarlier}>
+                    加载失败，点击重试
+                  </button>
+                ) : (
+                  <span>向上滚动加载更早消息</span>
+                )}
+              </div>
+            ) : truncated > 0 ? null : (
+              <div className="opencode-earlier" role="status">
+                已到最早
+              </div>
+            )}
+            {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <div className="message-meta">{message.role === 'user' ? '你' : agentName}</div>
               {message.role === 'assistant' ? (
@@ -189,7 +242,8 @@ export function OpenCodeMessages({
                 </div>
               ) : null}
             </article>
-          ))
+            ))}
+          </>
         )}
       </div>
       {away ? (

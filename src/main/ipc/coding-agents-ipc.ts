@@ -9,6 +9,7 @@ import {
   validateCodingAgentApproval,
   validateCodingAgentConnect,
   validateCodingAgentId,
+  validateCodingAgentMessages,
   validateCodingAgentOption,
   validateCodingAgentQuestion,
   validateCodingAgentRevert,
@@ -95,6 +96,9 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
     const input = validateCodingAgentConnect(value)
     return service.connect(input.runtimeId, owner, input.directory)
   })
+  handle(IPC.codingAgentGit, (owner, value) =>
+    service.gitStatus(validateCodingAgentId(value), owner)
+  )
   handle(IPC.codingAgentDisconnect, (owner, value) =>
     service.disconnect(validateCodingAgentId(value), owner)
   )
@@ -104,6 +108,10 @@ export function registerCodingAgentsIpc(service: CodingAgentService): void {
   handle(IPC.codingAgentWorkspace, (owner, value) => {
     const input = validateCodingAgentSession(value)
     return service.attachWorkspace(input.runtimeId, owner, input.sessionId)
+  })
+  handle(IPC.codingAgentMessages, (owner, value) => {
+    const input = validateCodingAgentMessages(value)
+    return service.sessionMessages(input.runtimeId, owner, input.sessionId, input.beforeSeq)
   })
   handle(IPC.codingAgentCreate, (owner, value) =>
     service.openSession(validateCodingAgentId(value), owner)

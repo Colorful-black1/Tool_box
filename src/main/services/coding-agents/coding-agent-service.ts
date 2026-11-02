@@ -18,10 +18,15 @@ import {
   CODING_AGENT_NAMES,
   type CodingAgentEvent,
   type CodingAgentId,
+  type CodingAgentMessagesPage,
   type CodingAgentRuntimeView,
   type CodingAgentSessionView,
-  type CodingAgentWorkspaceResult
+  type CodingAgentWorkspaceResult,
+  type GitStatusView,
+  type SessionMessage
 } from '../../../shared/coding-agents'
+import { takePageBefore, takeTailPage } from '../../../shared/coding-agent-messages'
+import { readGitStatus } from './git-status'
 import type { CodingAgentRevertPreview } from '../../../shared/coding-agents'
 import type { NativeRevertPreview } from './adapter'
 import { IPC } from '../../../shared/ipc-contract'
@@ -69,6 +74,9 @@ interface RuntimeState {
   revision: number
   legacySending: boolean
   sessions: Map<string, CodingAgentSessionView>
+  /** 会话内消息序号：流式追加时按 id 复用，分页游标只认 seq。 */
+  seqById: Map<string, Map<string, number>>
+  seqNext: Map<string, number>
   dispose(): void
 }
 
@@ -126,6 +134,8 @@ export class CodingAgentService {
         revision: 0,
         legacySending: false,
         sessions: new Map(),
+        seqById: new Map(),
+        seqNext: new Map(),
         dispose: () => undefined
       }
       this.runtimes.set(adapter.id, state)
@@ -211,8 +221,47 @@ export class CodingAgentService {
     return state.adapter.listSessions()
   }
 
-  /** 只把已打开会话归入 DSH Desktop 工作区；不创建、不恢复、不发送。 */
-  async attachWorkspace(
+  /**
+   * 按 seq 回取更早正文。
+   *
+   * 事件里只带尾页，界面向上滚动时用 `beforeSeq` 逐页取；不带游标时返回尾页，
+   * 便于刚打开会话的旧桥接降级路径复用同一入口。
+   */
+  sessionMessages(
+    id: CodingAgentId,
+    owner: number,
+    ref: string,
+    beforeSeq?: number
+  ): CodingAgentMessagesPage {
+    const state = this.connected(id, owner)
+    const session = this.session(state, ref)
+    const page =
+      beforeSeq === undefined
+        ? takeTailPage(session.messages)
+        : takePageBefore(session.messages, beforeSeq)
+    return {
+      messages: structuredClone(page.messages),
+      hasMore: page.hasMore,
+      truncated: session.truncatedMessages ?? 0
+    }
+  }
+
+  /**
+   * 读取当前项目的 Git 状态。
+   *
+   * 目录只取自运行时的连接目录或用户明确保存的项目，不接受渲染层传路径；
+   * 未连接且没有项目记忆时返回 null，界面不显示分支条。
+   */
+  gitStatus(id: CodingAgentId, owner: number): Promise<GitStatusView | null> {
+    const state = this.requireRuntime(id)
+    this.requireOwner(state, owner)
+    const directory = state.info.connected
+      ? state.info.directory
+      : (state.info.projectDirectory ?? '')
+    return readGitStatus(directory)
+  }
+
+  /** 只把已打开会话归入 DSH Desktop 工作区；不创建、不恢复、不发送。 */  async attachWorkspace(
     id: CodingAgentId,
     owner: number,
     ref: string
@@ -245,7 +294,7 @@ export class CodingAgentService {
           bindings: new Map(initial.bindings),
           view: { ...structuredClone(initial.view), sessionId: view.id }
         })
-      return view
+      return this.toWire(view)
     })
   }
 
@@ -253,9 +302,8 @@ export class CodingAgentService {
     const state = this.connected(id, owner)
     return this.operate(state, owner, true, async () => {
       const session = this.session(state, ref)
-      return this.upsert(
-        state,
-        await state.adapter.setOption(session.nativeSessionId, option, value)
+      return this.toWire(
+        this.upsert(state, await state.adapter.setOption(session.nativeSessionId, option, value))
       )
     })
   }
@@ -749,7 +797,7 @@ export class CodingAgentService {
         previous.timing = undefined
         previous.contextUsage = undefined
         previous.outcome = 'completed'
-        return this.upsert(state, raw, true)
+        return this.toWire(this.upsert(state, raw, true))
       } catch (error) {
         if (error instanceof CodingAgentHistoryUnknownError) {
           const current = this.session(state, ref)
@@ -983,6 +1031,7 @@ export class CodingAgentService {
       outcome: previous?.outcome ?? null,
       subtasks: structuredClone(raw.subtasks ?? [])
     }
+    view.messages = this.assignSeq(state, raw.id, raw.messages)
     view.timing = previous?.timing
     const usage = raw.contextUsage ?? previous?.contextUsage
     if (usage) {
@@ -1060,7 +1109,59 @@ export class CodingAgentService {
 
   private publishSession(state: RuntimeState, session: CodingAgentSessionView): void {
     session.revision = ++state.revision
-    this.emit(state, { kind: 'session', session: structuredClone(session) })
+    this.emit(state, { kind: 'session', session: this.toWire(session) })
+  }
+
+  /**
+   * 给每条消息分配会话内单调递增的 seq。
+   *
+   * 流式输出会反复重建消息数组，必须按 id 复用已有 seq，否则游标会漂移、
+   * 向上分页时出现重复或漏条。只有全新消息才消耗下一个序号。
+   */
+  private assignSeq(
+    state: RuntimeState,
+    sessionId: string,
+    messages: NativeCodingSession['messages']
+  ): SessionMessage[] {
+    let byId = state.seqById.get(sessionId)
+    if (!byId) {
+      byId = new Map()
+      state.seqById.set(sessionId, byId)
+    }
+    let next = state.seqNext.get(sessionId) ?? 0
+    const mapped = messages.map((message) => {
+      let seq = byId!.get(message.id)
+      if (seq === undefined) {
+        seq = ++next
+        byId!.set(message.id, seq)
+      }
+      return { ...message, seq }
+    })
+    state.seqNext.set(sessionId, next)
+    // 被存储预算裁掉的消息不再保留游标，避免映射无限增长。
+    if (byId.size > mapped.length * 2 + 64) {
+      const alive = new Set(mapped.map((message) => message.id))
+      for (const id of byId.keys()) if (!alive.has(id)) byId.delete(id)
+    }
+    return mapped
+  }
+
+  /** 发射到渲染层的只有尾页；完整正文留在主进程供分页回取。 */
+  private toWire(view: CodingAgentSessionView): CodingAgentSessionView {
+    const page = takeTailPage(view.messages)
+    const first = page.messages[0]
+    const last = page.messages.at(-1)
+    return structuredClone({
+      ...view,
+      messages: page.messages,
+      messageWindow: {
+        hasMore: page.hasMore,
+        earliestSeq: first?.seq ?? null,
+        latestSeq: last?.seq ?? null,
+        totalMessages: view.messages.length,
+        truncated: view.truncatedMessages ?? 0
+      }
+    })
   }
 
   private publishRuntime(state: RuntimeState): void {

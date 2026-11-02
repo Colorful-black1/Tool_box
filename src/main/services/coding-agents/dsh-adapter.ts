@@ -446,8 +446,7 @@ export class DshAdapter implements CodingAgentAdapter {
       if (update?.sessionUpdate === 'config_option_update') this.syncModels(session)
       this.emit(session)
     } catch {
-      session.error = 'DSH 显示内容达到上限，已停止任务；请在原生客户端检查完整记录'
-      this.stop(session.id)
+      // 分片结构异常只跳过本次推送；正文超限由 codec 裁剪并计数，不再停止任务。
     }
   }
 }

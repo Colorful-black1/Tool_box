@@ -1,5 +1,6 @@
 import type { CodingAgentOption } from '../../../shared/coding-agents'
 import { redactData } from '../../../shared/redaction-tools'
+import { trimOldestMessages } from '../../../shared/coding-agent-messages'
 import type { NativeCodingSession } from './adapter'
 import { CodingAgentError } from './adapter'
 import { codexObject, codexText } from './codex-connection'
@@ -99,14 +100,14 @@ export function codexMessage(
 ): void {
   const existing = session.messages.find((item) => item.id === id)
   const next = (append ? (existing?.content ?? '') : '') + content
-  const total =
-    session.messages.reduce((sum, item) => sum + item.content.length, 0) -
-    (existing?.content.length ?? 0) +
-    next.length
-  if (total > 200_000 || (!existing && session.messages.length >= 200))
-    throw new CodingAgentError('会话内容达到显示上限，请停止任务后新建会话')
   if (existing) existing.content = next
   else session.messages.push({ id, role, content: next })
+  // 超出存储预算时丢最旧消息并计数，任务继续；更早内容在界面显式提示。
+  const trimmed = trimOldestMessages(session.messages)
+  if (trimmed.dropped) {
+    session.messages = trimmed.messages
+    session.truncatedMessages = (session.truncatedMessages ?? 0) + trimmed.dropped
+  }
 }
 
 /** 只映射公开文本、工具摘要与原生父子关系；不输出 reasoning 或任意工具正文。 */

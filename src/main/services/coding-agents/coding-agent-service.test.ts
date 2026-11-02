@@ -335,7 +335,7 @@ describe('统一编程运行时边界', () => {
     vi.mocked(f.adapter.openSession).mockResolvedValueOnce({ ...f.native, messages })
     const fresh = await service.openSession('claude-desktop', 1, f.native.id)
     expect(fresh.id).toBe(original.id)
-    expect(fresh.messages).toEqual(messages)
+    expect(fresh.messages.map(({ id, role, content }) => ({ id, role, content }))).toEqual(messages)
     const events: NativeCodingEvent[] = []
     service.subscribe((_owner, event) => events.push(event))
     f.emit({ ...f.native, status: 'running', messages: [] })
@@ -494,6 +494,33 @@ describe('统一编程运行时边界', () => {
     await service.connect('opencode', 1, '/fixture/project')
     await expect(service.send('opencode', 1, view.id, '任务')).rejects.toThrow('会话已失效')
     expect(a.adapter.send).toHaveBeenCalledTimes(1)
+    service.dispose()
+  })
+  it('会话正文按页下发，向上分页可回到第一条且不重复', async () => {
+    const f = fixture('codex')
+    f.native.messages = Array.from({ length: 100 }, (_, index) => ({
+      id: `m${index + 1}`,
+      role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+      content: `内容 ${index + 1}`
+    }))
+    const service = new CodingAgentService([f.adapter])
+    await service.connect('codex', 1, '/fixture/project')
+    const view = await service.openSession('codex', 1, f.native.id)
+    // 事件与打开会话只带尾页，完整正文留在主进程。
+    expect(view.messages).toHaveLength(40)
+    expect(view.messages[0].id).toBe('m61')
+    expect(view.messageWindow).toMatchObject({ hasMore: true, totalMessages: 100, truncated: 0 })
+    const first = view.messages[0].seq!
+    const page = service.sessionMessages('codex', 1, view.id, first)
+    expect(page.messages).toHaveLength(40)
+    expect(page.messages.at(-1)?.id).toBe('m60')
+    expect(page.hasMore).toBe(true)
+    const last = service.sessionMessages('codex', 1, view.id, page.messages[0].seq!)
+    expect(last.messages).toHaveLength(20)
+    expect(last.messages[0].id).toBe('m1')
+    expect(last.hasMore).toBe(false)
+    // 尾页请求不传游标时与事件窗口一致。
+    expect(service.sessionMessages('codex', 1, view.id).messages.at(-1)?.id).toBe('m100')
     service.dispose()
   })
 })

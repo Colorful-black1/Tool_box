@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/types'
 import type { ToolboxStore } from '../chat-store/chat-store'
 import { acpObject } from './acp-connection'
+import { trimOldestMessages } from '../../../shared/coding-agent-messages'
 import { acpOptions, acpPreview, acpText, applyAcpUpdate } from './acp-codec'
 import { readOpenCodeVisibleModels } from './opencode-models'
 import { nativeCommands, type NativeAgentCatalog } from '../coding-agents/agent-action-catalog'
@@ -304,18 +305,17 @@ export class OpenCodeService {
     if (session.status !== 'ready' && session.status !== 'error')
       throw new OpenCodeError('该会话暂时不能发送，请等待或重新连接')
     if (this.hasRunning()) throw new OpenCodeError('首版一次运行一个编程任务，请等待当前任务结束')
-    if (!context?.command && session.messages.length >= 198)
-      throw new OpenCodeError('会话消息较多，请新建会话')
-    if (
-      !context?.command &&
-      session.messages.reduce((sum, message) => sum + message.content.length, 0) + text.length >
-      180_000
-    )
-      throw new OpenCodeError('会话内容较多，请新建会话')
     const compacting = Boolean(context?.command && /^\/compact(?:\s|$)/.test(text))
     let cancelled = false
     if (compacting) this.compacting.add(id)
-    else session.messages.push({ id: randomUUID(), role: 'user', content: text })
+    else {
+      session.messages.push({ id: randomUUID(), role: 'user', content: text })
+      const trimmed = trimOldestMessages(session.messages)
+      if (trimmed.dropped) {
+        session.messages = trimmed.messages
+        session.truncatedMessages = (session.truncatedMessages ?? 0) + trimmed.dropped
+      }
+    }
     session.title = session.title === '新编程会话' ? text.slice(0, 32) : session.title
     session.status = 'running'
     session.outcome = null
@@ -470,11 +470,11 @@ export class OpenCodeService {
       session.error
     )
       return
+    // 正文超限由 codec 裁剪并计数，不在这里中断任务。
     try {
       applyAcpUpdate(session, body?.update)
     } catch {
-      session.error = '会话显示达到上限，已请求停止，请新建会话'
-      this.stop(session.id)
+      // 单条分片结构异常只跳过本次推送，不影响任务与既有正文。
     }
     this.publish(session)
   }

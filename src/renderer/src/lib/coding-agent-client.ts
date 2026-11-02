@@ -69,6 +69,8 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
       previewRevert: api.previewRevert ?? unavailable,
       revert: api.revert ?? unavailable,
       attachWorkspace: api.attachWorkspace ?? unavailable,
+      gitStatus: api.gitStatus ?? (async () => null),
+      sessionMessages: api.sessionMessages ?? unavailable,
       readCatalog: api.readCatalog ?? unavailable,
       searchFiles: api.searchFiles ?? unavailable,
       executeCommand: api.executeCommand ?? unavailable,
@@ -119,6 +121,8 @@ export function codingAgentClient(): ToolboxBridge['codingAgents'] {
     attachWorkspace: async () => {
       throw new Error('请重启更新后的桌面应用以使用 DSH 工作区归组')
     },
+    sessionMessages: async () => ({ messages: [], hasMore: false, truncated: 0 }),
+    gitStatus: async () => null,
     createSession: async (id) => session(await legacyApi(id).openSession()),
     resumeSession: async ({ runtimeId, sessionId }) =>
       session(await legacyApi(runtimeId).openSession(sessionId)),

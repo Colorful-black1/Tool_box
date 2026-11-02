@@ -28,7 +28,14 @@ export interface NativeRevertPreview {
 /** 适配器使用原生 ID；本地引用、连接所有权和顶层运行由统一服务管理。 */
 export type NativeCodingSession = Omit<
   CodingAgentSessionView,
-  'runtimeId' | 'nativeSessionId' | 'connectionId' | 'runId' | 'revision' | 'outcome' | 'subtasks'
+  | 'runtimeId'
+  | 'nativeSessionId'
+  | 'connectionId'
+  | 'runId'
+  | 'revision'
+  | 'outcome'
+  | 'subtasks'
+  | 'messageWindow'
 > & {
   outcome?: CodingAgentSessionView['outcome']
   subtasks?: CodingAgentSessionView['subtasks']
