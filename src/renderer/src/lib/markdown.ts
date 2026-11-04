@@ -13,13 +13,22 @@ import { parseAppTarget } from '../../../shared/app-reference'
 
 export { escapeHtml }
 
-/** 渲染整篇 Markdown；空内容给出占位提示 */
-export function renderMarkdown(source: string, appLinks = false): string {
+/**
+ * 渲染整篇 Markdown；空内容给出占位提示。
+ * `codeActions` 为笔记预览启用代码块复制按钮与可聚焦的代码区域。
+ */
+export function renderMarkdown(
+  source: string,
+  appLinks = false,
+  codeActions = false
+): string {
   if (!source.trim()) return '<p class="md-empty">（空笔记）</p>'
-  return parseMarkdown(source, appLinks).map(renderBlock).join('\n')
+  return parseMarkdown(source, appLinks)
+    .map((block) => renderBlock(block, codeActions))
+    .join('\n')
 }
 
-function renderBlock(block: MdBlock): string {
+function renderBlock(block: MdBlock, codeActions: boolean): string {
   switch (block.kind) {
     case 'heading':
       return `<h${block.level}>${renderInlines(block.children)}</h${block.level}>`
@@ -36,7 +45,7 @@ function renderBlock(block: MdBlock): string {
       return `<${tag}>\n${items}\n</${tag}>`
     }
     case 'code':
-      return `<pre${block.language ? ` data-language="${escapeHtml(block.language)}"` : ''}><code>${escapeHtml(block.text)}</code></pre>`
+      return renderCodeBlock(block, codeActions)
     case 'quote':
       return `<blockquote>${renderInlines(block.children)}</blockquote>`
     case 'rule':
@@ -54,6 +63,30 @@ function renderBlock(block: MdBlock): string {
       return `<div class="md-table-scroll" role="region" aria-label="Markdown 表格" tabindex="0"><table><thead>${row(block.header, true)}</thead><tbody>${block.rows.map((cells) => row(cells)).join('\n')}</tbody></table></div>`
     }
   }
+}
+
+/**
+ * 代码块渲染。默认保持原有 `<pre>` 结构，聊天等只读场景不受影响；
+ * 笔记预览额外输出工具栏与复制按钮，点击与 Ctrl+A 由预览容器统一委托。
+ */
+function renderCodeBlock(
+  block: Extract<MdBlock, { kind: 'code' }>,
+  codeActions: boolean
+): string {
+  const language = block.language ? escapeHtml(block.language) : ''
+  const code = escapeHtml(block.text)
+  if (!codeActions) {
+    return `<pre${language ? ` data-language="${language}"` : ''}><code>${code}</code></pre>`
+  }
+  return [
+    '<div class="md-code-block">',
+    '<div class="md-code-head">',
+    `<span class="md-code-lang">${language}</span>`,
+    '<button type="button" class="btn-ghost md-code-copy" data-md-copy aria-label="复制代码">复制</button>',
+    '</div>',
+    `<pre tabindex="0" aria-label="代码块"><code>${code}</code></pre>`,
+    '</div>'
+  ].join('')
 }
 
 function renderInlines(nodes: MdInline[]): string {

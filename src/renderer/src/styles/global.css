@@ -4211,6 +4211,51 @@ textarea,
   font-size: 12px;
 }
 
+/* 笔记预览的代码块：语言栏放右上角复制按钮，pre 保留横向滚动。 */
+.md-code-block {
+  margin: 11px 0;
+  border-radius: 8px;
+  background: var(--bg-code);
+  overflow: hidden;
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gold-line);
+}
+
+.md-code-lang {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-code-copy {
+  min-height: 24px;
+  margin-left: auto;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+.md-code-block pre {
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.md-code-block pre:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}
+
 .md-table-scroll {
   max-width: 100%;
   margin: 11px 0;

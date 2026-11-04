@@ -70,6 +70,22 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<pre><code>')
   })
 
+  it('笔记预览的代码块带复制按钮与可聚焦区域，聊天等场景保持原结构', () => {
+    const html = renderMarkdown('```ts\nconst a = 1\n```', false, true)
+    expect(html).toContain('class="md-code-block"')
+    expect(html).toContain('<span class="md-code-lang">ts</span>')
+    expect(html).toContain('data-md-copy')
+    expect(html).toContain('<pre tabindex="0" aria-label="代码块"><code>const a = 1</code></pre>')
+    expect(renderMarkdown('```ts\nconst a = 1\n```')).not.toContain('data-md-copy')
+  })
+
+  it('非法代码语言不会进入工具栏，代码内容仍被转义', () => {
+    const html = renderMarkdown('```js" onmouseover="bad\n<img src=x>\n```', false, true)
+    expect(html).toContain('<span class="md-code-lang"></span>')
+    expect(html).not.toContain('onmouseover')
+    expect(html).not.toContain('<img')
+  })
+
   it('renders blockquotes, rules and links', () => {
     const html = renderMarkdown('> 引用\n\n---\n\n[站点](https://example.com)')
     expect(html).toContain('<blockquote>引用</blockquote>')

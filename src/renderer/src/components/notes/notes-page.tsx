@@ -1,6 +1,6 @@
 ﻿import { confirmDialog } from '../../stores/dialog-store'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { JSX, KeyboardEvent } from 'react'
+import type { JSX, KeyboardEvent, MouseEvent } from 'react'
 
 import type { NoteView } from '../../../../shared/types'
 import { mergeNotes } from '../../../../shared/notes-merge'
@@ -343,14 +343,25 @@ function NoteEditor(props: {
   const source = useRef<HTMLTextAreaElement>(null)
   const rendered = useRef<HTMLDivElement>(null)
   const syncing = useRef(false)
+  const copyTimers = useRef(new Map<HTMLButtonElement, number>())
 
   useEffect(() => {
     setUnsavedChanges(dirty)
     return () => setUnsavedChanges(false)
   }, [dirty, setUnsavedChanges])
 
+  // 复制按钮由 Markdown 生成的 DOM 承载，标签复原用定时器，卸载时统一清理。
+  useEffect(
+    () => () => {
+      copyTimers.current.forEach((timer) => window.clearTimeout(timer))
+      copyTimers.current.clear()
+    },
+    []
+  )
+
   const html = useMemo(
-    () => (preview ? renderMarkdown(content) : ''),
+    // 第三个参数开启代码块复制按钮；Ctrl+A 的局部全选在预览容器上处理。
+    () => (preview ? renderMarkdown(content, false, true) : ''),
     [preview, content]
   )
   // 工具栏只在正文真有未完成清单项时出现入口，避免空按钮占位。
@@ -464,6 +475,46 @@ function NoteEditor(props: {
     }
   }
 
+  /** 复制按钮由渲染后的代码块动态生成，统一在预览容器上做事件委托。 */
+  async function copyCodeBlock(event: MouseEvent<HTMLDivElement>): Promise<void> {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const button = target.closest<HTMLButtonElement>('[data-md-copy]')
+    const code = button?.closest('.md-code-block')?.querySelector('code')
+    const text = code?.textContent ?? ''
+    if (!button || !text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      const pending = copyTimers.current.get(button)
+      if (pending !== undefined) window.clearTimeout(pending)
+      button.textContent = '已复制'
+      const timer = window.setTimeout(() => {
+        button.textContent = '复制'
+        copyTimers.current.delete(button)
+      }, 1500)
+      copyTimers.current.set(button, timer)
+    } catch {
+      setFlash('复制失败，请选中代码后手动复制')
+    }
+  }
+
+  /** 焦点在代码块内时，Ctrl+A 只选中该代码块，而不是整篇笔记。 */
+  function selectCodeBlock(event: KeyboardEvent<HTMLDivElement>): void {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+    if (event.key.toLowerCase() !== 'a') return
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const code = target.closest('.md-code-block')?.querySelector('code')
+    if (!code) return
+    event.preventDefault()
+    const selection = window.getSelection()
+    if (!selection) return
+    const range = document.createRange()
+    range.selectNodeContents(code)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
   /** 两侧滚动条按比例联动；程序设置 scrollTop 时用 syncing 防止互相触发。 */
   function syncScroll(from: HTMLElement | null, to: HTMLElement | null): void {
     if (!from || !to || syncing.current) return
@@ -568,6 +619,8 @@ function NoteEditor(props: {
             <div
               ref={rendered}
               className="note-preview-pane"
+              onClick={(event) => void copyCodeBlock(event)}
+              onKeyDown={selectCodeBlock}
               onScroll={() => syncScroll(rendered.current, source.current)}
             >
               <h2 className="note-preview-title">{title || '（无标题）'}</h2>
