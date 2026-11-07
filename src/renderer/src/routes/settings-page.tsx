@@ -42,6 +42,10 @@ interface ProfileDraft {
   apiKey: string
   /** 勾选的模型清单：只有这些会出现在对话下拉里 */
   selectedModels: string[]
+  /** 知识库向量模型；空串表示不启用语义检索 */
+  embeddingModel: string
+  /** 知识库重排模型；空串表示不重排 */
+  rerankModel: string
 }
 
 type SaveStatus =
@@ -162,7 +166,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       model: defaultModel,
       apiKey: '',
       // 默认勾上推荐模型：新配置保存后对话下拉直接可用
-      selectedModels: defaultModel ? [defaultModel] : []
+      selectedModels: defaultModel ? [defaultModel] : [],
+      embeddingModel: '',
+      rerankModel: ''
     })
     setStatus({ type: 'idle' })
     setFetchedModels([])
@@ -202,7 +208,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       baseUrl: draft.baseUrl,
       model: draft.model,
       apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
-      selectedModels: draft.selectedModels
+      selectedModels: draft.selectedModels,
+      embeddingModel: draft.embeddingModel,
+      rerankModel: draft.rerankModel
     }
 
     setStatus({ type: 'saving' })
@@ -477,6 +485,45 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
               </div>
 
               <div>
+                <label className="field-label" htmlFor="embedding-model">
+                  向量模型 · EMBEDDING
+                </label>
+                <input
+                  id="embedding-model"
+                  className="field-input"
+                  type="text"
+                  value={draft.embeddingModel}
+                  placeholder="例如：text-embedding-3-small / bge-m3"
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => patchDraft({ embeddingModel: event.target.value })}
+                />
+                <p className="field-hint">
+                  知识库语义检索用，走当前接口地址的 <code>/embeddings</code>。留空则只用关键词检索；
+                  填好后到资料库点「补齐向量」。
+                </p>
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="rerank-model">
+                  重排模型 · RERANK
+                </label>
+                <input
+                  id="rerank-model"
+                  className="field-input"
+                  type="text"
+                  value={draft.rerankModel}
+                  placeholder="例如：bge-reranker-v2-m3"
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => patchDraft({ rerankModel: event.target.value })}
+                />
+                <p className="field-hint">
+                  可选：检索后按相关性再排一次，走 <code>/rerank</code>。留空或调用失败时保持融合排序。
+                </p>
+              </div>
+
+              <div>
                 <label className="field-label" htmlFor="model-fetch">
                   模型列表 · MODELS
                 </label>
@@ -681,6 +728,8 @@ function toDraft(profile: AiProfileView | null): ProfileDraft | null {
     baseUrl: profile.baseUrl,
     model: profile.model,
     apiKey: '',
-    selectedModels: profile.selectedModels ?? []
+    selectedModels: profile.selectedModels ?? [],
+    embeddingModel: profile.embeddingModel ?? '',
+    rerankModel: profile.rerankModel ?? ''
   }
 }

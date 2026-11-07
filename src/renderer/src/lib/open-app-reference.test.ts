@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openAppReference } from './open-app-reference'
 import { useAppStore } from '../stores/app-store'
 import { useTodoStore } from '../stores/todo-store'
+import { useKnowledgeStore } from '../stores/knowledge-store'
 
 const notes = vi.fn()
 const todos = vi.fn()
@@ -14,6 +15,7 @@ beforeEach(() => {
     usageTarget: null,
     searchTarget: null
   })
+  useKnowledgeStore.setState({ detail: null })
   vi.stubGlobal('window', { toolbox: { notes: { list: notes }, todos: { list: todos } } })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -69,5 +71,38 @@ describe('对话入口导航', () => {
       usageTarget: { client: 'codex', from: '2026-10-01', to: '2026-10-25' }
     })
     await expect(openAppReference('toolbox://open/usage?refresh=true')).rejects.toThrow('无效')
+  })
+  it('知识库引用先取回分块再切页，失败不跳转', async () => {
+    const document = {
+      id: 'doc1',
+      title: '部署说明',
+      category: 'work',
+      fileName: '部署说明.md',
+      fileSize: 10,
+      status: 'ready',
+      chunkCount: 1,
+      error: '',
+      createdAtMs: 1,
+      updatedAtMs: 2
+    }
+    const knowledge = {
+      document: vi.fn(async () => ({
+        document,
+        sourcePath: 'C:\\资料\\部署说明.md',
+        chunks: [],
+        focusChunkId: 'chunk1'
+      }))
+    }
+    vi.stubGlobal('window', { toolbox: { knowledge } })
+    knowledge.document.mockRejectedValueOnce(new Error('资料不存在，请刷新列表'))
+    await expect(openAppReference('toolbox://open/kb/doc1?chunk=chunk1')).rejects.toThrow(
+      '无法读取该结果'
+    )
+    expect(useAppStore.getState().view).toBe('chat')
+
+    await openAppReference('toolbox://open/kb/doc1?chunk=chunk1')
+    expect(knowledge.document).toHaveBeenCalledWith('doc1', 'chunk1')
+    expect(useKnowledgeStore.getState().detail?.focusChunkId).toBe('chunk1')
+    expect(useAppStore.getState().view).toBe('kb')
   })
 })

@@ -10,6 +10,10 @@
 
 当前版本 **0.3.0**（桌面端新增 Token 统计与多 Agent 工作台；手机端暂停维护，保留 M0–M7 历史实现）。
 
+2026-11-07 知识库 P2：设置页新增 **向量模型 / 重排模型**（`embeddingModel` / `rerankModel`，只写 `ai-settings.json`，不升 schema）；导入与重建时按 32 块一批、并发 2 调 `/embeddings` 写 float32 BLOB，检索做余弦（阈值 0.25）+ RRF(k=60)，配置重排时再把前 20 段交给 `/rerank`。未配置、未向量化、调用失败、向量块超 2 万都会如实降级为关键词并显示原因；资料库新增向量覆盖率与「补齐向量」，首次外发正文前会明确提示，导入审批卡同步说明。没有真实向量模型，接口、排序与降级用注入的 mock fetch 覆盖，未发起真实 embedding / rerank 请求。`npm run typecheck`、桌面 `lint`、`test`（148 files / 1099 tests）与 `build` 通过；新增 `--model-settings-only` 3 项、`--knowledge-only` 7 项、`--sidebar-only` 11 项通过。
+
+2026-11-06 桌面增量：新增本地知识库（`schema v6`）。导入 `.md` / `.txt`，标题切段 + 递归换行，代码围栏与表格保持完整；FTS5 中文二元组关键词检索，结果带章节出处并可跳转到分块；Agent 新增 `kb_search` / `kb_list_documents` 与走审批的 `kb_add_document` / `kb_remove_document`，引用格式新增 `toolbox://open/kb/...`。新增 6 个 IPC 通道与 1 个进度事件、新顶层「知识库 → 资料库」入口；无新增依赖、不改既有表与加密链路。`npm run typecheck`、桌面 `lint`、`test`（146 files / 1082 tests）与 `build` 通过；`node verify/desktop-ui/run.cjs --knowledge-only --screenshots` 7 项、`--sidebar-only` 11 项与全量 UI 113 项通过。真实 SQLite + FTS5 的导入、检索、重建、删除由 `kb-service.test.ts` 覆盖。
+
 2026-11-01 能力扩展第一批：密码健康报告、仅运行期的剪贴板历史、只读重复文件查找、本机快照导出与恢复已实现。用户已授权计划中的 IPC、服务目录、文件工具分组与主密钥文件快照复制；schema 仍为 v5、无依赖或加密算法变更、手机冻结。剪贴板入口为 Ctrl+K 命令；文件工具不提供删除；快照只在原电脑／原用户及原安全存储条件下恢复，恢复前自动快照，完成后退出并手动重开。实现范围、自动化证据与剩余实际环境边界见 [计划](PLAN-capability-batch-1.md) 与 [交付记录](capability-batch-1-verification.md)。
 
 2026-10-31 桌面增量（七）：记事本编辑页把正文里未完成的 `- [ ]` 清单项一键写入待办清单（按笔记顺序，跳过已有同名待办，单次上限 50 条，`- [x]` 与普通列表不算），工具栏只在存在未完成清单项时出现入口并显示条数，写入后提示条数、重复点击提示「清单项都已在待办中」。改动为 2 个新 `src/shared` 文件 + 记事本页，无新 IPC、schema、依赖或加密变更；`npm run typecheck`、桌面 `lint`、6 项新单测与构建通过，记事本编辑页已用 Playwright 跑构建产物实测，真机仍待确认。

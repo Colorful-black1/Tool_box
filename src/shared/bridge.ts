@@ -76,6 +76,16 @@ import type {
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
 import type {
+  KbDocumentDetail,
+  KbDocumentView,
+  KbImportInput,
+  KbImportResult,
+  KbListInput,
+  KbProgressEvent,
+  KbSearchInput,
+  KbSearchResult
+} from './knowledge-base'
+import type {
   DeveloperCommandInput,
   DeveloperCommandSnapshot,
   DeveloperCommandToggle
@@ -125,6 +135,18 @@ export interface ToolboxBridge {
     query(input: UsageQuery): Promise<UsageReport>
     chooseSource(client: UsageClient): Promise<boolean>
     resetSource(client: UsageClient): Promise<void>
+  }
+  knowledge: {
+    /** 资料列表只回摘要，不含正文与绝对路径。 */
+    list(input?: KbListInput): Promise<KbDocumentView[]>
+    /** 不传 paths 时弹系统文件选择框；取消返回 null。AI 审批导入显式传绝对路径。 */
+    importFiles(input?: KbImportInput): Promise<KbImportResult | null>
+    reindex(documentId: string): Promise<KbDocumentView>
+    remove(documentId: string): Promise<void>
+    search(input: KbSearchInput): Promise<KbSearchResult>
+    /** 详情含分块预览；chunkId 用于引用定位。 */
+    document(documentId: string, chunkId?: string): Promise<KbDocumentDetail>
+    onProgress(listener: (event: KbProgressEvent) => void): () => void
   }
   codingAgents: {
     listRuntimes(): Promise<CodingAgentRuntimeView[]>

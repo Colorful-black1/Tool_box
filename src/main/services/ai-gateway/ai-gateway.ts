@@ -73,7 +73,7 @@ export class AiGateway {
     private readonly chatStore: ToolboxStore,
     private readonly importService: ImportService,
     private readonly promptDir: string,
-    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage'> = {}
+    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage' | 'knowledge'> = {}
   ) {}
 
   async send(

@@ -1,5 +1,15 @@
 import { APP_THEMES } from '../../shared/appearance'
 import type { ClipboardHistoryConfig } from '../../shared/clipboard'
+import { isAbsolute } from 'node:path'
+
+import {
+  KB_CATEGORY_PATTERN,
+  KB_MAX_IMPORT_FILES,
+  KB_MAX_QUERY_CHARS,
+  KB_SEARCH_MODES,
+  isKbDocumentStatus
+} from '../../shared/knowledge-base'
+import type { KbListInput, KbSearchInput } from '../../shared/knowledge-base'
 
 import {
   parseDeveloperCommandInput,
@@ -60,6 +70,91 @@ export function validateClipboardPin(value: unknown): { id: string; pinned: bool
 /** 专用 IPC 校验入口，正文不能经 requireString 去除首尾空白。 */
 export const validateDeveloperCommandInput = parseDeveloperCommandInput
 export const validateDeveloperCommandToggle = parseDeveloperCommandToggle
+
+/** 知识库类别：未传 / 空串表示「全部」，其余只接受小写字母、数字与连字符。 */
+export function validateKbCategory(value: unknown, name = '资料类别'): string | undefined {
+  const category = optionalString(value, name, { maxLength: 20 })
+  if (category === undefined) return undefined
+  if (!KB_CATEGORY_PATTERN.test(category))
+    throw new Error('资料类别只能包含小写字母、数字和连字符')
+  return category
+}
+
+export function validateKbListInput(value?: unknown): KbListInput {
+  if (value === undefined || value === null) return {}
+  const body = assertObject(value, '知识库筛选')
+  const result: KbListInput = {}
+  const category = validateKbCategory(body.category)
+  if (category) result.category = category
+  if (body.status !== undefined) {
+    if (!isKbDocumentStatus(body.status)) throw new Error('资料状态无效')
+    result.status = body.status
+  }
+  const query = optionalString(body.query, '搜索词', { maxLength: 120 })
+  if (query) result.query = query
+  return result
+}
+
+export function validateKbImportInput(value: unknown): {
+  paths?: string[]
+  category?: string
+} {
+  if (value === undefined || value === null) return {}
+  const body = assertObject(value, '导入参数')
+  const result: { paths?: string[]; category?: string } = {}
+  if (body.paths !== undefined) {
+    const paths = requireStringArray(body.paths, '文件路径')
+    if (paths.length > KB_MAX_IMPORT_FILES)
+      throw new Error(`单次最多导入 ${KB_MAX_IMPORT_FILES} 个文件`)
+    for (const path of paths) {
+      if (path.length > 4096) throw new Error('文件路径过长')
+      // AI 审批导入只接受绝对路径；相对路径会随主进程 cwd 漂移。
+      if (!isAbsolute(path)) throw new Error('请提供文件的绝对路径')
+    }
+    result.paths = paths
+  }
+  const category = validateKbCategory(body.category)
+  if (category) result.category = category
+  return result
+}
+
+export function validateKbSearchInput(value: unknown): KbSearchInput {
+  const body = assertObject(value, '检索参数')
+  const query = requireString(body.query, '检索词', {
+    allowEmpty: true,
+    maxLength: KB_MAX_QUERY_CHARS
+  })
+  const result: KbSearchInput = { query }
+  const category = validateKbCategory(body.category)
+  if (category) result.category = category
+  if (body.mode !== undefined) result.mode = requireEnum(body.mode, '检索方式', KB_SEARCH_MODES)
+  if (body.topK !== undefined) {
+    const topK = requireNonNegativeInt(body.topK, '检索条数')
+    if (topK < 1 || topK > 20) throw new Error('检索条数应在 1–20 之间')
+    result.topK = topK
+  }
+  return result
+}
+
+export function validateKbDocumentId(value: unknown, name = '资料 ID'): string {
+  const id = requireString(value, name, { maxLength: 64 })
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) throw new Error(`${name}无效`)
+  return id
+}
+
+export function validateKbDocumentInput(value: unknown): {
+  documentId: string
+  chunkId?: string
+} {
+  const body = assertObject(value, '资料定位')
+  const result: { documentId: string; chunkId?: string } = {
+    documentId: validateKbDocumentId(body.documentId)
+  }
+  if (body.chunkId !== undefined && body.chunkId !== null && body.chunkId !== '') {
+    result.chunkId = validateKbDocumentId(body.chunkId, '分块 ID')
+  }
+  return result
+}
 
 /** 剪贴板写入保留原文，命令缩进和结尾换行不能被字符串通用校验裁掉。 */
 export function validateClipboardText(value: unknown): string {
@@ -442,6 +537,22 @@ export function optionalString(
 ): string | undefined {
   if (value === undefined || value === null || value === '') return undefined
   return requireString(value, name, { maxLength: options.maxLength })
+}
+
+/**
+ * 可选模型名：未传 = 保留旧值（undefined），空串 = 清空（''）。
+ * 对话切模型时只传 model，不能顺手清掉向量 / 重排配置。
+ */
+export function optionalModelName(
+  value: unknown,
+  name: string,
+  maxLength = 80
+): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') throw new Error(`${name}必须是字符串`)
+  const trimmed = value.trim()
+  if (trimmed.length > maxLength) throw new Error(`${name}长度不能超过 ${maxLength} 字符`)
+  return trimmed
 }
 
 export function assertObject(value: unknown, name: string): Record<string, unknown> {

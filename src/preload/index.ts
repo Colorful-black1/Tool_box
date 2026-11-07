@@ -27,6 +27,7 @@ import type { ToolboxBridge } from '../shared/bridge'
 import type { ClipboardHistorySnapshot } from '../shared/clipboard'
 import type { FileScanSnapshot } from '../shared/file-tools'
 import type { CodingAgentEvent } from '../shared/coding-agents'
+import type { KbProgressEvent } from '../shared/knowledge-base'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const wrapped = (_event: unknown, payload: T): void => {
@@ -82,6 +83,16 @@ const bridge: ToolboxBridge = {
     query: (input) => ipcRenderer.invoke(IPC.agentUsageQuery, input),
     chooseSource: (client) => ipcRenderer.invoke(IPC.agentUsageChooseSource, client),
     resetSource: (client) => ipcRenderer.invoke(IPC.agentUsageResetSource, client)
+  },
+  knowledge: {
+    list: (input) => ipcRenderer.invoke(IPC.kbList, input),
+    importFiles: (input) => ipcRenderer.invoke(IPC.kbImport, input),
+    reindex: (documentId) => ipcRenderer.invoke(IPC.kbReindex, documentId),
+    remove: (documentId) => ipcRenderer.invoke(IPC.kbRemove, documentId),
+    search: (input) => ipcRenderer.invoke(IPC.kbSearch, input),
+    document: (documentId, chunkId) =>
+      ipcRenderer.invoke(IPC.kbDocument, { documentId, chunkId }),
+    onProgress: (listener) => subscribe<KbProgressEvent>(WINDOW_EVENT.kbProgress, listener)
   },
   codingAgents: {
     listRuntimes: () => ipcRenderer.invoke(IPC.codingAgentRuntimes),

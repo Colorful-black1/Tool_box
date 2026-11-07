@@ -304,6 +304,10 @@ export interface AiProfileView {
    * 为空时回落到该供应商的内置推荐 —— 这样新配置第一次用也不会是空下拉。
    */
   selectedModels?: string[]
+  /** 知识库语义检索用的向量模型；空串表示不启用语义检索。 */
+  embeddingModel: string
+  /** 检索结果重排模型；空串表示不重排。 */
+  rerankModel: string
 }
 
 export interface AiConfigView {
@@ -322,6 +326,12 @@ export interface AiProfileInput {
   apiKey?: string
   /** 对话下拉要显示的模型清单；留空表示沿用已保存的勾选，空数组表示清空 */
   selectedModels?: string[]
+  /**
+   * 知识库向量模型 / 重排模型：
+   * 不传 = 保留原值（对话切模型时不会顺手清掉），空串 = 清空。
+   */
+  embeddingModel?: string
+  rerankModel?: string
 }
 
 /** 获取模型列表入参：apiKey 留空时回落到档案已保存的 Key */

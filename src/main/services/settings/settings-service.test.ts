@@ -52,7 +52,9 @@ describe('SettingsService', () => {
         model: 'test-model',
         hasApiKey: true,
         // 新档案没有勾选清单：对话下拉回落到内置推荐
-        selectedModels: []
+        selectedModels: [],
+        embeddingModel: '',
+        rerankModel: ''
       }
     ])
     // 首个档案自动启用
@@ -163,7 +165,88 @@ describe('SettingsService', () => {
 
     const service = new SettingsService(directory, new FakeSafeStorage())
     const view = await service.getView()
-    expect(view.profiles[0].selectedModels).toEqual([])
+    expect(view.profiles[0]).toMatchObject({
+      selectedModels: [],
+      embeddingModel: '',
+      rerankModel: ''
+    })
+  })
+
+  it('saves embedding / rerank models and keeps them when the chat model changes', async () => {
+    const service = new SettingsService(directory, new FakeSafeStorage())
+    const created = await service.save({
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'test-model',
+      apiKey: 'sk-1',
+      embeddingModel: 'bge-m3',
+      rerankModel: 'bge-reranker-v2-m3'
+    })
+    const id = created.profiles[0].id
+    expect(created.profiles[0]).toMatchObject({
+      embeddingModel: 'bge-m3',
+      rerankModel: 'bge-reranker-v2-m3'
+    })
+
+    // 对话页切换当前模型时只传 model，不应清掉知识库配置
+    const updated = await service.save({
+      id,
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'other-model'
+    })
+    expect(updated.profiles[0]).toMatchObject({
+      model: 'other-model',
+      embeddingModel: 'bge-m3',
+      rerankModel: 'bge-reranker-v2-m3'
+    })
+
+    expect(await service.getEmbeddingConfig()).toMatchObject({
+      model: 'bge-m3',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-1'
+    })
+    expect(await service.getRerankConfig()).toMatchObject({ model: 'bge-reranker-v2-m3' })
+
+    // 空串表示清空，之后检索退回纯关键词
+    const cleared = await service.save({
+      id,
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'other-model',
+      embeddingModel: '',
+      rerankModel: ''
+    })
+    expect(cleared.profiles[0]).toMatchObject({ embeddingModel: '', rerankModel: '' })
+    expect(await service.getEmbeddingConfig()).toBeNull()
+    expect(await service.getRerankConfig()).toBeNull()
+  })
+
+  it('reports a missing key instead of silently disabling the embedding model', async () => {
+    await writeFile(
+      join(directory, SETTINGS_FILE_NAME),
+      JSON.stringify({
+        version: 2,
+        activeId: 'p1',
+        profiles: [
+          {
+            id: 'p1',
+            name: '外部向量',
+            provider: 'custom',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'chat-model',
+            apiKeyCipher: '',
+            embeddingModel: 'bge-m3'
+          }
+        ]
+      }),
+      'utf8'
+    )
+    const service = new SettingsService(directory, new FakeSafeStorage())
+    await expect(service.getEmbeddingConfig()).rejects.toThrow('缺少 API Key')
   })
 
   it('rejects a new profile without any API key', async () => {

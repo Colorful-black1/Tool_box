@@ -42,8 +42,11 @@ import { registerFileToolsIpc } from './file-tools-ipc'
 import { registerBackupIpc } from './backup-ipc'
 import type { TodoService } from '../services/todo-service'
 import type { AgentUsageService } from '../services/agent-usage/usage-service'
+import type { KnowledgeBaseService } from '../services/knowledge-base/kb-service'
+import { registerKnowledgeIpc } from './knowledge-ipc'
 import {
   assertObject,
+  optionalModelName,
   optionalString,
   optionalStringArray,
   requireEnum,
@@ -64,6 +67,7 @@ export interface IpcDependencies {
   opencode: OpenCodeService
   todos?: TodoService
   usage?: Promise<AgentUsageService>
+  knowledge?: KnowledgeBaseService
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
@@ -72,6 +76,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerDeveloperCommandsIpc(dependencies.store)
   registerTodosIpc(dependencies.store, dependencies.todos)
   registerAgentUsageIpc(dependencies.usage)
+  if (dependencies.knowledge) registerKnowledgeIpc(dependencies.knowledge)
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService(
     [
@@ -146,7 +151,10 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       selectedModels: optionalStringArray(body.selectedModels, '模型清单', {
         maxItems: 60,
         maxLength: 80
-      })
+      }),
+      // 不传 = 保留；空串 = 清空知识库的向量 / 重排模型
+      embeddingModel: optionalModelName(body.embeddingModel, '向量模型'),
+      rerankModel: optionalModelName(body.rerankModel, '重排模型')
     })
   })
 

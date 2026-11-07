@@ -45,6 +45,107 @@ module.exports = function createFixture() {
     }
   ]
   passwords.push({ ...passwords[0], id: 'p2', title: '验收账号乙', password: 'fixture-only-2' })
+  let kbDocuments = [
+    {
+      id: 'doc1',
+      title: '验收资料甲',
+      category: 'work',
+      fileName: '验收资料甲.md',
+      fileSize: 2048,
+      status: 'ready',
+      chunkCount: 2,
+      embeddedChunkCount: 0,
+      error: '',
+      createdAtMs: 1,
+      updatedAtMs: 2
+    },
+    {
+      id: 'doc2',
+      title: '验收资料乙',
+      category: 'personal',
+      fileName: '验收资料乙.txt',
+      fileSize: 1024,
+      status: 'failed',
+      chunkCount: 0,
+      embeddedChunkCount: 0,
+      error: '合成索引失败',
+      createdAtMs: 1,
+      updatedAtMs: 3
+    }
+  ]
+  let kbImportCount = 0
+  /** 设置页模型字段验收专用档案；默认空列表，不影响其他场景。 */
+  let settingsProfiles =
+    process.env.TOOLBOX_MODEL_SETTINGS_VERIFY === '1'
+      ? [
+          {
+            id: 'profile1',
+            name: '验收配置',
+            provider: 'custom',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'gpt-6-luna',
+            hasApiKey: true,
+            selectedModels: ['gpt-6-luna'],
+            embeddingModel: '',
+            rerankModel: ''
+          }
+        ]
+      : []
+  let activeSettingsId = settingsProfiles[0]?.id ?? null
+  const settingsBridge = {
+    get: async () => ({ activeId: activeSettingsId, profiles: copy(settingsProfiles) }),
+    save: async (input) => {
+      const existing = input.id
+        ? settingsProfiles.find((item) => item.id === input.id)
+        : undefined
+      const profile = {
+        id: existing?.id ?? `profile-${settingsProfiles.length + 1}`,
+        name: input.name,
+        provider: input.provider,
+        baseUrl: input.baseUrl,
+        model: input.model,
+        hasApiKey: existing?.hasApiKey ?? true,
+        selectedModels: input.selectedModels ?? existing?.selectedModels ?? [],
+        embeddingModel: input.embeddingModel ?? existing?.embeddingModel ?? '',
+        rerankModel: input.rerankModel ?? existing?.rerankModel ?? ''
+      }
+      settingsProfiles = existing
+        ? settingsProfiles.map((item) => (item.id === profile.id ? profile : item))
+        : [...settingsProfiles, profile]
+      activeSettingsId = activeSettingsId ?? profile.id
+      return { activeId: activeSettingsId, profiles: copy(settingsProfiles) }
+    },
+    activate: async (id) => {
+      activeSettingsId = id
+      return { activeId: activeSettingsId, profiles: copy(settingsProfiles) }
+    },
+    remove: async (id) => {
+      settingsProfiles = settingsProfiles.filter((item) => item.id !== id)
+      if (activeSettingsId === id) activeSettingsId = settingsProfiles[0]?.id ?? null
+      return { activeId: activeSettingsId, profiles: copy(settingsProfiles) }
+    },
+    fetchModels: async () => ({ models: ['gpt-6-luna'], source: 'preset' })
+  }
+  const kbChunk = {
+    id: 'chunk1',
+    ordinal: 0,
+    heading: '部署 > 回滚',
+    charCount: 24,
+    startOffset: 0,
+    preview: '数据库回滚要先恢复备份。'
+  }
+  const kbHit = {
+    chunkId: 'chunk1',
+    documentId: 'doc1',
+    documentTitle: '验收资料甲',
+    category: 'work',
+    heading: '部署 > 回滚',
+    ordinal: 0,
+    charCount: 24,
+    content: '数据库回滚要先恢复备份。',
+    startOffset: 0,
+    score: -0.001
+  }
   const listeners = new Map()
   const subscribe = (name) => (listener) => {
     if (!listeners.has(name)) listeners.set(name, new Set())
@@ -121,7 +222,8 @@ module.exports = function createFixture() {
       lastNote: () => copy(notes.at(-1)),
       failNextNoteSave: () => {
         failNoteSave = true
-      }
+      },
+      kbImportCount: () => kbImportCount
     },
     toolbox: {
       tools: {
@@ -158,7 +260,7 @@ module.exports = function createFixture() {
       opencode: opencode.bridge,
       app: { info: async () => ({ name: '隔离验收', version: '0.3.0', platform: 'win32' }) },
       config: { get: async () => null, set: async () => null },
-      settings: { get: async () => ({ activeId: null, profiles: [] }) },
+      settings: settingsBridge,
       agent: { getPermission: async () => 'confirm' },
       books: {
         list: async () => copy(books),
@@ -218,6 +320,57 @@ module.exports = function createFixture() {
           notes = [...notes.filter((item) => item.id !== note.id), note]
           return copy(note)
         }
+      },
+      knowledge: {
+        list: async (input) =>
+          copy(
+            input?.category
+              ? kbDocuments.filter((item) => item.category === input.category)
+              : kbDocuments
+          ),
+        importFiles: async () => {
+          kbImportCount++
+          return {
+            imported: [copy(kbDocuments[0])],
+            skipped: [{ path: 'C:\\合成\\手册.pdf', reason: '仅支持 .md / .txt 文件' }]
+          }
+        },
+        reindex: async (id) => {
+          const document = kbDocuments.find((item) => item.id === id)
+          if (!document) throw new Error('资料不存在，请刷新列表')
+          const updated = { ...document, status: 'ready', chunkCount: 2, embeddedChunkCount: 0, error: '', updatedAtMs: 4 }
+          kbDocuments = kbDocuments.map((item) => (item.id === id ? updated : item))
+          return copy(updated)
+        },
+        remove: async (id) => {
+          kbDocuments = kbDocuments.filter((item) => item.id !== id)
+        },
+        search: async ({ query, category }) => {
+          const hits = category && category !== 'work' ? [] : [copy(kbHit)]
+          return {
+            query,
+            mode: 'keyword',
+            hits: query.trim() ? hits : [],
+            degraded: 'no-embedding',
+            message: '未配置向量模型，本次仅使用关键词检索。',
+            rerank: 'off',
+            keywordCount: hits.length,
+            semanticCount: 0,
+            totalChars: hits.length * kbHit.charCount,
+            dropped: 0
+          }
+        },
+        document: async (id, chunkId) => {
+          const document = kbDocuments.find((item) => item.id === id)
+          if (!document) throw new Error('资料不存在，请刷新列表')
+          return {
+            document: copy(document),
+            sourcePath: `C:\\合成\\${document.fileName}`,
+            chunks: document.status === 'failed' ? [] : [copy(kbChunk)],
+            focusChunkId: chunkId === kbChunk.id ? chunkId : null
+          }
+        },
+        onProgress: subscribe('kb-progress')
       },
       system: {
         portProcesses: async () => {

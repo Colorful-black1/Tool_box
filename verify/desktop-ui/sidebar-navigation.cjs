@@ -9,6 +9,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     开发工作台: ['编程 Agent', 'Token 统计', '命令速查', '工具'],
     阅读空间: ['书架', '统计'],
     个人管理: ['密码箱', '记事本', '待办清单'],
+    知识库: ['资料库'],
     系统: ['设置']
   }
   const resize = async (width, height, collapsed = width < 1120) => {
@@ -27,8 +28,8 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   await resize(1280, 820)
   await button('对话').waitFor()
 
-  await check('主导航四类树形分组，AI 助手保持首个独立入口', async () => {
-    assert.equal(await nav.locator('.nav-tree > li').count(), 5)
+  await check('主导航五类树形分组，AI 助手保持首个独立入口', async () => {
+    assert.equal(await nav.locator('.nav-tree > li').count(), 6)
     assert.equal(await nav.locator('.nav-tree > li').first().innerText(), '对话')
     assert.equal(await button('对话').getAttribute('aria-current'), 'page')
     for (const [name, children] of Object.entries(groups)) {
@@ -84,6 +85,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
       ['密码箱', '密码宝匣'],
       ['记事本', '星笺手记'],
       ['待办清单', '待办清单'],
+      ['资料库', '本地知识库'],
       ['设置', '星轨链路']
     ]) {
       await button(name).click()
@@ -135,7 +137,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     await button('个人管理').click()
     await button('收起侧边栏').click()
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 11)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 12)
     await button('工具').click()
     assert.equal(await button('工具').getAttribute('aria-current'), 'page')
     await capture('sidebar-tree-icons')
@@ -146,13 +148,13 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('窄窗自动显示全部图标，变宽后恢复手动侧栏偏好', async () => {
     await resize(1024, 680)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 11)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 12)
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
     assert.equal(await nav.evaluate((element) => element.scrollWidth > element.clientWidth), false)
     await button('记事本').click()
     await capture('sidebar-tree-narrow')
     await resize(1280, 820)
-    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 4)
+    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 5)
     await button('收起侧边栏').click()
     await resize(1024, 680, true)
     await resize(1280, 820, true)

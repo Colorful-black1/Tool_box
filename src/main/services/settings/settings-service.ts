@@ -38,9 +38,22 @@ interface StoredProfile {
    * 旧配置文件没有这个字段，读出来时按空处理（加字段，不改 version）。
    */
   selectedModels?: string[]
+  /** 知识库向量模型；空串表示不启用语义检索。 */
+  embeddingModel?: string
+  /** 检索结果重排模型；空串表示不重排。 */
+  rerankModel?: string
+}
+
+/** 知识库模型调用所需的最小配置；明文 Key 只在主进程内存里使用。 */
+export interface KbAiEndpointConfig {
+  provider: AiProviderId
+  baseUrl: string
+  apiKey: string
+  model: string
 }
 
 const MAX_NAME_CHARS = 24
+const MAX_MODEL_CHARS = 80
 
 const EMPTY_SETTINGS: StoredSettings = { version: 2, activeId: '', profiles: [] }
 
@@ -88,6 +101,24 @@ export class SettingsService {
     }
   }
 
+  /** 知识库语义检索：未配置向量模型时返回 null，调用方退回纯关键词。 */
+  async getEmbeddingConfig(): Promise<KbAiEndpointConfig | null> {
+    return this.endpointConfig(
+      await this.read(),
+      (profile) => profile.embeddingModel,
+      '向量'
+    )
+  }
+
+  /** 检索重排：未配置重排模型时返回 null，不改变融合排序。 */
+  async getRerankConfig(): Promise<KbAiEndpointConfig | null> {
+    return this.endpointConfig(
+      await this.read(),
+      (profile) => profile.rerankModel,
+      '重排'
+    )
+  }
+
   /** 新建（id 留空）或更新档案；返回最新视图 */
   async save(input: AiProfileInput): Promise<AiConfigView> {
     const baseUrl = normalizeOpenAiBaseUrl(input.baseUrl)
@@ -122,7 +153,10 @@ export class SettingsService {
         ? this.safeStorage.encryptString(apiKey).toString('base64')
         : (existing?.apiKeyCipher ?? ''),
       // 留空表示「不改动已保存的勾选」，空数组表示清空
-      selectedModels: normalizeModelList(input.selectedModels ?? existing?.selectedModels)
+      selectedModels: normalizeModelList(input.selectedModels ?? existing?.selectedModels),
+      // 不传表示保留（对话切模型时不会清掉向量配置），空串表示清空
+      embeddingModel: normalizeModelName(input.embeddingModel, existing?.embeddingModel),
+      rerankModel: normalizeModelName(input.rerankModel, existing?.rerankModel)
     }
 
     const profiles = existing
@@ -249,6 +283,29 @@ export class SettingsService {
     }
   }
 
+  /** 取当前启用档案指定用途的模型配置；未填模型返回 null，填了但缺地址 / Key 则报错。 */
+  private endpointConfig(
+    stored: StoredSettings,
+    pickModel: (profile: StoredProfile) => string | undefined,
+    label: string
+  ): KbAiEndpointConfig | null {
+    const profile = stored.profiles.find((item) => item.id === stored.activeId)
+    if (!profile) return null
+    const model = (pickModel(profile) ?? '').trim()
+    if (!model) return null
+    const baseUrl = normalizeOpenAiBaseUrl(profile.baseUrl)
+    if (!baseUrl) throw new AiGatewayError(`知识库${label}模型缺少接口地址，请在设置里补全`)
+    if (!profile.apiKeyCipher) {
+      throw new AiGatewayError(`知识库${label}模型缺少 API Key，请在设置里补全`)
+    }
+    return {
+      provider: profile.provider,
+      baseUrl,
+      apiKey: this.decryptKey(profile),
+      model
+    }
+  }
+
   private isMissingFileError(error: unknown): boolean {
     return (
       typeof error === 'object' &&
@@ -267,8 +324,15 @@ function toProfileView(profile: StoredProfile): AiProfileView {
     baseUrl: profile.baseUrl,
     model: profile.model,
     hasApiKey: profile.apiKeyCipher.length > 0,
-    selectedModels: profile.selectedModels ?? []
+    selectedModels: profile.selectedModels ?? [],
+    embeddingModel: profile.embeddingModel ?? '',
+    rerankModel: profile.rerankModel ?? ''
   }
+}
+
+function normalizeModelName(input: string | undefined, previous: string | undefined): string {
+  if (input === undefined) return (previous ?? '').trim()
+  return input.trim().slice(0, MAX_MODEL_CHARS)
 }
 
 function normalizeName(input: string, fallback: string): string {
@@ -312,7 +376,9 @@ export function normalizeStoredSettings(parsed: unknown): StoredSettings {
     baseUrl,
     model,
     apiKeyCipher,
-    selectedModels: []
+    selectedModels: [],
+    embeddingModel: '',
+    rerankModel: ''
   }
   return { version: 2, activeId: profile.id, profiles: [profile] }
 }
@@ -337,6 +403,9 @@ function toStoredProfile(value: unknown): StoredProfile | null {
     model: typeof record.model === 'string' ? record.model.trim() : '',
     apiKeyCipher: typeof record.apiKeyCipher === 'string' ? record.apiKeyCipher : '',
     // 旧档案没有勾选清单：按空处理（下拉回落到内置推荐）
-    selectedModels: normalizeModelList(record.selectedModels)
+    selectedModels: normalizeModelList(record.selectedModels),
+    // 旧档案没有向量 / 重排模型：读出来为空，不影响对话
+    embeddingModel: typeof record.embeddingModel === 'string' ? record.embeddingModel.trim() : '',
+    rerankModel: typeof record.rerankModel === 'string' ? record.rerankModel.trim() : ''
   }
 }

@@ -1,5 +1,12 @@
 # Capability Map: Tool_box
 
+## 2026-11-06 本地知识库（P1）
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| knowledge-base | `.md` / `.txt` 导入、标题分块、FTS5 关键词检索 + 向量语义召回 + RRF + 可选重排、分块详情与引用定位 | persistence, settings, shared, renderer-ui | [知识库方案](docs/PLAN-knowledge-base.md) |
+| kb-agent-tools | `kb_search` / `kb_list_documents` 只读检索，`kb_add_document` / `kb_remove_document` 走审批 | knowledge-base, agent-tools | 同上 |
+
 ## 2026-10-31 能力扩展第一批
 
 | Module id | Responsibility | Depends on | Spec |

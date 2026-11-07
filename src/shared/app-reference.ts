@@ -6,6 +6,7 @@ import { isDateKey } from './reading-stats'
 export type AppTarget =
   | { kind: 'note' | 'todo' | 'book' | 'group'; id: string }
   | { kind: 'chapter'; id: string; chapterIdx: number }
+  | { kind: 'kb'; id: string; chunkId?: string }
   | { kind: 'usage'; query: UsageQuery }
 
 /** 由成功工具结果产生的有界标签和只读导航目标。 */
@@ -25,6 +26,12 @@ export function appTargetUrl(target: AppTarget): string {
       if (value) params.set(key, value)
     }
     return `${PREFIX}usage?${params}`
+  }
+  if (target.kind === 'kb') {
+    const params = new URLSearchParams()
+    if (target.chunkId) params.set('chunk', target.chunkId)
+    const query = params.toString()
+    return `${PREFIX}kb/${encodeURIComponent(target.id)}${query ? `?${query}` : ''}`
   }
   return `${PREFIX}${target.kind}/${encodeURIComponent(target.id)}${target.kind === 'chapter' ? `?chapter=${target.chapterIdx}` : ''}`
 }
@@ -65,6 +72,12 @@ export function parseAppTarget(href: string): AppTarget | null {
       const value = url.searchParams.get('chapter') ?? ''
       if (url.searchParams.size !== 1 || !/^\d{1,8}$/.test(value)) return null
       return { kind, id, chapterIdx: Number(value) }
+    }
+    if (kind === 'kb') {
+      if (url.searchParams.size > 1) return null
+      const chunk = url.searchParams.get('chunk')
+      if (chunk !== null && !/^[a-zA-Z0-9_-]{1,64}$/.test(chunk)) return null
+      return chunk ? { kind, id, chunkId: chunk } : { kind, id }
     }
     if (url.search) return null
     if (kind === 'note' || kind === 'todo' || kind === 'book' || kind === 'group')

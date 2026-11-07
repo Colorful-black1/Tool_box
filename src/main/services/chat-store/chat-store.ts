@@ -5,6 +5,14 @@ import { basename, dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 
 import { COVERS_DIR, DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
+import { isKbDocumentStatus } from '../../../shared/knowledge-base'
+import type {
+  KbChunkPreview,
+  KbDocumentStatus,
+  KbDocumentView,
+  KbListInput,
+  KbSearchHit
+} from '../../../shared/knowledge-base'
 import type {
   BookGroup,
   BookSummary,
@@ -34,7 +42,13 @@ import { dueTodoReminder } from '../../../shared/todo-reminders'
 import type { TodoReminder, TodoReminderCandidate } from '../../../shared/todo-reminders'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
+/** 知识库文档摘要列：附带指定模型的已向量化块数，列表与详情共用。 */
+const KB_DOCUMENT_COLUMNS = `id, title, category, source_path, file_size, status, chunk_count,
+  (SELECT COUNT(*) FROM kb_chunks c
+    WHERE c.document_id = kb_documents.id AND c.embedding IS NOT NULL
+      AND (? = '' OR c.embedding_model = ?)) AS embedded_chunk_count,
+  error, created_at_ms, updated_at_ms`
 
 /** SQLite 的 snake_case 行只在数据层映射。 */
 interface TodoRow {
@@ -114,12 +128,109 @@ interface SecretPayload {
 
 const DECRYPT_FAIL_NOTE = '【解密失败：密钥不可用或数据损坏】'
 
+interface KbDocumentRow {
+  id: string
+  title: string
+  category: string
+  source_path: string
+  file_size: number
+  status: string
+  chunk_count: number
+  embedded_chunk_count: number
+  error: string
+  created_at_ms: number
+  updated_at_ms: number
+}
+
+interface KbChunkPreviewRow {
+  id: string
+  ordinal: number
+  heading: string
+  char_count: number
+  start_offset: number
+  preview: string
+}
+
+interface KbSearchRow {
+  chunk_id: string
+  document_id: string
+  ordinal: number
+  heading: string
+  content: string
+  start_offset: number
+  char_count: number
+  document_title: string
+  category: string
+  score: number
+}
+
+/** 导入前已由服务层校验文件大小、sha 与配额，这里只负责落库。 */
+export interface KbDocumentInput {
+  id: string
+  title: string
+  category: string
+  sourcePath: string
+  fileSize: number
+  sha256: string
+  createdAtMs: number
+  updatedAtMs: number
+}
+
+export interface KbChunkInput {
+  id: string
+  ordinal: number
+  heading: string
+  content: string
+  startOffset: number
+  charCount: number
+  /** 中文二元组 + 拉丁词，写入 FTS 的 tokens 列。 */
+  tokens: string
+}
+
+/** 重建时源文件可能变化，标题、大小与 sha 同步更新。 */
+export interface KbDocumentSourceInput {
+  title: string
+  fileSize: number
+  sha256: string
+  updatedAtMs: number
+}
+
+/** 待向量化的分块：只带拼向量用的标题与正文。 */
+export interface KbEmbeddingChunkRow {
+  id: string
+  heading: string
+  content: string
+}
+
+/** 向量落库：float32 小端 BLOB + 模型与维度。 */
+export interface KbChunkEmbeddingInput {
+  id: string
+  embedding: Buffer
+  model: string
+  dim: number
+}
+
+/** 语义检索的向量索引行：元数据 + BLOB，正文按命中再取。 */
+export interface KbVectorIndexRow {
+  chunk_id: string
+  document_id: string
+  ordinal: number
+  heading: string
+  char_count: number
+  start_offset: number
+  document_title: string
+  category: string
+  embedding: Buffer
+}
+
 /**
  * 统一本地数据层（SQLite / better-sqlite3），字段与旧 Flutter 项目对齐：
  * - v1 AI 会话与消息
  * - v2 小说（书/章节/进度）、密码箱、记事本
  * - v3 kv 配置表、书籍作者/封面/排序/分组、书签、阅读统计
  * - v4 封面路径改为相对文件名（只存 covers/ 下的文件名）
+ * - v5 待办清单
+ * - v6 本地知识库（文档 / 分块 / FTS5 关键词索引）
  */
 export class ToolboxStore {
   private readonly db: Database.Database
@@ -752,14 +863,14 @@ export class ToolboxStore {
   /** 批量导入：直接落库，跳过与既有条目「同名 + 同账号」的重复项 */
   savePasswordDrafts(drafts: PasswordDraft[]): number {
     const existing = new Set(
-      this.listPasswords().map((entry) => `${entry.title} ${entry.account}`)
+      this.listPasswords().map((entry) => `${entry.title}\u0000${entry.account}`)
     )
     let imported = 0
     for (const draft of drafts) {
       const title = normalizeTitle(draft.title, '')
       if (!title || title === '未命名') continue
       const account = draft.account.trim()
-      const key = `${title} ${account}`
+      const key = `${title}\u0000${account}`
       if (account && existing.has(key)) continue
       const ts = draft.updatedAtMs ?? Date.now()
       this.savePassword({
@@ -785,7 +896,7 @@ export class ToolboxStore {
     for (const row of rows) {
       try {
         const secret = this.secretBox.decrypt(row.secret)
-        if (secret.account) keys.add(`${row.title} ${secret.account}`)
+        if (secret.account) keys.add(`${row.title}\u0000${secret.account}`)
       } catch {
         /* 解密失败不影响重复判定 */
       }
@@ -1020,6 +1131,295 @@ export class ToolboxStore {
     })()
   }
 
+  // ==================== 本地知识库 ====================
+
+  /** 列表只回摘要；绝对路径转成文件名，避免把本机目录带到界面上。 */
+  listKbDocuments(input: KbListInput = {}, embeddingModel = ''): KbDocumentView[] {
+    const category = input.category ?? ''
+    const status = input.status ?? ''
+    const keyword = input.query?.trim() ?? ''
+    const pattern = keyword ? `%${escapeLike(keyword)}%` : ''
+    const rows = this.db
+      .prepare(
+        `SELECT ${KB_DOCUMENT_COLUMNS}
+         FROM kb_documents
+         WHERE (? = '' OR category = ?)
+           AND (? = '' OR status = ?)
+           AND (? = '' OR title LIKE ? ESCAPE '\\')
+         ORDER BY updated_at_ms DESC`
+      )
+      .all(
+        embeddingModel,
+        embeddingModel,
+        category,
+        category,
+        status,
+        status,
+        pattern,
+        pattern
+      ) as KbDocumentRow[]
+    return rows.map(toKbDocument)
+  }
+
+  getKbDocument(id: string, embeddingModel = ''): KbDocumentView | null {
+    const row = this.db
+      .prepare(`SELECT ${KB_DOCUMENT_COLUMNS} FROM kb_documents WHERE id = ?`)
+      .get(embeddingModel, embeddingModel, id) as KbDocumentRow | undefined
+    return row ? toKbDocument(row) : null
+  }
+
+  /** 重建与删除需要源文件位置；只在主进程内使用，不跨 IPC。 */
+  kbDocumentSourcePath(id: string): string | null {
+    const row = this.db.prepare('SELECT source_path FROM kb_documents WHERE id = ?').get(id) as
+      | { source_path: string }
+      | undefined
+    return row?.source_path ?? null
+  }
+
+  findKbDocumentBySha(sha256: string, embeddingModel = ''): KbDocumentView | null {
+    const row = this.db
+      .prepare(`SELECT ${KB_DOCUMENT_COLUMNS} FROM kb_documents WHERE sha256 = ?`)
+      .get(embeddingModel, embeddingModel, sha256) as KbDocumentRow | undefined
+    return row ? toKbDocument(row) : null
+  }
+
+  countKbDocuments(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM kb_documents').get() as {
+      count: number
+    }
+    return row.count
+  }
+
+  countKbChunks(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM kb_chunks').get() as {
+      count: number
+    }
+    return row.count
+  }
+
+  kbCreateDocument(input: KbDocumentInput): void {
+    this.db
+      .prepare(
+        `INSERT INTO kb_documents
+          (id, title, category, source_path, file_size, sha256, status, chunk_count, error,
+           created_at_ms, updated_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, '', ?, ?)`
+      )
+      .run(
+        input.id,
+        input.title,
+        input.category,
+        input.sourcePath,
+        input.fileSize,
+        input.sha256,
+        input.createdAtMs,
+        input.updatedAtMs
+      )
+  }
+
+  kbUpdateDocumentSource(id: string, input: KbDocumentSourceInput): void {
+    const result = this.db
+      .prepare(
+        `UPDATE kb_documents
+         SET title = ?, file_size = ?, sha256 = ?, updated_at_ms = ?
+         WHERE id = ?`
+      )
+      .run(input.title, input.fileSize, input.sha256, input.updatedAtMs, id)
+    if (!result.changes) throw new Error('资料不存在，请刷新列表')
+  }
+
+  kbSetDocumentStatus(
+    id: string,
+    status: KbDocumentStatus,
+    chunkCount: number,
+    error: string
+  ): void {
+    const result = this.db
+      .prepare(
+        `UPDATE kb_documents
+         SET status = ?, chunk_count = ?, error = ?, updated_at_ms = ?
+         WHERE id = ?`
+      )
+      .run(status, chunkCount, error, Date.now(), id)
+    if (!result.changes) throw new Error('资料不存在，请刷新列表')
+  }
+
+  /**
+   * 整篇替换分块与 FTS 行（重建、首次索引用同一路径）。
+   * 先按 chunk_id 删旧 FTS 行，再删主表：FTS 是独立虚表，没有级联。
+   */
+  kbReplaceChunks(documentId: string, chunks: KbChunkInput[]): void {
+    this.db.transaction(() => {
+      const existing = this.db
+        .prepare('SELECT id FROM kb_chunks WHERE document_id = ?')
+        .all(documentId) as Array<{ id: string }>
+      const deleteFts = this.db.prepare('DELETE FROM kb_chunks_fts WHERE chunk_id = ?')
+      for (const row of existing) deleteFts.run(row.id)
+      this.db.prepare('DELETE FROM kb_chunks WHERE document_id = ?').run(documentId)
+
+      const insertChunk = this.db.prepare(
+        `INSERT INTO kb_chunks
+          (id, document_id, ordinal, heading, content, start_offset, char_count, tokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      const insertFts = this.db.prepare(
+        'INSERT INTO kb_chunks_fts (chunk_id, tokens, heading) VALUES (?, ?, ?)'
+      )
+      for (const chunk of chunks) {
+        insertChunk.run(
+          chunk.id,
+          documentId,
+          chunk.ordinal,
+          chunk.heading,
+          chunk.content,
+          chunk.startOffset,
+          chunk.charCount,
+          chunk.tokens
+        )
+        insertFts.run(chunk.id, chunk.tokens, chunk.heading)
+      }
+    })()
+  }
+
+  listKbChunkPreviews(documentId: string): KbChunkPreview[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, ordinal, heading, char_count, start_offset,
+                substr(content, 1, 600) AS preview
+         FROM kb_chunks WHERE document_id = ? ORDER BY ordinal`
+      )
+      .all(documentId) as KbChunkPreviewRow[]
+    return rows.map((row) => ({
+      id: row.id,
+      ordinal: row.ordinal,
+      heading: row.heading,
+      charCount: row.char_count,
+      startOffset: row.start_offset,
+      preview: row.preview
+    }))
+  }
+
+  hasKbChunk(documentId: string, chunkId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare('SELECT 1 FROM kb_chunks WHERE document_id = ? AND id = ?')
+        .get(documentId, chunkId)
+    )
+  }
+
+  deleteKbDocument(id: string): void {
+    this.db.transaction(() => {
+      const existing = this.db
+        .prepare('SELECT id FROM kb_chunks WHERE document_id = ?')
+        .all(id) as Array<{ id: string }>
+      const deleteFts = this.db.prepare('DELETE FROM kb_chunks_fts WHERE chunk_id = ?')
+      for (const row of existing) deleteFts.run(row.id)
+      this.db.prepare('DELETE FROM kb_chunks WHERE document_id = ?').run(id)
+      const result = this.db.prepare('DELETE FROM kb_documents WHERE id = ?').run(id)
+      if (!result.changes) throw new Error('资料不存在，请刷新列表')
+    })()
+  }
+
+  /** 关键词检索；match 由 kb-tokenize 生成，禁止拼接用户原文。 */
+  searchKbChunks(input: { match: string; limit: number; category?: string }): KbSearchHit[] {
+    const category = input.category ?? ''
+    const rows = this.db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.document_id, c.ordinal, c.heading, c.content,
+                c.start_offset, c.char_count, d.title AS document_title, d.category,
+                bm25(kb_chunks_fts, 0.0, 1.0, 2.0) AS score
+         FROM kb_chunks_fts
+         JOIN kb_chunks c ON c.id = kb_chunks_fts.chunk_id
+         JOIN kb_documents d ON d.id = c.document_id
+         WHERE kb_chunks_fts MATCH ? AND (? = '' OR d.category = ?)
+         ORDER BY score
+         LIMIT ?`
+      )
+      .all(input.match, category, category, input.limit) as KbSearchRow[]
+    return rows.map(toKbSearchHit)
+  }
+
+  /** 单个汉字查询的兜底：二元组索引覆盖不到时按内容扫描。 */
+  searchKbChunksByText(text: string, limit: number, category = ''): KbSearchHit[] {
+    const rows = this.db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.document_id, c.ordinal, c.heading, c.content,
+                c.start_offset, c.char_count, d.title AS document_title, d.category,
+                0.0 AS score
+         FROM kb_chunks c
+         JOIN kb_documents d ON d.id = c.document_id
+         WHERE c.content LIKE ? ESCAPE '\\' AND (? = '' OR d.category = ?)
+         ORDER BY c.document_id, c.ordinal
+         LIMIT ?`
+      )
+      .all(`%${escapeLike(text)}%`, category, category, limit) as KbSearchRow[]
+    return rows.map(toKbSearchHit)
+  }
+
+  /** 待向量化的块：还没有向量，或向量来自另一个模型（换模型后需要重算）。 */
+  kbPendingEmbeddingChunks(model: string, documentId = ''): KbEmbeddingChunkRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, heading, content FROM kb_chunks
+         WHERE (embedding IS NULL OR embedding_model <> ?)
+           AND (? = '' OR document_id = ?)
+         ORDER BY document_id, ordinal`
+      )
+      .all(model, documentId, documentId) as KbEmbeddingChunkRow[]
+  }
+
+  kbSetChunkEmbeddings(rows: KbChunkEmbeddingInput[]): void {
+    if (rows.length === 0) return
+    const update = this.db.prepare(
+      'UPDATE kb_chunks SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?'
+    )
+    this.db.transaction(() => {
+      for (const row of rows) update.run(row.embedding, row.model, row.dim, row.id)
+    })()
+  }
+
+  /** 语义检索的向量索引：只含元数据与 BLOB，正文在命中后再取。 */
+  kbLoadVectorIndex(model: string): KbVectorIndexRow[] {
+    return this.db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.document_id, c.ordinal, c.heading, c.char_count,
+                c.start_offset, c.embedding, d.title AS document_title, d.category
+         FROM kb_chunks c
+         JOIN kb_documents d ON d.id = c.document_id
+         WHERE c.embedding IS NOT NULL AND c.embedding_model = ?`
+      )
+      .all(model) as KbVectorIndexRow[]
+  }
+
+  kbCountVectors(model: string): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM kb_chunks WHERE embedding_model = ? AND embedding IS NOT NULL')
+      .get(model) as { count: number }
+    return row.count
+  }
+
+  /** 语义命中后按 id 取完整片段（含正文），供预算截断与引用。 */
+  kbGetChunkHit(chunkId: string): KbSearchHit | null {
+    const row = this.db
+      .prepare(
+        `SELECT c.id AS chunk_id, c.document_id, c.ordinal, c.heading, c.content,
+                c.start_offset, c.char_count, d.title AS document_title, d.category,
+                0.0 AS score
+         FROM kb_chunks c
+         JOIN kb_documents d ON d.id = c.document_id
+         WHERE c.id = ?`
+      )
+      .get(chunkId) as KbSearchRow | undefined
+    return row ? toKbSearchHit(row) : null
+  }
+
+  /** 向量化失败只记录提示，不把整篇资料标成失败（关键词仍可用）。 */
+  kbSetDocumentError(id: string, error: string): void {
+    this.db
+      .prepare('UPDATE kb_documents SET error = ?, updated_at_ms = ? WHERE id = ?')
+      .run(error, Date.now(), id)
+  }
+
   // ==================== 生命周期 ====================
 
   /** SQLite 在线备份 API 会处理 WAL，不能直接复制正在使用的数据库文件。 */
@@ -1056,7 +1456,9 @@ export class ToolboxStore {
         [3, 'SELECT id, name, sort_index FROM book_groups LIMIT 0'],
         [3, 'SELECT id, book_id, chapter_idx, page_idx, page_idx_ratio, snippet, created_at_ms FROM bookmarks LIMIT 0'],
         [3, 'SELECT date, duration_ms, char_count FROM reading_stats LIMIT 0'],
-        [5, 'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0']
+        [5, 'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0'],
+        [6, 'SELECT id, title, category, source_path, file_size, sha256, status, chunk_count, error, created_at_ms, updated_at_ms FROM kb_documents LIMIT 0'],
+        [6, 'SELECT id, document_id, ordinal, heading, content, start_offset, char_count, tokens FROM kb_chunks LIMIT 0']
       ]
       for (const [minimum, sql] of checks) {
         if (version >= minimum) database.prepare(sql).all()
@@ -1075,12 +1477,19 @@ export class ToolboxStore {
     const current = this.db.pragma('user_version', { simple: true }) as number
     if (current >= SCHEMA_VERSION) return
 
-    if (current > 0 && current < 5 && this.dbPath !== ':memory:') {
+    if (current > 0 && current < SCHEMA_VERSION && this.dbPath !== ':memory:') {
       const backupDir = join(dirname(this.dbPath), 'backups')
       // VACUUM INTO 生成含 WAL 已提交内容的一致快照，不覆盖已有备份。
       try {
         mkdirSync(backupDir, { recursive: true })
-        this.db.prepare('VACUUM INTO ?').run(join(backupDir, `toolbox-before-v5-${Date.now()}-${randomUUID()}.db`))
+        this.db
+          .prepare('VACUUM INTO ?')
+          .run(
+            join(
+              backupDir,
+              `toolbox-before-v${SCHEMA_VERSION}-${Date.now()}-${randomUUID()}.db`
+            )
+          )
       } catch {
         throw new Error('升级前数据库备份失败，请检查磁盘空间和数据目录权限')
       }
@@ -1273,6 +1682,52 @@ export class ToolboxStore {
       CREATE INDEX IF NOT EXISTS idx_todos_reminders ON todos(remind, completed_at_ms, archived_at_ms, due_at_ms, start_at_ms);
       CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(archived_at_ms, completed_at_ms, priority);`)
     }
+
+    if (current < 6) {
+      // v5 → v6：本地知识库。只新增表与虚表，不修改既有表与加密链路。
+      // FTS 列顺序固定为 chunk_id / tokens / heading：bm25 的权重按列位置传参。
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS kb_documents (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'work',
+          source_path TEXT NOT NULL,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          sha256 TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          chunk_count INTEGER NOT NULL DEFAULT 0,
+          error TEXT NOT NULL DEFAULT '',
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_documents_category
+          ON kb_documents(category, updated_at_ms DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_documents_sha ON kb_documents(sha256);
+
+        CREATE TABLE IF NOT EXISTS kb_chunks (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL,
+          ordinal INTEGER NOT NULL,
+          heading TEXT NOT NULL DEFAULT '',
+          content TEXT NOT NULL,
+          start_offset INTEGER NOT NULL DEFAULT 0,
+          char_count INTEGER NOT NULL DEFAULT 0,
+          tokens TEXT NOT NULL DEFAULT '',
+          embedding BLOB,
+          embedding_model TEXT NOT NULL DEFAULT '',
+          embedding_dim INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_kb_chunks_document ON kb_chunks(document_id, ordinal);
+        CREATE INDEX IF NOT EXISTS idx_kb_chunks_pending ON kb_chunks(document_id, ordinal)
+          WHERE embedding IS NULL;
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
+          chunk_id UNINDEXED,
+          tokens,
+          heading,
+          tokenize = 'unicode61 remove_diacritics 2'
+        );`)
+    }
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
   }
 
@@ -1290,6 +1745,42 @@ export class ToolboxStore {
     const exists = this.db.prepare('SELECT 1 FROM books WHERE id = ?').get(id)
     if (!exists) throw new Error('书籍不存在')
   }
+}
+
+function toKbDocument(row: KbDocumentRow): KbDocumentView {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    fileName: basename(row.source_path.replaceAll('\\', '/')),
+    fileSize: row.file_size,
+    status: isKbDocumentStatus(row.status) ? row.status : 'failed',
+    chunkCount: row.chunk_count,
+    embeddedChunkCount: row.embedded_chunk_count,
+    error: row.error,
+    createdAtMs: row.created_at_ms,
+    updatedAtMs: row.updated_at_ms
+  }
+}
+
+function toKbSearchHit(row: KbSearchRow): KbSearchHit {
+  return {
+    chunkId: row.chunk_id,
+    documentId: row.document_id,
+    documentTitle: row.document_title,
+    category: row.category,
+    heading: row.heading,
+    ordinal: row.ordinal,
+    charCount: row.char_count,
+    content: row.content,
+    startOffset: row.start_offset,
+    score: row.score
+  }
+}
+
+/** LIKE 里的通配符必须转义，否则用户输入的 % 会匹配整库。 */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
 }
 
 function normalizeTitle(input: string, fallback = '未命名'): string {

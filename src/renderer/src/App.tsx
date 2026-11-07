@@ -12,6 +12,7 @@ import { BookshelfPage } from './components/bookshelf/bookshelf-page'
 import { ChatPanel } from './components/chat-panel'
 import { ConversationSidebar } from './components/conversation-sidebar'
 import { NotesPage } from './components/notes/notes-page'
+import { KnowledgePage } from './components/knowledge/knowledge-page'
 import { PasswordBoxPage } from './components/password/password-box-page'
 import { Reader } from './components/reader/reader'
 import { CommandPalette, openCommandPalette } from './components/search/command-palette'
@@ -49,6 +50,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   passwords: { title: '密码宝匣', subtitle: 'PASSWORD VAULT · 秘语封存于此' },
   notes: { title: '星笺手记', subtitle: 'NOTES · 星语落笔成笺' },
   todos: { title: '待办清单', subtitle: 'TODO · 安排下一件事' },
+  kb: { title: '本地知识库', subtitle: 'KNOWLEDGE · 用自己的资料回答' },
   tools: { title: '开发者工具', subtitle: 'DEV TOOLS · 本机离线小工具' },
   settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
 }
@@ -81,6 +83,11 @@ const RAIL_ITEMS: RailNode[] = [
       { view: 'notes', label: '记事本', icon: 'note' },
       { view: 'todos', label: '待办清单', icon: 'todo' }
     ]
+  },
+  {
+    id: 'knowledge',
+    label: '知识库',
+    children: [{ view: 'kb', label: '资料库', icon: 'library' }]
   },
   {
     id: 'system',
@@ -321,6 +328,7 @@ export default function App(): JSX.Element {
                 {view === 'passwords' ? <PasswordBoxPage /> : null}
                 {view === 'notes' ? <NotesPage /> : null}
                 {view === 'todos' ? <TodosPage /> : null}
+                {view === 'kb' ? <KnowledgePage /> : null}
                 {view === 'commands' ? <CommandsPage /> : null}
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}

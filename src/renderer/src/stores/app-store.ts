@@ -42,6 +42,7 @@ export type AppView =
   | 'passwords'
   | 'notes'
   | 'todos'
+  | 'kb'
   | 'tools'
   | 'settings'
 

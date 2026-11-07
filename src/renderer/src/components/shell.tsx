@@ -1,4 +1,4 @@
-﻿import type { JSX } from 'react'
+import type { JSX } from 'react'
 
 import { useEffect, useState } from 'react'
 import { useRailStore } from '../stores/rail-store'
@@ -85,6 +85,14 @@ function RailIcon({ name }: { name: string }): JSX.Element {
         <svg {...common}>
           <path d="M14.7 6.3a4 4 0 0 0 5 5L15 16l-3 3-2-2-3 3-1.5-1.5 3-3-2-2 3-3z" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M17.5 3.5 20.5 6.5" strokeLinecap="round" />
+        </svg>
+      )
+    case 'library':
+      return (
+        <svg {...common}>
+          <path d="M4 4h6v16H4z" strokeLinejoin="round" />
+          <path d="M10 4h5v16h-5z" strokeLinejoin="round" />
+          <path d="M17.2 5.2 20.5 19" strokeLinecap="round" />
         </svg>
       )
     case 'settings':

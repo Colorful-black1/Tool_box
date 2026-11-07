@@ -8,6 +8,8 @@ describe('应用内只读定位地址', () => {
       { kind: 'note', id: 'n1' },
       { kind: 'todo', id: 't1' },
       { kind: 'chapter', id: 'b1', chapterIdx: 0 },
+      { kind: 'kb', id: 'd1' },
+      { kind: 'kb', id: 'd1', chunkId: 'chunk_1' },
       {
         kind: 'usage',
         query: {
@@ -32,6 +34,8 @@ describe('应用内只读定位地址', () => {
     'toolbox://open/usage?refresh=true',
     'toolbox://open/usage?model=a&model=b',
     'toolbox://open/chapter/b1?chapter=-1',
+    'toolbox://open/kb/d1?chunk=../x',
+    'toolbox://open/kb/d1?chunk=a&chunk=b',
     'toolbox://open/note/n1#abc',
     'toolbox://open/note/%22onclick%3Dalert(1)'
   ])('拒绝非白名单或非法入口 %s', (href) => expect(parseAppTarget(href)).toBeNull())

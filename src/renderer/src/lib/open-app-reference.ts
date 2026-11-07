@@ -1,6 +1,7 @@
 import { parseAppTarget } from '../../../shared/app-reference'
 import { useAppStore } from '../stores/app-store'
 import { useTodoStore } from '../stores/todo-store'
+import { useKnowledgeStore } from '../stores/knowledge-store'
 import { confirmDialog } from '../stores/dialog-store'
 
 let navigation = 0
@@ -59,6 +60,11 @@ export async function openAppReference(href: string): Promise<void> {
     useAppStore.getState().setView('todos')
   } else if (target.kind === 'usage') {
     useAppStore.setState({ view: 'agent-usage', usageTarget: target.query, searchTarget: null })
+  } else if (target.kind === 'kb') {
+    // 详情由知识库状态托管：先取回分块，再切页，避免页面闪一下空列表。
+    await readTarget(() => useKnowledgeStore.getState().open(target.id, target.chunkId))
+    if (!current()) return
+    useAppStore.getState().setView('kb')
   } else {
     const books = await readTarget(() => bridge.books.list())
     if (!current()) return

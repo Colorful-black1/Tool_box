@@ -18,6 +18,7 @@ import { ShortcutManager } from './shortcuts'
 import { createTray, showMainWindow } from './tray'
 import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
+import { KnowledgeBaseService } from './services/knowledge-base/kb-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 
 // 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
@@ -105,9 +106,11 @@ function initializeServices(): void {
   const importService = new ImportService()
   const todos = new TodoService(store)
   const usage = createAgentUsageService(userDataDir)
+  const knowledge = new KnowledgeBaseService(store, settings)
   const aiGateway = new AiGateway(settings, store, importService, promptDir, {
     todos,
-    usage: { query: async (query) => (await usage).query(query) }
+    usage: { query: async (query) => (await usage).query(query) },
+    knowledge
   })
   const passwordAi = new PasswordAiService(promptDir, (system, user, options) =>
     aiGateway.complete(system, user, options)
@@ -116,7 +119,7 @@ function initializeServices(): void {
   shortcuts = new ShortcutManager(store, () => showMainWindow(mainWindow))
 
   const opencode = new OpenCodeService(store)
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage })
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge })
 
   app.on('quit', () => {
     store.close()
