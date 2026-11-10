@@ -34,6 +34,45 @@ describe.skipIf(process.platform !== 'win32')('端口进程停止边界（系统
     expect((await stopPortProcess(row.stopToken!, [])).status).toBe('expired')
     expect(mock.stop).toHaveBeenCalledTimes(1)
   })
+  it('进程信息查询失败时保留端口并禁用停止，提示重新查询', async () => {
+    mock.run.mockImplementation(async (file: string) => {
+      if (file.endsWith('netstat.exe')) return { stdout: mock.ports }
+      throw new Error('synthetic process query failure')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const snapshot = await listPortProcesses()
+      expect(snapshot.processNamesAvailable).toBe(false)
+      expect(snapshot.entries[0]).toMatchObject({
+        pid,
+        processName: '未知',
+        stopBlockedReason: '进程信息读取失败，请重新查询后重试'
+      })
+      expect(snapshot.entries[0].stopToken).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+  it('进程查询结果缺少目标 PID 时保留端口并禁用停止', async () => {
+    mock.run.mockImplementation(async (file: string) => ({
+      stdout: file.endsWith('netstat.exe') ? mock.ports : '[]'
+    }))
+    const snapshot = await listPortProcesses()
+    expect(snapshot.processNamesAvailable).toBe(true)
+    expect(snapshot.entries[0]).toMatchObject({
+      pid,
+      processName: '未知 / 已退出',
+      stopBlockedReason: '无法核实进程创建时间，请重新查询或使用系统工具'
+    })
+    expect(snapshot.entries[0].stopToken).toBeUndefined()
+  })
+  it('进程查询只接收端口快照涉及的 PID', async () => {
+    await listPortProcesses()
+    const processCall = mock.run.mock.calls.find(([file]) =>
+      String(file).endsWith('powershell.exe')
+    )
+    expect(processCall?.[2]?.env?.TOOLBOX_PROCESS_PIDS).toBe(JSON.stringify([pid]))
+  })
   it('端口易主后不终止进程；重新查询使旧引用失效', async () => {
     const row = (await listPortProcesses()).entries[0]
     mock.ports = mock.ports.replace(String(pid), String(pid + 1))

@@ -109,6 +109,9 @@ describe('只读端口解析', () => {
       'pid',
       'processName'
     ])
+    expect(
+      parseNetstat('TCP 0.0.0.0:8080 0.0.0.0:0 LISTENING 30', new Map(), false)[0].processName
+    ).toBe('未知')
   })
   it('非 Windows 返回明确的不支持提示', async () => {
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')!

@@ -13,9 +13,12 @@ import { portStopResult, processStopBlockedReason, stopWindowsProcess } from './
 import type { ProcessIdentity } from './windows-process-control'
 
 const executeFile = promisify(execFile)
+// 只查询端口快照涉及的 PID：全量 Get-Process 在安全软件或高负载下更容易超时，
+// 失败会导致所有行都无法签发停止引用。PID 经由环境变量传入，不拼接进命令。
 const PROCESS_SCRIPT = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
-ConvertTo-Json -Compress -InputObject @(Get-Process | ForEach-Object {
+$targetPids = $env:TOOLBOX_PROCESS_PIDS | ConvertFrom-Json
+ConvertTo-Json -Compress -InputObject @(Get-Process -Id $targetPids -ErrorAction SilentlyContinue | ForEach-Object {
   $item = $_
   $created = $null
   try { $created = $item.StartTime.ToFileTimeUtc().ToString() } catch {
@@ -24,12 +27,15 @@ ConvertTo-Json -Compress -InputObject @(Get-Process | ForEach-Object {
   [PSCustomObject]@{ Id = $item.Id; ProcessName = $item.ProcessName; CreatedAt = $created }
 })`
 const SYSTEM32 = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')
+const POWERSHELL = join(SYSTEM32, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
 const COMMAND_OPTIONS = {
   windowsHide: true,
   timeout: 12000,
   maxBuffer: 2 * 1024 * 1024,
   encoding: 'utf8' as const
 }
+// 进程查询可能受安全软件冷启动影响，单独放宽超时；仍不会无限等待。
+const PROCESS_OPTIONS = { ...COMMAND_OPTIONS, timeout: 20000 }
 
 /** 只记住最近一次快照的前 1000 行，有效期五分钟，不落盘。 */
 interface PortStopTarget {
@@ -79,8 +85,15 @@ export function inspectCertificates(text: string): CertificateView[] {
   }
 }
 
-/** 解析系统快照的白名单字段，兼容 IPv6 的冒号及 UDP 无远端/状态列。 */
-export function parseNetstat(text: string, processes: Map<number, string>): PortProcessView[] {
+/**
+ * 解析系统快照的白名单字段，兼容 IPv6 的冒号及 UDP 无远端/状态列。
+ * 进程信息读取失败时用「未知」而不是「已退出」，避免把查询故障误报成进程退出。
+ */
+export function parseNetstat(
+  text: string,
+  processes: Map<number, string>,
+  namesAvailable = true
+): PortProcessView[] {
   const entries: PortProcessView[] = []
   const seen = new Set<string>()
   for (const line of text.split(/\r?\n/)) {
@@ -103,7 +116,9 @@ export function parseNetstat(text: string, processes: Map<number, string>): Port
       remote: protocol === 'TCP' ? fields[2] : '',
       state: protocol === 'TCP' ? fields[3] : 'BOUND',
       pid,
-      processName: processes.get(pid) ?? (pid === 0 ? '系统 / 已退出' : '未知 / 已退出')
+      processName:
+        processes.get(pid) ??
+        (pid === 0 ? '系统 / 已退出' : namesAvailable ? '未知 / 已退出' : '未知')
     })
   }
   return entries.sort(
@@ -157,38 +172,62 @@ async function readPortOutput(): Promise<string> {
   return (await executeFile(join(SYSTEM32, 'netstat.exe'), ['-ano'], COMMAND_OPTIONS)).stdout
 }
 
+/** 只读取端口快照涉及的 PID，避免全量进程枚举失败导致整页无法停止。 */
+async function readProcessIdentities(pids: number[]): Promise<Map<number, ProcessIdentity>> {
+  if (!pids.length) return new Map()
+  const { stdout } = await executeFile(
+    POWERSHELL,
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PROCESS_SCRIPT],
+    {
+      ...PROCESS_OPTIONS,
+      env: { ...process.env, TOOLBOX_PROCESS_PIDS: JSON.stringify(pids) }
+    }
+  )
+  return processMap(stdout)
+}
+
 async function readWindowsPorts(protectedPids: number[]): Promise<PortSnapshot> {
   if (process.platform !== 'win32') throw new DeveloperToolError('端口与进程查询目前仅支持 Windows')
-  const [ports, names] = await Promise.allSettled([
-    readPortOutput(),
-    executeFile(
-      join(SYSTEM32, 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-      ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PROCESS_SCRIPT],
-      COMMAND_OPTIONS
-    )
-  ])
-  if (ports.status === 'rejected')
+  let output: string
+  try {
+    output = await readPortOutput()
+  } catch {
     throw new DeveloperToolError('无法读取端口占用，系统命令失败或超时，请稍后重试')
+  }
+  // 与停止引用/返回条数保持一致，只为前 1000 行涉及的 PID 查询身份。
+  const pids = [
+    ...new Set(parseNetstat(output, new Map()).slice(0, 1000).map((row) => row.pid))
+  ]
   let processes = new Map<number, ProcessIdentity>()
-  let processNamesAvailable = false
-  if (names.status === 'fulfilled') {
-    try {
-      processes = processMap(names.value.stdout)
-      processNamesAvailable = true
-    } catch {
-      /* 名称快照失败不丢弃端口与 PID，返回显式降级标记。 */
-    }
+  let processNamesAvailable = true
+  try {
+    processes = await readProcessIdentities(pids)
+  } catch (error) {
+    processNamesAvailable = false
+    console.warn('[PortProcess] 进程信息快照失败', {
+      pidCount: pids.length,
+      timedOut: Boolean(
+        error && typeof error === 'object' && 'killed' in error && error.killed === true
+      ),
+      code:
+        error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined
+    })
   }
   const entries = parseNetstat(
-    ports.value,
-    new Map([...processes].map(([pid, item]) => [pid, item.name]))
+    output,
+    new Map([...processes].map(([pid, item]) => [pid, item.name])),
+    processNamesAvailable
   )
   stopTargets.clear()
   const visible = entries.slice(0, 1000).map((row) => {
     const identity = processes.get(row.pid)
     const reason =
       processStopBlockedReason(row.pid, row.processName, protectedPids) ??
-      (!identity?.createdAt ? '无法核实进程创建时间，请重新查询或使用系统工具' : undefined)
+      (!processNamesAvailable
+        ? '进程信息读取失败，请重新查询后重试'
+        : !identity?.createdAt
+          ? '无法核实进程创建时间，请重新查询或使用系统工具'
+          : undefined)
     if (reason || !identity) return { ...row, stopBlockedReason: reason }
     const stopToken = randomUUID()
     stopTargets.set(stopToken, { row, identity, expiresAt: Date.now() + 300_000 })

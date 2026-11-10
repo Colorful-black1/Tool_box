@@ -101,6 +101,12 @@ export function PortPanel(): JSX.Element {
         `${row.protocol}\t${row.address}\t${row.port}\t${row.state}\t${row.pid}\t${row.processName}\t${row.remote}`
     )
     .join('\n')
+  // 监听端口对应的进程已不在快照中：可能是快照过期，也可能是子进程继承了监听句柄。
+  const hasExitedListener =
+    snapshot?.processNamesAvailable === true &&
+    entries.some(
+      (row) => row.pid > 4 && row.state === 'LISTENING' && row.processName.includes('已退出')
+    )
   return (
     <section className="tool-stack tool-port-section" aria-label="端口与进程诊断">
       <header className="tool-io-head">
@@ -177,13 +183,43 @@ export function PortPanel(): JSX.Element {
       ) : null}
       {snapshot ? (
         <>
+          {!snapshot.processNamesAvailable ? (
+            <div className="status-banner" role="alert">
+              <span>
+                进程信息读取失败，端口与 PID 已保留；停止进程暂不可用，请重新查询后重试。
+              </span>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || stoppingPid !== null}
+                onClick={() => void refresh()}
+              >
+                重新查询
+              </button>
+            </div>
+          ) : null}
+          {hasExitedListener ? (
+            <div className="status-banner" role="alert">
+              <span>
+                有监听端口对应的进程已退出或无法读取身份。可能是快照过期，或子进程继承了监听句柄；
+                本工具不会停止无法核实的 PID，请重新查询，必要时结束实际占用端口的子进程或重启相关服务。
+              </span>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || stoppingPid !== null}
+                onClick={() => void refresh()}
+              >
+                重新查询
+              </button>
+            </div>
+          ) : null}
           <p className="field-hint" role="status">
             快照 {new Date(snapshot.capturedAt).toLocaleTimeString()} · 共 {snapshot.total} 项 ·
             筛选后 {entries.length} 项
             {snapshot.total > snapshot.entries.length
               ? `（仅载入前 ${snapshot.entries.length} 项，可刷新）`
               : ''}
-            {!snapshot.processNamesAvailable ? '；进程名称读取失败，已保留端口与 PID' : ''}
           </p>
           <div className="tool-diff">
             <table className="tool-ip-table" aria-label="端口占用列表">
