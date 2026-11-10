@@ -1347,23 +1347,40 @@ textarea,
   border: none;
 }
 
+/* 品牌标：金色圆角方块 + 内圈描边，保留完整圆角而不是裁切成多边形。 */
 .logo-mark {
+  position: relative;
   width: 50px;
   height: 50px;
   margin-bottom: 12px;
   align-self: flex-start;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 17px;
   font-family: var(--serif);
   font-size: 23px;
   font-weight: 700;
   color: #1a1408;
-  background: linear-gradient(135deg, #f5dfa8, #d3ab5e 60%, #a87f3a);
+  background:
+    radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.72), transparent 46%),
+    linear-gradient(135deg, #f7e5b8, #d8b267 58%, #a87f3a);
   box-shadow:
-    0 0 18px rgba(var(--accent-rgb), 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  clip-path: polygon(12% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 12%);
+    0 8px 18px rgba(0, 0, 0, 0.26),
+    0 0 18px rgba(var(--accent-rgb), 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.logo-mark::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  pointer-events: none;
 }
 
 /* 折叠 / 展开按钮 */
