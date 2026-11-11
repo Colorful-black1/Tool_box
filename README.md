@@ -467,7 +467,7 @@ npm run test -- --exclude "mobile/**"         # 桌面 Vitest，排除冻结手�
 npm run format        # Prettier
 ```
 
-验证执行须遵守 `AGENTS.md` 的代码量 / 文件数双重门槛。根 lint / test 配置仍含手机目录，以上参数限定桌面范围；本次未修改脚本或测试配置，`mobile:*` 不再属于默认验证流程。
+验证执行按 `AGENTS.md` 的「验证与编译策略」分级：typecheck 默认允许，触碰 IPC／schema／加解密／进程边界时加跑全量 lint 与 test，打包与端到端脚本需用户同意。根 lint / test 配置仍含手机目录，以上参数限定桌面范围；`mobile:*` 不再属于默认验证流程。
 
 桌面交互验收使用现有 Playwright 与 Electron，临时配置目录和合成桥接数据与日常应用隔离，
 不读取真实数据库、不请求 AI、不写系统剪贴板：
