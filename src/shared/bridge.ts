@@ -27,7 +27,11 @@ import type {
   Bookmark,
   ChapterContent,
   ChapterMeta,
+  ChatCompactResult,
   ChatCompletedEvent,
+  ChatCompactionEvent,
+  ChatContextEvent,
+  ChatContextView,
   ChatDeltaEvent,
   ChatErrorEvent,
   ChatMessage,
@@ -239,6 +243,12 @@ export interface ToolboxBridge {
     listMessages(conversationId: string): Promise<ChatMessage[]>
     send(request: ChatSendRequest): Promise<ChatSendResult>
     stop(conversationId: string): Promise<void>
+    /** 当前上下文占用、检查点与窗口来源 */
+    context(conversationId: string): Promise<ChatContextView>
+    /** 手动压缩；进行中会拒绝重复调用 */
+    compact(conversationId: string): Promise<ChatCompactResult>
+    onContext(listener: (event: ChatContextEvent) => void): () => void
+    onCompaction(listener: (event: ChatCompactionEvent) => void): () => void
     onDelta(listener: (event: ChatDeltaEvent) => void): () => void
     onCompleted(listener: (event: ChatCompletedEvent) => void): () => void
     onError(listener: (event: ChatErrorEvent) => void): () => void

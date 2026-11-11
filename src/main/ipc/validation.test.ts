@@ -1,8 +1,38 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_APP_APPEARANCE, readAppAppearance, resolveAppTheme } from '../../shared/appearance'
-import { validateConfigPatch } from './validation'
+import { validateConfigPatch, validateModelContextLimits } from './validation'
 import { defaultPromptTemplates } from '../../shared/prompt-tools'
+
+describe('模型上下文窗口校验', () => {
+  it('接受 manual / api 与 null，并拒绝越界值', () => {
+    expect(
+      validateModelContextLimits({
+        'model-a': { tokens: 131_072, source: 'api' },
+        'model-b': { tokens: 1_048_576, source: 'manual' },
+        'model-c': null
+      })
+    ).toEqual({
+      'model-a': { tokens: 131_072, source: 'api' },
+      'model-b': { tokens: 1_048_576, source: 'manual' },
+      'model-c': null
+    })
+    expect(() =>
+      validateModelContextLimits({ 'model-a': { tokens: 128, source: 'api' } })
+    ).toThrow('4000')
+    expect(() =>
+      validateModelContextLimits({ 'model-a': { tokens: 131_072, source: 'learned' } })
+    ).toThrow()
+    expect(() => validateModelContextLimits({ '../bad': { tokens: 131_072, source: 'api' } })).toThrow()
+  })
+
+  it('自动压缩开关必须是布尔值', () => {
+    expect(validateConfigPatch({ contextAutoCompact: false })).toEqual({
+      contextAutoCompact: false
+    })
+    expect(() => validateConfigPatch({ contextAutoCompact: 'false' })).toThrow()
+  })
+})
 
 describe('桌面外观配置', () => {
   it('工具顺序逐项校验且保持其他配置', () => {

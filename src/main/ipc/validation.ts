@@ -15,7 +15,8 @@ import {
   parseDeveloperCommandInput,
   parseDeveloperCommandToggle
 } from '../../shared/developer-command-validation'
-import type { TodoInput, TodoQuery } from '../../shared/types'
+import type { ModelContextLimitInput, TodoInput, TodoQuery } from '../../shared/types'
+import { isValidContextWindow } from '../../shared/context-budget'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
 import { CODING_AGENT_IDS } from '../../shared/coding-agents'
@@ -563,9 +564,41 @@ export function assertObject(value: unknown, name: string): Record<string, unkno
 }
 
 /** 校验工具与外观的新增字段，保留既有阅读配置和快捷键的合并语义。 */
+/** 模型窗口记录：最多 300 个模型；null 表示删除手动值 */
+export function validateModelContextLimits(
+  value: unknown
+): Record<string, ModelContextLimitInput | null> | undefined {
+  if (value === undefined || value === null) return undefined
+  const input = assertObject(value, '模型窗口')
+  const entries = Object.entries(input)
+  if (entries.length > 300) throw new Error('模型窗口最多记录 300 个模型')
+
+  const result: Record<string, ModelContextLimitInput | null> = {}
+  for (const [model, raw] of entries) {
+    if (!/^(?!.*\.\.)[A-Za-z0-9._:/-]{1,80}$/.test(model)) throw new Error('模型标识无效')
+    if (raw === null) {
+      result[model] = null
+      continue
+    }
+    const entry = assertObject(raw, '模型窗口记录')
+    const tokens = requireNonNegativeInt(entry.tokens, '上下文窗口')
+    if (!isValidContextWindow(tokens)) {
+      throw new Error('上下文窗口需在 4000 到 10000000 之间')
+    }
+    result[model] = {
+      tokens,
+      source: requireEnum(entry.source, '窗口来源', ['manual', 'api'] as const)
+    }
+  }
+  return result
+}
+
 export function validateConfigPatch(value: unknown): Record<string, unknown> {
   const patch = assertObject(value, '配置')
   const validated = { ...patch }
+  if (Object.hasOwn(patch, 'contextAutoCompact')) {
+    validated.contextAutoCompact = requireBoolean(patch.contextAutoCompact, '自动压缩开关')
+  }
   if (Object.hasOwn(patch, 'appearance')) {
     const appearance = assertObject(patch.appearance, '外观配置')
     const theme = requireEnum(appearance.theme, '应用主题', APP_THEMES)

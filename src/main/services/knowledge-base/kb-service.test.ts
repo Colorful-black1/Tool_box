@@ -313,10 +313,10 @@ describe('本地知识库', () => {
     expect((await second.search({ query: '回滚' })).degraded).toBeNull()
   })
 
-  it('知识库表结构与 user_version 升到 v6', () => {
+  it('知识库表结构与 user_version 升到当前版本', () => {
     const database = new Database(join(root, 'toolbox.db'), { readonly: true })
     try {
-      expect(database.pragma('user_version', { simple: true })).toBe(6)
+      expect(database.pragma('user_version', { simple: true })).toBe(7)
       expect(
         database
           .prepare("SELECT name FROM sqlite_master WHERE name = 'kb_chunks_fts'")

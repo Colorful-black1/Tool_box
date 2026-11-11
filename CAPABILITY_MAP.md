@@ -1,5 +1,14 @@
 # Capability Map: Tool_box
 
+## 2026-11-11 对话上下文管理
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| context-budget | 按模型窗口计算触发阈值、保留尾部与收缩校验 | shared | [上下文方案](docs/PLAN-context-management.md) |
+| context-service | 读取检查点、估算占用、选段、调用摘要模型、写检查点 | persistence, settings, ai-gateway | 同上 |
+| chat-context-ui | 标题栏占用、浮层分项、手动压缩、检查点卡片 | renderer-ui, shared | 同上 |
+| model-context-limits | 从 `/models` 元数据、手动值与超长错误学习窗口 | settings, ai-gateway | 同上 |
+
 ## 2026-11-06 本地知识库（P1）
 
 | Module id | Responsibility | Depends on | Spec |

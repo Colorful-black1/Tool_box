@@ -81,6 +81,8 @@ export const IPC = {
   chatSend: 'chat:send',
   chatStop: 'chat:stop',
   chatToolApproval: 'chat:tool-approval',
+  chatContext: 'chat:context',
+  chatCompact: 'chat:compact',
 
   agentPermissionGet: 'agent:permission:get',
   agentPermissionSet: 'agent:permission:set',
@@ -150,7 +152,9 @@ export const CHAT_EVENT = {
   stopped: 'chat:event:stopped',
   toolCall: 'chat:event:tool-call',
   toolResult: 'chat:event:tool-result',
-  toolApproval: 'chat:event:tool-approval'
+  toolApproval: 'chat:event:tool-approval',
+  context: 'chat:event:context',
+  compaction: 'chat:event:compaction'
 } as const
 
 export const WINDOW_EVENT = {

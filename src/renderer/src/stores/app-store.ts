@@ -14,7 +14,11 @@ import type {
   AppInfo,
   BookGroup,
   BookSummary,
+  ChatCompactResult,
+  ChatCompactionEvent,
   ChatCompletedEvent,
+  ChatContextEvent,
+  ChatContextView,
   ChatDeltaEvent,
   ChatErrorEvent,
   ChatMessage,
@@ -94,6 +98,10 @@ interface AppState {
   /** 用户手动从工具填入的内容也留在草稿，发送仍由对话页触发。 */
   chatDraft: string
   messages: ChatMessage[]
+  /** 当前会话的上下文占用 / 检查点；切换会话后重新读取 */
+  context: ChatContextView | null
+  /** 自动或手动压缩进行中 */
+  compacting: boolean
   streaming: StreamingState | null
   /**
    * AI 的工具调用记录。
@@ -138,6 +146,12 @@ interface AppState {
   completeChat(event: ChatCompletedEvent): void
   failChat(event: ChatErrorEvent): void
   stopChat(event: ChatStoppedEvent): void
+
+  // 上下文
+  refreshContext(): Promise<void>
+  compactContext(): Promise<ChatCompactResult | null>
+  receiveContext(event: ChatContextEvent): void
+  receiveCompaction(event: ChatCompactionEvent): void
 
   // AI 助手 Agent
   loadAgentPermission(): Promise<void>
@@ -210,6 +224,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeConversationId: null,
   chatDraft: '',
   messages: [],
+  context: null,
+  compacting: false,
   streaming: null,
   toolCalls: [],
   pendingApproval: null,
@@ -254,6 +270,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const messages = activeConversationId
         ? await bridge.chat.listMessages(activeConversationId)
         : []
+      const context = activeConversationId
+        ? await bridge.chat.context(activeConversationId)
+        : null
 
       set({
         bootstrapped: true,
@@ -262,6 +281,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         conversations,
         activeConversationId,
         messages,
+        context,
         books,
         groups,
         passwords,
@@ -294,9 +314,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectConversation: async (id) => {
     if (get().activeConversationId === id) return
-    set({ activeConversationId: id, messages: [], error: null })
-    const messages = await window.toolbox.chat.listMessages(id)
-    if (get().activeConversationId === id) set({ messages })
+    set({
+      activeConversationId: id,
+      messages: [],
+      context: null,
+      compacting: false,
+      error: null
+    })
+    const [messages, context] = await Promise.all([
+      window.toolbox.chat.listMessages(id),
+      window.toolbox.chat.context(id)
+    ])
+    if (get().activeConversationId === id) set({ messages, context })
   },
 
   createConversation: async () => {
@@ -305,8 +334,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       conversations: [conversation, ...state.conversations],
       activeConversationId: conversation.id,
       messages: [],
+      context: null,
+      compacting: false,
       error: null
     }))
+    void get().refreshContext()
   },
 
   renameConversation: async (id, title) => {
@@ -328,16 +360,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         conversations: remaining,
         activeConversationId: remaining[0].id,
-        messages
+        messages,
+        context: null,
+        compacting: false
       })
+      void get().refreshContext()
       return
     }
     const conversation = await window.toolbox.chat.createConversation()
     set({
       conversations: [conversation],
       activeConversationId: conversation.id,
-      messages: []
+      messages: [],
+      context: null,
+      compacting: false
     })
+    void get().refreshContext()
   },
 
   sendMessage: async (content) => {
@@ -427,6 +465,54 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? null
           : state.pendingApproval
     })),
+
+  // ---------- 上下文 ----------
+  refreshContext: async () => {
+    const id = get().activeConversationId
+    if (!id || !window.toolbox?.chat) return
+    try {
+      const context = await window.toolbox.chat.context(id)
+      if (get().activeConversationId === id) {
+        set({ context, compacting: context.compacting })
+      }
+    } catch {
+      // 上下文只是辅助信息，读取失败不覆盖对话本身的错误
+    }
+  },
+
+  compactContext: async () => {
+    const id = get().activeConversationId
+    if (!id || get().compacting) return null
+    set({ compacting: true, error: null })
+    try {
+      const result = await window.toolbox.chat.compact(id)
+      if (result.message && !result.compacted) set({ error: result.message })
+      await get().refreshContext()
+      return result
+    } catch (error) {
+      set({ error: toErrorMessage(error) })
+      return null
+    } finally {
+      set({ compacting: false })
+    }
+  },
+
+  receiveContext: (event) => {
+    if (event.conversationId !== get().activeConversationId) return
+    set({ context: event.context, compacting: event.context.compacting })
+  },
+
+  receiveCompaction: (event) => {
+    if (event.conversationId !== get().activeConversationId) return
+    if (event.phase === 'started') {
+      set({ compacting: true })
+      return
+    }
+    set({
+      compacting: false,
+      ...(event.phase === 'failed' && event.message ? { error: event.message } : {})
+    })
+  },
 
   // ---------- AI 助手 Agent ----------
   loadAgentPermission: async () => {

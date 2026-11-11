@@ -13,10 +13,12 @@ import type {
   AiModelListResult,
   AiProfileInput,
   AiProfileView,
-  AiProviderId
+  AiProviderId,
+  ModelContextLimitView
 } from '../../../shared/types'
+import { isValidContextWindow } from '../../../shared/context-budget'
 import { AiGatewayError, normalizeOpenAiBaseUrl } from '../ai-gateway/errors'
-import { fetchModelIds } from '../ai-gateway/model-fetcher'
+import { fetchModelList } from '../ai-gateway/model-fetcher'
 import { buildProviderHeaders, CLIENT_USER_AGENT, requiresCustomUserAgent } from '../ai-gateway/provider-headers'
 
 /** 落盘结构 v2：多套档案 + 当前启用项 */
@@ -42,6 +44,19 @@ interface StoredProfile {
   embeddingModel?: string
   /** 检索结果重排模型；空串表示不重排。 */
   rerankModel?: string
+  /**
+   * 按模型缓存的上下文窗口。manual / api / learned 分开保存：
+   * 手动值永远优先，接口刷新可以覆盖 learned，learned 又可以在接口值
+   * 与实际套餐不符时纠正它。
+   */
+  modelContextLimits?: Record<string, StoredModelContextLimit>
+}
+
+interface StoredModelContextLimit {
+  manual?: number
+  api?: number
+  learned?: number
+  updatedAtMs: number
 }
 
 /** 知识库模型调用所需的最小配置；明文 Key 只在主进程内存里使用。 */
@@ -66,6 +81,8 @@ const EMPTY_SETTINGS: StoredSettings = { version: 2, activeId: '', profiles: [] 
  */
 export class SettingsService {
   private readonly filePath: string
+  /** 同一进程内每个档案/模型只自动探测一次，避免每次保存都请求 /models */
+  private readonly contextLimitRefreshAttempts = new Set<string>()
 
   constructor(
     directory: string,
@@ -156,7 +173,8 @@ export class SettingsService {
       selectedModels: normalizeModelList(input.selectedModels ?? existing?.selectedModels),
       // 不传表示保留（对话切模型时不会清掉向量配置），空串表示清空
       embeddingModel: normalizeModelName(input.embeddingModel, existing?.embeddingModel),
-      rerankModel: normalizeModelName(input.rerankModel, existing?.rerankModel)
+      rerankModel: normalizeModelName(input.rerankModel, existing?.rerankModel),
+      modelContextLimits: mergeContextLimits(existing?.modelContextLimits, input.modelContextLimits)
     }
 
     const profiles = existing
@@ -172,6 +190,8 @@ export class SettingsService {
       profiles
     })
 
+    // 后台尝试解析窗口元数据；失败静默，不阻塞保存，也不影响没有扩展字段的端点
+    this.scheduleContextLimitRefresh(profile)
     return this.getView()
   }
 
@@ -214,8 +234,18 @@ export class SettingsService {
     if (!apiKey) throw new AiGatewayError('请先填写或保存 API Key')
 
     try {
-      const models = await fetchModelIds({ baseUrl, apiKey, headers: this.modelListHeaders(input) })
-      return { models, source: 'remote' }
+      const result = await fetchModelList({
+        baseUrl,
+        apiKey,
+        headers: this.modelListHeaders(input)
+      })
+      return {
+        models: result.models,
+        source: 'remote',
+        ...(Object.keys(result.contextWindows).length > 0
+          ? { contextWindows: result.contextWindows }
+          : {})
+      }
     } catch (error) {
       const preset = findAiProvider(input.provider)
       if (preset.models.length === 0) throw error
@@ -283,6 +313,107 @@ export class SettingsService {
     }
   }
 
+  /** 当前启用档案的模型与窗口记录；没有档案时返回 null，不要求 Key */
+  async getActiveContextInfo(): Promise<{
+    model: string
+    provider: AiProviderId
+    baseUrl: string
+    limit: ModelContextLimitView | null
+  } | null> {
+    const stored = await this.read()
+    const profile = stored.profiles.find((item) => item.id === stored.activeId)
+    if (!profile) return null
+    return {
+      model: profile.model,
+      provider: profile.provider,
+      baseUrl: profile.baseUrl,
+      limit: resolveStoredLimit(profile.modelContextLimits?.[profile.model])
+    }
+  }
+
+  /**
+   * 供应商报「上下文超长」时学习真实上限。
+   * 手动值永远优先；同一模型重复学习只更新 learned。
+   */
+  async recordLearnedContextLimit(model: string, tokens: number): Promise<void> {
+    if (!model || !isValidContextWindow(tokens)) return
+    const stored = await this.read()
+    const index = stored.profiles.findIndex((item) => item.id === stored.activeId)
+    if (index < 0) return
+    const profile = stored.profiles[index]
+    const current = profile.modelContextLimits?.[model]
+    if (current?.manual) return
+
+    const nextLimits = { ...(profile.modelContextLimits ?? {}) }
+    nextLimits[model] = {
+      ...current,
+      learned: tokens,
+      updatedAtMs: Date.now()
+    }
+    const profiles = stored.profiles.slice()
+    profiles[index] = { ...profile, modelContextLimits: nextLimits }
+    await this.write({ ...stored, profiles })
+  }
+
+  /**
+   * 保存后后台刷新一次 `/models` 元数据。
+   *
+   * 单元测试里直接调用 save 的地方很多，跳过网络请求避免拖慢或污染测试；
+   * 正式运行时失败静默，用户下次打开设置仍可手动「获取模型列表」。
+   */
+  private scheduleContextLimitRefresh(profile: StoredProfile): void {
+    if (process.env.VITEST) return
+    if (!profile.model) return
+    // 已经记录过窗口（手填 / 接口 / 学习）就不再自动请求
+    if (profile.modelContextLimits?.[profile.model]) return
+
+    const key = `${profile.id}:${profile.model}`
+    if (this.contextLimitRefreshAttempts.has(key)) return
+    this.contextLimitRefreshAttempts.add(key)
+
+    void this.refreshContextLimits(profile.id).catch(() => {
+      // 窗口元数据是增强信息，失败不影响已保存的档案
+    })
+  }
+
+  private async refreshContextLimits(profileId: string): Promise<void> {
+    const stored = await this.read()
+    const profile = stored.profiles.find((item) => item.id === profileId)
+    if (!profile || !profile.baseUrl || !profile.apiKeyCipher) return
+
+    const result = await fetchModelList({
+      baseUrl: profile.baseUrl,
+      apiKey: this.decryptKey(profile),
+      headers: this.modelListHeaders({
+        profileId,
+        provider: profile.provider,
+        baseUrl: profile.baseUrl
+      })
+    })
+    const entries = Object.entries(result.contextWindows)
+    if (entries.length === 0) return
+
+    // 请求期间用户可能又保存了一次，重新读取并按 manual 优先级合并
+    const latest = await this.read()
+    const index = latest.profiles.findIndex((item) => item.id === profileId)
+    if (index < 0) return
+    const current = latest.profiles[index]
+    const nextLimits = { ...(current.modelContextLimits ?? {}) }
+    for (const [model, tokens] of entries) {
+      const existing = nextLimits[model]
+      if (existing?.manual) continue
+      nextLimits[model] = {
+        manual: existing?.manual,
+        api: tokens,
+        updatedAtMs: Date.now()
+      }
+    }
+
+    const profiles = latest.profiles.slice()
+    profiles[index] = { ...current, modelContextLimits: nextLimits }
+    await this.write({ ...latest, profiles })
+  }
+
   /** 取当前启用档案指定用途的模型配置；未填模型返回 null，填了但缺地址 / Key 则报错。 */
   private endpointConfig(
     stored: StoredSettings,
@@ -326,8 +457,78 @@ function toProfileView(profile: StoredProfile): AiProfileView {
     hasApiKey: profile.apiKeyCipher.length > 0,
     selectedModels: profile.selectedModels ?? [],
     embeddingModel: profile.embeddingModel ?? '',
-    rerankModel: profile.rerankModel ?? ''
+    rerankModel: profile.rerankModel ?? '',
+    ...(contextLimitViews(profile.modelContextLimits) ?? {})
   }
+}
+
+function contextLimitViews(
+  stored: Record<string, StoredModelContextLimit> | undefined
+): { modelContextLimits: Record<string, ModelContextLimitView> } | null {
+  if (!stored) return null
+  const views: Record<string, ModelContextLimitView> = {}
+  for (const [model, entry] of Object.entries(stored)) {
+    const view = resolveStoredLimit(entry)
+    if (view) views[model] = view
+  }
+  return Object.keys(views).length > 0 ? { modelContextLimits: views } : null
+}
+
+function resolveStoredLimit(
+  entry: StoredModelContextLimit | undefined
+): ModelContextLimitView | null {
+  if (!entry) return null
+  if (isValidContextWindow(entry.manual)) {
+    return { tokens: entry.manual, source: 'manual', updatedAtMs: entry.updatedAtMs }
+  }
+  // learned 来自真实超长错误，比接口目录值更可信；接口刷新会清掉 learned
+  if (isValidContextWindow(entry.learned)) {
+    return { tokens: entry.learned, source: 'learned', updatedAtMs: entry.updatedAtMs }
+  }
+  if (isValidContextWindow(entry.api)) {
+    return { tokens: entry.api, source: 'api', updatedAtMs: entry.updatedAtMs }
+  }
+  return null
+}
+
+/** 合并设置页提交的窗口记录：manual 最高，api 覆盖 learned，null 只删 manual */
+function mergeContextLimits(
+  existing: Record<string, StoredModelContextLimit> | undefined,
+  input: Record<string, { tokens: number; source: 'manual' | 'api' } | null> | undefined
+): Record<string, StoredModelContextLimit> | undefined {
+  if (input === undefined) return existing
+  const next: Record<string, StoredModelContextLimit> = { ...(existing ?? {}) }
+
+  for (const [model, patch] of Object.entries(input)) {
+    if (!model || model.length > MAX_MODEL_CHARS) continue
+    const current = next[model]
+    if (patch === null) {
+      if (!current) continue
+      const withoutManual: StoredModelContextLimit = {
+        api: current.api,
+        learned: current.learned,
+        updatedAtMs: Date.now()
+      }
+      if (isValidContextWindow(withoutManual.api) || isValidContextWindow(withoutManual.learned)) {
+        next[model] = withoutManual
+      } else {
+        delete next[model]
+      }
+      continue
+    }
+    if (!isValidContextWindow(patch.tokens)) continue
+    if (patch.source === 'manual') {
+      next[model] = { ...current, manual: patch.tokens, updatedAtMs: Date.now() }
+    } else {
+      next[model] = {
+        manual: current?.manual,
+        api: patch.tokens,
+        updatedAtMs: Date.now()
+      }
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined
 }
 
 function normalizeModelName(input: string | undefined, previous: string | undefined): string {
@@ -406,6 +607,33 @@ function toStoredProfile(value: unknown): StoredProfile | null {
     selectedModels: normalizeModelList(record.selectedModels),
     // 旧档案没有向量 / 重排模型：读出来为空，不影响对话
     embeddingModel: typeof record.embeddingModel === 'string' ? record.embeddingModel.trim() : '',
-    rerankModel: typeof record.rerankModel === 'string' ? record.rerankModel.trim() : ''
+    rerankModel: typeof record.rerankModel === 'string' ? record.rerankModel.trim() : '',
+    modelContextLimits: normalizeContextLimits(record.modelContextLimits)
   }
+}
+
+/** 读取历史配置里的窗口记录；非法值直接丢弃，不让坏配置阻断启动 */
+function normalizeContextLimits(
+  value: unknown
+): Record<string, StoredModelContextLimit> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const next: Record<string, StoredModelContextLimit> = {}
+  for (const [model, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!model || model.length > MAX_MODEL_CHARS) continue
+    if (typeof raw !== 'object' || raw === null) continue
+    const record = raw as Record<string, unknown>
+    const entry: StoredModelContextLimit = {
+      updatedAtMs:
+        typeof record.updatedAtMs === 'number' && Number.isFinite(record.updatedAtMs)
+          ? record.updatedAtMs
+          : Date.now()
+    }
+    if (isValidContextWindow(record.manual)) entry.manual = record.manual
+    if (isValidContextWindow(record.api)) entry.api = record.api
+    if (isValidContextWindow(record.learned)) entry.learned = record.learned
+    if (entry.manual !== undefined || entry.api !== undefined || entry.learned !== undefined) {
+      next[model] = entry
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined
 }

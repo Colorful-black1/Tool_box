@@ -4,6 +4,7 @@ import type { ChatOpenAI } from '@langchain/openai'
 import { createAgent } from 'langchain'
 
 import type { AgentPermission, AgentToolRisk, ChatMessage } from '../../../shared/types'
+import { checkpointContent } from '../ai-gateway/context-prompt'
 import { appTargetUrl, parseAppTarget } from '../../../shared/app-reference'
 import type { AppReference } from '../../../shared/app-reference'
 import type { ApprovalGate } from './approval-gate'
@@ -24,9 +25,18 @@ export interface AgentToolSink {
   }): void
 }
 
+/** 最后一次模型调用的实测用量；模型名与时间由 Gateway 补齐 */
+export interface AgentTokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
 export interface RunAgentInput {
   conversationId: string
   history: ChatMessage[]
+  /** 已生成的上下文检查点；有值时作为 HumanMessage 放在历史最前 */
+  summary?: string
   model: ChatOpenAI
   systemPrompt: string
   tools: AgentToolDefinition[]
@@ -41,6 +51,7 @@ export interface RunAgentResult {
   content: string
   usedTools: boolean
   references: AppReference[]
+  usage: AgentTokenUsage | null
 }
 
 /**
@@ -52,7 +63,8 @@ export interface RunAgentResult {
  * - `signal` 中止时由上层捕获并转为「已停止」。
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { conversationId, history, model, systemPrompt, tools, permission, gate, sink } = input
+  const { conversationId, history, summary, model, systemPrompt, tools, permission, gate, sink } =
+    input
 
   let usedTools = false
   const references = new Map<string, AppReference>()
@@ -94,28 +106,57 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
   })
 
   const stream = agent.streamEvents(
-    { messages: toAgentMessages(history) },
+    { messages: toAgentMessages(history, summary) },
     { version: 'v2', signal: input.signal, recursionLimit: AGENT_RECURSION_LIMIT }
   )
 
   let content = ''
+  let usage: AgentTokenUsage | null = null
   for await (const event of stream) {
+    if (event.event === 'on_chat_model_end') {
+      const output = (event.data as { output?: unknown } | undefined)?.output
+      usage = readUsage(output) ?? usage
+      continue
+    }
     if (event.event !== 'on_chat_model_stream') continue
     const chunk = (event.data as { chunk?: AIMessageChunk } | undefined)?.chunk
     if (!chunk) continue
+    usage = readUsage(chunk) ?? usage
     const delta = extractDelta(chunk)
     if (!delta) continue
     content += delta
     input.onDelta(delta)
   }
 
-  return { content, usedTools, references: [...references.values()] }
+  return { content, usedTools, references: [...references.values()], usage }
 }
 
-function toAgentMessages(messages: ChatMessage[]): BaseMessage[] {
-  return messages.map((message) =>
+function toAgentMessages(messages: ChatMessage[], summary?: string): BaseMessage[] {
+  const converted = messages.map((message) =>
     message.role === 'user' ? new HumanMessage(message.content) : new AIMessage(message.content)
   )
+  if (!summary) return converted
+  return [new HumanMessage(checkpointContent(summary)), ...converted]
+}
+
+function readUsage(value: unknown): AgentTokenUsage | null {
+  if (typeof value !== 'object' || value === null) return null
+  const usage = (value as { usage_metadata?: unknown }).usage_metadata
+  if (typeof usage !== 'object' || usage === null) return null
+  const record = usage as Record<string, unknown>
+  const inputTokens = tokenNumber(record.input_tokens)
+  const outputTokens = tokenNumber(record.output_tokens)
+  const totalTokens = tokenNumber(record.total_tokens)
+  if (inputTokens === null && outputTokens === null && totalTokens === null) return null
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    totalTokens: totalTokens ?? (inputTokens ?? 0) + (outputTokens ?? 0)
+  }
+}
+
+function tokenNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
 }
 
 /** 从消息分片里取出纯文本增量（忽略工具调用分片与多模态 parts） */

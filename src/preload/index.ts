@@ -10,7 +10,11 @@ import type {
   AgentToolResultEvent,
   AiFetchModelsInput,
   AiProfileInput,
+  ChatCompactResult,
   ChatCompletedEvent,
+  ChatCompactionEvent,
+  ChatContextEvent,
+  ChatContextView,
   ChatDeltaEvent,
   ChatErrorEvent,
   ChatSendRequest,
@@ -168,6 +172,14 @@ const bridge: ToolboxBridge = {
     listMessages: (conversationId: string) => ipcRenderer.invoke(IPC.messageList, conversationId),
     send: (request: ChatSendRequest) => ipcRenderer.invoke(IPC.chatSend, request),
     stop: (conversationId: string) => ipcRenderer.invoke(IPC.chatStop, conversationId),
+    context: (conversationId: string): Promise<ChatContextView> =>
+      ipcRenderer.invoke(IPC.chatContext, conversationId),
+    compact: (conversationId: string): Promise<ChatCompactResult> =>
+      ipcRenderer.invoke(IPC.chatCompact, conversationId),
+    onContext: (listener: (event: ChatContextEvent) => void) =>
+      subscribe<ChatContextEvent>(CHAT_EVENT.context, listener),
+    onCompaction: (listener: (event: ChatCompactionEvent) => void) =>
+      subscribe<ChatCompactionEvent>(CHAT_EVENT.compaction, listener),
     onDelta: (listener: (event: ChatDeltaEvent) => void) =>
       subscribe<ChatDeltaEvent>(CHAT_EVENT.delta, listener),
     onCompleted: (listener: (event: ChatCompletedEvent) => void) =>

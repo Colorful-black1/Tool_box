@@ -308,6 +308,8 @@ export interface AiProfileView {
   embeddingModel: string
   /** 检索结果重排模型；空串表示不重排。 */
   rerankModel: string
+  /** 每个模型解析到的上下文窗口；未记录的模型回落到默认 128k。 */
+  modelContextLimits?: Record<string, ModelContextLimitView>
 }
 
 export interface AiConfigView {
@@ -332,6 +334,11 @@ export interface AiProfileInput {
    */
   embeddingModel?: string
   rerankModel?: string
+  /**
+   * 本次保存要更新的模型窗口：source = manual 为手填，api 为模型列表结果；
+   * null 表示删除该模型的手动值。不传 = 保留已保存值。
+   */
+  modelContextLimits?: Record<string, ModelContextLimitInput | null>
 }
 
 /** 获取模型列表入参：apiKey 留空时回落到档案已保存的 Key */
@@ -348,6 +355,8 @@ export type AiModelSource = 'remote' | 'preset'
 export interface AiModelListResult {
   models: string[]
   source: AiModelSource
+  /** 从 /models 元数据解析到的上下文窗口；不含未返回窗口的模型 */
+  contextWindows?: Record<string, number>
   /** 降级或异常提示文案（已脱敏） */
   message?: string
 }
@@ -396,6 +405,101 @@ export interface ChatErrorEvent {
 
 export interface ChatStoppedEvent {
   conversationId: string
+}
+
+// ============ 对话上下文：占用与压缩 ============
+
+/** 窗口来源：手动 / 模型列表接口 / 超长错误学习 / 目录兜底 / 保守默认 */
+export type ContextWindowSource = 'manual' | 'api' | 'learned' | 'catalog' | 'default'
+
+/** 单个模型的窗口记录（视图只读） */
+export interface ModelContextLimitView {
+  tokens: number
+  source: Exclude<ContextWindowSource, 'default'>
+  updatedAtMs: number
+}
+
+/** 档案保存时提交的窗口记录：learned 只能由主进程写入 */
+export interface ModelContextLimitInput {
+  tokens: number
+  source: 'manual' | 'api'
+}
+
+/** 上下文占用的分项，单位为估算 token */
+export interface ChatContextBreakdown {
+  /** system prompt */
+  system: number
+  /** 当前权限下暴露的工具 schema */
+  tools: number
+  /** 已生成的检查点摘要 */
+  summary: number
+  /** 检查点之后的原文消息 */
+  messages: number
+}
+
+/** 上一次模型调用的实测用量；只存在内存，重启后为空 */
+export interface ChatContextUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  model: string
+  measuredAtMs: number
+}
+
+/** 当前生效的检查点 */
+export interface ChatCheckpointView {
+  id: string
+  coveredMessageId: string
+  coveredMessageCount: number
+  /** 摘要输入被二次裁剪、未纳入摘要的最早消息条数 */
+  omittedMessageCount: number
+  summary: string
+  /** 摘要本身的估算 token */
+  tokens: number
+  /** 被摘要替换掉的原文估算 token，用于展示释放量 */
+  sourceTokens: number
+  model: string
+  createdAtMs: number
+}
+
+/** 上下文浮层 / 标题栏所需的只读视图 */
+export interface ChatContextView {
+  conversationId: string
+  model: string
+  windowTokens: number
+  windowSource: ContextWindowSource
+  thresholdTokens: number
+  estimatedTokens: number
+  /** 0-100，可能超过 100 */
+  percent: number
+  breakdown: ChatContextBreakdown
+  lastUsage: ChatContextUsage | null
+  checkpoint: ChatCheckpointView | null
+  autoCompact: boolean
+  compacting: boolean
+  messageCount: number
+}
+
+export interface ChatCompactResult {
+  compacted: boolean
+  coveredMessages: number
+  freedTokens: number
+  message?: string
+  checkpoint?: ChatCheckpointView
+}
+
+export interface ChatContextEvent {
+  conversationId: string
+  context: ChatContextView
+}
+
+export type ChatCompactionPhase = 'started' | 'finished' | 'failed' | 'skipped'
+
+export interface ChatCompactionEvent {
+  conversationId: string
+  phase: ChatCompactionPhase
+  message?: string
+  result?: ChatCompactResult
 }
 
 // ============ AI 助手 Agent（工具接管） ============

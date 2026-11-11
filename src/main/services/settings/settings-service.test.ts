@@ -225,6 +225,81 @@ describe('SettingsService', () => {
     expect(await service.getRerankConfig()).toBeNull()
   })
 
+  it('stores per-model context limits and lets learned correct api without overriding manual', async () => {
+    const service = new SettingsService(directory, new FakeSafeStorage())
+    const created = await service.save({
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'model-a',
+      apiKey: 'sk-1',
+      modelContextLimits: {
+        'model-a': { tokens: 1_048_576, source: 'api' },
+        'model-b': { tokens: 131_072, source: 'manual' }
+      }
+    })
+    expect(created.profiles[0].modelContextLimits).toEqual({
+      'model-a': { tokens: 1_048_576, source: 'api', updatedAtMs: expect.any(Number) },
+      'model-b': { tokens: 131_072, source: 'manual', updatedAtMs: expect.any(Number) }
+    })
+    expect(await service.getActiveContextInfo()).toMatchObject({
+      model: 'model-a',
+      limit: { tokens: 1_048_576, source: 'api' }
+    })
+
+    // api 值被实际套餐纠正为 learned
+    await service.recordLearnedContextLimit('model-a', 200_000)
+    expect((await service.getView()).profiles[0].modelContextLimits?.['model-a']).toMatchObject({
+      tokens: 200_000,
+      source: 'learned'
+    })
+
+    // 手动值不能被自动学习覆盖
+    await service.recordLearnedContextLimit('model-b', 64_000)
+    expect((await service.getView()).profiles[0].modelContextLimits?.['model-b']).toMatchObject({
+      tokens: 131_072,
+      source: 'manual'
+    })
+
+    // 删除手动值后，保留的 api 值重新生效
+    await service.save({
+      id: created.profiles[0].id,
+      name: '主力',
+      provider: 'custom',
+      baseUrl: 'https://api.example.com',
+      model: 'model-a',
+      modelContextLimits: { 'model-b': null }
+    })
+    expect((await service.getView()).profiles[0].modelContextLimits?.['model-b']).toBeUndefined()
+    expect((await service.getView()).profiles[0].modelContextLimits?.['model-a']).toMatchObject({
+      tokens: 200_000,
+      source: 'learned'
+    })
+  })
+
+  it('drops invalid stored model limits instead of failing to start', () => {
+    const result = normalizeStoredSettings({
+      version: 2,
+      activeId: 'p1',
+      profiles: [
+        {
+          id: 'p1',
+          provider: 'custom',
+          baseUrl: 'https://api.example.com/v1',
+          model: 'm',
+          modelContextLimits: {
+            good: { api: 131_072, updatedAtMs: 1 },
+            bad: { manual: 12, updatedAtMs: 1 },
+            fraction: { api: 131_072.5, updatedAtMs: 1 }
+          }
+        }
+      ]
+    })
+    expect(result.profiles[0].modelContextLimits).toEqual({
+      good: { api: 131_072, updatedAtMs: 1 }
+    })
+  })
+
   it('reports a missing key instead of silently disabling the embedding model', async () => {
     await writeFile(
       join(directory, SETTINGS_FILE_NAME),

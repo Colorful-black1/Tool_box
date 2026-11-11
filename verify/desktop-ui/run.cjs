@@ -16,6 +16,7 @@ const verifyAgentUsage = require('./agent-usage.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyKnowledge = require('./knowledge.cjs')
 const verifyModelSettings = require('./model-settings.cjs')
+const verifyContext = require('./context.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
 const verifyDeveloperUtilities = require('./developer-utilities.cjs')
@@ -45,6 +46,11 @@ async function main() {
     env.TOOLBOX_CODING_AGENT_VERIFY = '1'
   if (process.argv.includes('--convenience-only')) env.TOOLBOX_CONVENIENCE_VERIFY = '1'
   if (process.argv.includes('--model-settings-only')) env.TOOLBOX_MODEL_SETTINGS_VERIFY = '1'
+  if (process.argv.includes('--context-only')) {
+    env.TOOLBOX_CONTEXT_VERIFY = '1'
+    // 需要一套已保存的档案，压缩按钮才不会被「未配置」禁用
+    env.TOOLBOX_MODEL_SETTINGS_VERIFY = '1'
+  }
   delete env.ELECTRON_RUN_AS_NODE
   let app
   const passed = []
@@ -221,6 +227,13 @@ async function main() {
       await verifyModelSettings({ page, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`知识库模型设置验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+
+    if (process.argv.includes('--context-only')) {
+      await verifyContext({ page, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`对话上下文验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
 

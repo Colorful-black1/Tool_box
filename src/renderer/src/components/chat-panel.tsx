@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { ChatMessage } from '@shared/types'
+import type { ChatCheckpointView, ChatContextView, ChatMessage } from '@shared/types'
 import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
+import { formatCompact } from '@shared/usage-format'
 import type { PendingApprovalView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
@@ -10,6 +11,7 @@ import { buildMessageNote } from '@shared/message-note'
 import { openAppReference } from '../lib/open-app-reference'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
+import { Popover } from './popover'
 import { SendIcon, StopIcon } from './icons'
 
 export function ChatPanel(): JSX.Element {
@@ -17,6 +19,8 @@ export function ChatPanel(): JSX.Element {
   const activeConversationId = useAppStore((state) => state.activeConversationId)
   const messages = useAppStore((state) => state.messages)
   const streaming = useAppStore((state) => state.streaming)
+  const compacting = useAppStore((state) => state.compacting)
+  const context = useAppStore((state) => state.context)
   const error = useAppStore((state) => state.error)
   const pendingApproval = useAppStore((state) => state.pendingApproval)
 
@@ -33,12 +37,17 @@ export function ChatPanel(): JSX.Element {
       <header className="chat-head">
         <h2 className="chat-title">{activeConversation?.title ?? '未选择会话'}</h2>
         <div className="chat-head-right">
+          <ContextMeter context={context} />
           <PermissionSelect />
           <div
-            className={`chat-status${streaming ? ' streaming' : ''}`}
+            className={`chat-status${streaming || compacting ? ' streaming' : ''}`}
             aria-live="polite"
           >
-            {streaming ? '生成中 · STREAMING' : '就绪 · READY'}
+            {compacting
+              ? '压缩上下文 · COMPACTING'
+              : streaming
+                ? '生成中 · STREAMING'
+                : '就绪 · READY'}
           </div>
         </div>
       </header>
@@ -47,6 +56,8 @@ export function ChatPanel(): JSX.Element {
         key={activeConversationId ?? 'empty'}
         messages={messages}
         streamingContent={streamingContent}
+        checkpoint={context?.checkpoint ?? null}
+        compacting={compacting}
       />
 
       {pendingApproval ? <ApprovalCard approval={pendingApproval} /> : null}
@@ -59,6 +70,151 @@ export function ChatPanel(): JSX.Element {
 
       <Composer />
     </section>
+  )
+}
+
+const WINDOW_SOURCE_LABELS: Record<ChatContextView['windowSource'], string> = {
+  manual: '手动设置',
+  api: '模型接口',
+  learned: '错误学习',
+  catalog: '模型目录',
+  default: '默认 128k'
+}
+
+function ContextMeter({ context }: { context: ChatContextView | null }): JSX.Element | null {
+  const compacting = useAppStore((state) => state.compacting)
+  const settings = useAppStore((state) => state.settings)
+  const compactContext = useAppStore((state) => state.compactContext)
+  const refreshContext = useAppStore((state) => state.refreshContext)
+  const anchor = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [toggling, setToggling] = useState(false)
+
+  useEffect(() => {
+    setOpen(false)
+  }, [context?.conversationId])
+
+  if (!context) return null
+
+  const percent = Math.max(0, context.percent)
+  const label = `${Math.round(percent)}%`
+  const level = percent >= 100 ? ' over' : percent >= 80 ? ' near' : ''
+  const configured = Boolean(
+    settings?.activeId && settings.profiles.some((item) => item.id === settings.activeId)
+  )
+  const checkpoint = context.checkpoint
+
+  const toggleAuto = async (): Promise<void> => {
+    if (toggling) return
+    setToggling(true)
+    try {
+      await window.toolbox.config.set({ contextAutoCompact: !context.autoCompact })
+      await refreshContext()
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  return (
+    <div className="chat-context">
+      <button
+        type="button"
+        ref={anchor}
+        className={`btn-ghost chat-context-trigger${level}`}
+        aria-expanded={open}
+        aria-label={`上下文约 ${label}，${formatCompact(context.estimatedTokens)} / ${formatCompact(context.windowTokens)} token`}
+        title={`上下文约 ${label}`}
+        onClick={() => setOpen(!open)}
+      >
+        上下文 {label}
+      </button>
+      {open ? (
+        <Popover
+          anchor={anchor}
+          onClose={() => setOpen(false)}
+          className="agent-context-popover chat-context-popover"
+          placement="auto"
+          matchAnchorWidth={false}
+        >
+          <strong>当前上下文</strong>
+          <p>
+            约 {formatCompact(context.estimatedTokens)} / {formatCompact(context.windowTokens)} Token
+            {' · '}
+            {label}
+          </p>
+          <progress max={100} value={Math.min(100, percent)} aria-label="上下文使用率" />
+          {percent >= 100 ? (
+            <p className="field-hint">已超过窗口 {Math.round(percent - 100)}%</p>
+          ) : null}
+          <dl className="chat-context-breakdown">
+            <div>
+              <dt>系统提示</dt>
+              <dd>{formatCompact(context.breakdown.system)}</dd>
+            </div>
+            <div>
+              <dt>工具定义</dt>
+              <dd>{formatCompact(context.breakdown.tools)}</dd>
+            </div>
+            <div>
+              <dt>检查点摘要</dt>
+              <dd>{formatCompact(context.breakdown.summary)}</dd>
+            </div>
+            <div>
+              <dt>最近消息</dt>
+              <dd>{formatCompact(context.breakdown.messages)}</dd>
+            </div>
+          </dl>
+          <p className="field-hint">
+            窗口来源：{WINDOW_SOURCE_LABELS[context.windowSource]} · 压缩阈值{' '}
+            {formatCompact(context.thresholdTokens)}
+          </p>
+          {context.lastUsage ? (
+            <p className="field-hint">
+              上次实测：{formatCompact(context.lastUsage.inputTokens + context.lastUsage.outputTokens)}{' '}
+              Token（含工具过程，可能高于下一轮）
+            </p>
+          ) : (
+            <p className="field-hint">尚无实测用量，当前为估算值。</p>
+          )}
+          {checkpoint ? (
+            <p className="field-hint">
+              上次压缩：{new Date(checkpoint.createdAtMs).toLocaleString('zh-CN')} · 覆盖{' '}
+              {checkpoint.coveredMessageCount} 条 · 释放约{' '}
+              {formatCompact(Math.max(0, checkpoint.sourceTokens - checkpoint.tokens))} Token
+              {checkpoint.omittedMessageCount > 0
+                ? ` · 另有 ${checkpoint.omittedMessageCount} 条最早消息未纳入摘要`
+                : ''}
+            </p>
+          ) : null}
+          <div className="chat-context-actions">
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={compacting || !configured || context.messageCount <= 2}
+              onClick={() => {
+                setOpen(false)
+                void compactContext()
+              }}
+            >
+              {compacting ? '压缩中…' : '立即压缩'}
+            </button>
+            <button
+              type="button"
+              className={`toggle-switch${context.autoCompact ? ' on' : ''}`}
+              role="switch"
+              aria-checked={context.autoCompact}
+              aria-label="自动压缩"
+              disabled={toggling}
+              onClick={() => void toggleAuto()}
+            >
+              <span aria-hidden="true" />
+            </button>
+            <span className="field-hint">自动压缩</span>
+          </div>
+          <p className="field-hint">压缩会额外调用一次模型，可能产生费用。</p>
+        </Popover>
+      ) : null}
+    </div>
   )
 }
 
@@ -85,6 +241,8 @@ function PermissionSelect(): JSX.Element {
 interface MessageListProps {
   messages: ChatMessage[]
   streamingContent: string | null
+  checkpoint: ChatCheckpointView | null
+  compacting: boolean
 }
 
 /**
@@ -95,7 +253,12 @@ interface MessageListProps {
  * 需要人工确认的写操作由单独的审批卡承担（见 {@link ApprovalCard}），
  * 那种必须露出来。
  */
-function MessageList({ messages, streamingContent }: MessageListProps): JSX.Element {
+function MessageList({
+  messages,
+  streamingContent,
+  checkpoint,
+  compacting
+}: MessageListProps): JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const following = useRef(true)
@@ -136,6 +299,9 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
   }, [scrollToLatest])
 
   const empty = messages.length === 0 && streamingContent === null
+  const checkpointIndex = checkpoint
+    ? messages.findIndex((message) => message.id === checkpoint.coveredMessageId)
+    : -1
 
   return (
     <div className="message-thread">
@@ -173,16 +339,26 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
             </div>
           ) : (
             <>
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  role={message.role}
-                  content={message.content}
-                  createdAtMs={message.createdAtMs}
-                />
+              {checkpoint && checkpointIndex < 0 ? <CheckpointCard checkpoint={checkpoint} /> : null}
+              {messages.map((message, index) => (
+                <Fragment key={message.id}>
+                  <MessageBubble
+                    role={message.role}
+                    content={message.content}
+                    createdAtMs={message.createdAtMs}
+                  />
+                  {checkpoint && index === checkpointIndex ? (
+                    <CheckpointCard checkpoint={checkpoint} />
+                  ) : null}
+                </Fragment>
               ))}
               {streamingContent !== null ? (
-                <MessageBubble role="assistant" content={streamingContent} streaming />
+                <MessageBubble
+                  role="assistant"
+                  content={streamingContent}
+                  streaming
+                  placeholder={compacting ? '正在压缩上下文…' : undefined}
+                />
               ) : null}
             </>
           )}
@@ -193,6 +369,29 @@ function MessageList({ messages, streamingContent }: MessageListProps): JSX.Elem
           回到最新
         </button>
       ) : null}
+    </div>
+  )
+}
+
+function CheckpointCard({ checkpoint }: { checkpoint: ChatCheckpointView }): JSX.Element {
+  return (
+    <div className="chat-checkpoint">
+      <div className="chat-checkpoint-head">
+        已压缩 {checkpoint.coveredMessageCount} 条更早消息
+        <span className="chat-checkpoint-meta">
+          {new Date(checkpoint.createdAtMs).toLocaleString('zh-CN')}
+        </span>
+      </div>
+      <p className="field-hint">
+        原始消息仍保留在下方，仅发送给模型时使用摘要。
+        {checkpoint.omittedMessageCount > 0
+          ? ` 另有 ${checkpoint.omittedMessageCount} 条最早消息未纳入摘要。`
+          : ''}
+      </p>
+      <details>
+        <summary>查看摘要</summary>
+        <pre>{checkpoint.summary}</pre>
+      </details>
     </div>
   )
 }
@@ -239,13 +438,15 @@ interface MessageBubbleProps {
   content: string
   createdAtMs?: number
   streaming?: boolean
+  placeholder?: string
 }
 
 function MessageBubble({
   role,
   content,
   createdAtMs,
-  streaming = false
+  streaming = false,
+  placeholder
 }: MessageBubbleProps): JSX.Element {
   const copyText = useAppStore((state) => state.copyText)
   const conversationTitle = useAppStore(
@@ -320,7 +521,7 @@ function MessageBubble({
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(content, true) }}
               />
             ) : (
-              streaming && '正在连接模型…'
+              streaming && (placeholder ?? '正在连接模型…')
             )
           ) : (
             content
@@ -374,6 +575,7 @@ function formatTime(createdAtMs: number): string {
 function Composer(): JSX.Element {
   const activeConversationId = useAppStore((state) => state.activeConversationId)
   const streaming = useAppStore((state) => state.streaming)
+  const compacting = useAppStore((state) => state.compacting)
   const sendMessage = useAppStore((state) => state.sendMessage)
   const stopGeneration = useAppStore((state) => state.stopGeneration)
   const value = useAppStore((state) => state.chatDraft)
@@ -390,7 +592,7 @@ function Composer(): JSX.Element {
     input.setSelectionRange(draft.length, draft.length)
   }, [])
 
-  const isStreaming = streaming !== null
+  const isStreaming = streaming !== null || compacting
   const canSend = !isStreaming && activeConversationId !== null && value.trim().length > 0
 
   const submit = (): void => {

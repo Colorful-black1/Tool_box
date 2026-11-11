@@ -8382,3 +8382,118 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
     white-space: normal;
   }
 }
+
+/* ---------- 对话上下文 ---------- */
+
+.chat-context {
+  position: relative;
+  display: inline-flex;
+}
+
+.chat-context-trigger {
+  white-space: nowrap;
+  font-size: 11.5px;
+  padding: 6px 10px;
+}
+
+.chat-context-trigger.near {
+  color: var(--gold);
+  border-color: rgba(232, 201, 138, 0.35);
+}
+
+.chat-context-trigger.over {
+  color: var(--pink);
+  border-color: rgba(240, 160, 190, 0.4);
+}
+
+.chat-context-popover {
+  width: min(380px, calc(100vw - 24px));
+}
+
+.chat-context-breakdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  margin: 10px 0;
+  padding: 10px 0;
+  border-top: 1px solid rgba(232, 201, 138, 0.16);
+  border-bottom: 1px solid rgba(232, 201, 138, 0.16);
+  font-size: 12px;
+}
+
+.chat-context-breakdown > div {
+  display: contents;
+}
+
+.chat-context-breakdown dt {
+  color: var(--text-dim);
+}
+
+.chat-context-breakdown dd {
+  margin: 0;
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.chat-context-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.chat-context-actions .field-hint {
+  margin: 0;
+}
+
+.chat-checkpoint {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(232, 201, 138, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-mid);
+  font-size: 12px;
+}
+
+.chat-checkpoint-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--gold);
+  letter-spacing: 1px;
+}
+
+.chat-checkpoint-meta {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.chat-checkpoint .field-hint {
+  margin: 6px 0;
+}
+
+.chat-checkpoint details {
+  margin-top: 6px;
+}
+
+.chat-checkpoint summary {
+  cursor: pointer;
+  color: var(--gold-dim);
+  font-size: 11.5px;
+}
+
+.chat-checkpoint pre {
+  margin: 8px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-mid);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.65;
+}

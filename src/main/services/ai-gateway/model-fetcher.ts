@@ -14,12 +14,44 @@ export interface FetchModelIdsInput {
   headers?: Record<string, string>
 }
 
+export interface FetchModelListResult {
+  models: string[]
+  /** 从响应元数据解析到的窗口；只包含确实返回了窗口的模型 */
+  contextWindows: Record<string, number>
+}
+
+/** 上下文窗口的合理范围，防止异常元数据把预算算爆 */
+const MIN_CONTEXT_WINDOW = 4_000
+const MAX_CONTEXT_WINDOW = 10_000_000
+
+/**
+ * 模型列表里可能出现的窗口字段，按可信度排序。
+ * 优先「总窗口」，其次「最大输入」，最后才是本地推理的上下文参数。
+ */
+const CONTEXT_FIELDS = [
+  'context_window',
+  'contextWindow',
+  'context_length',
+  'contextLength',
+  'max_context_length',
+  'max_model_len',
+  'max_input_tokens',
+  'inputTokenLimit'
+] as const
+
+const NESTED_CONTEXT_PATHS: ReadonlyArray<readonly string[]> = [
+  ['model_info', 'context_window'],
+  ['model_info', 'max_input_tokens'],
+  ['meta', 'n_ctx_train'],
+  ['top_provider', 'context_length']
+]
+
 /**
  * 调用 OpenAI 兼容的 `GET {baseUrl}/models` 拉取可用模型列表。
  * 鉴权统一用 `Authorization: Bearer`，各家 OpenAI 兼容端点均支持。
  * 任何失败都转成 AiGatewayError，且错误文案经 describeAiError 脱敏（不会带出 Key）。
  */
-export async function fetchModelIds(input: FetchModelIdsInput): Promise<string[]> {
+export async function fetchModelList(input: FetchModelIdsInput): Promise<FetchModelListResult> {
   const baseUrl = normalizeOpenAiBaseUrl(input.baseUrl)
   if (!baseUrl) throw new AiGatewayError('接口地址不能为空')
 
@@ -52,9 +84,14 @@ export async function fetchModelIds(input: FetchModelIdsInput): Promise<string[]
     throw new AiGatewayError('模型列表响应不是合法 JSON', error)
   }
 
-  const models = extractModelIds(payload)
-  if (models.length === 0) throw new AiGatewayError('未获取到任何模型')
-  return models
+  const result = extractModelList(payload)
+  if (result.models.length === 0) throw new AiGatewayError('未获取到任何模型')
+  return result
+}
+
+/** 兼容旧调用：只要模型 id，丢弃窗口元数据 */
+export async function fetchModelIds(input: FetchModelIdsInput): Promise<string[]> {
+  return (await fetchModelList(input)).models
 }
 
 /**
@@ -65,16 +102,71 @@ export async function fetchModelIds(input: FetchModelIdsInput): Promise<string[]
  * 结果去重、去掉空值、字典序排序后截断。
  */
 export function extractModelIds(payload: unknown): string[] {
+  return extractModelList(payload).models
+}
+
+/**
+ * 解析模型列表与窗口元数据。
+ *
+ * 标准 OpenAI 兼容响应只有 id；DeepSeek 的 context_window、Kimi 的
+ * context_length、OpenRouter / vLLM / llama.cpp / Gemini 原生的字段都会
+ * 尝试读取。同一模型命中多个字段时按 CONTEXT_FIELDS 的优先级取第一个。
+ */
+export function extractModelList(payload: unknown): FetchModelListResult {
   const source = pickModelArray(payload)
-  if (!source) return []
+  if (!source) return { models: [], contextWindows: {} }
 
   const ids = new Set<string>()
+  const contextWindows: Record<string, number> = {}
   for (const item of source.slice(0, MAX_MODELS * 2)) {
     const id = readModelId(item)
-    if (id) ids.add(id)
+    if (!id) continue
+    ids.add(id)
     if (ids.size >= MAX_MODELS) break
+    const window = readContextWindow(item)
+    if (window !== null) contextWindows[id] = window
   }
-  return [...ids].sort((a, b) => a.localeCompare(b))
+
+  return {
+    models: [...ids].sort((a, b) => a.localeCompare(b)),
+    contextWindows
+  }
+}
+
+/** 从单条模型记录里读窗口；没有或不可信时返回 null */
+function readContextWindow(item: unknown): number | null {
+  if (typeof item !== 'object' || item === null) return null
+  const record = item as Record<string, unknown>
+
+  for (const field of CONTEXT_FIELDS) {
+    const value = readTokenCount(record[field])
+    if (value !== null) return value
+  }
+  for (const path of NESTED_CONTEXT_PATHS) {
+    let cursor: unknown = record
+    for (const key of path) {
+      if (typeof cursor !== 'object' || cursor === null) {
+        cursor = undefined
+        break
+      }
+      cursor = (cursor as Record<string, unknown>)[key]
+    }
+    const value = readTokenCount(cursor)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function readTokenCount(value: unknown): number | null {
+  const numeric =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : Number.NaN
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) return null
+  if (numeric < MIN_CONTEXT_WINDOW || numeric > MAX_CONTEXT_WINDOW) return null
+  return numeric
 }
 
 function pickModelArray(payload: unknown): unknown[] | null {

@@ -11,7 +11,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 | 模块 | 说明 |
 | --- | --- |
-| AI 助手 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；基于 LangChain.js `createAgent` 的 **Agent，可调用工具接管书架 / 分组 / 书签 / 密码箱 / 记事本 / 待办，查询阅读与 Token 统计、跨模块搜索并打开结果**；**三档权限（只读 / 写操作确认 / 完全访问）**，写与破坏性操作支持人在环审批；**工具调用不在界面上展示**（查书架、读分组这类是 AI 的后台动作，只有需要你点头的写操作才弹审批卡）；**回答按 Markdown 渲染**（粗体 / 列表 / 代码块 / 链接）；**长对话自动裁剪历史**（超预算时丢弃最早的部分并明确告知模型）；模型下拉**只列你在设置里勾选的模型**（带搜索）；流式输出、多会话、停止生成；**每条消息可「存入记事本」**（自动带对话来源） |
+| AI 助手 | 设置页内置 8 家供应商预设（DeepSeek / 智谱 GLM / 小米 MiMo / OpenAI / OpenCode Go / Kimi / 通义千问 / 硅基流动）+ 自定义；**多套配置档案一键切换**，一键「获取模型」下拉选择；基于 LangChain.js `createAgent` 的 **Agent，可调用工具接管书架 / 分组 / 书签 / 密码箱 / 记事本 / 待办，查询阅读与 Token 统计、跨模块搜索并打开结果**；**三档权限（只读 / 写操作确认 / 完全访问）**，写与破坏性操作支持人在环审批；**工具调用不在界面上展示**（查书架、读分组这类是 AI 的后台动作，只有需要你点头的写操作才弹审批卡）；**回答按 Markdown 渲染**（粗体 / 列表 / 代码块 / 链接）；**上下文占用可视化与自动压缩**（优先读取模型接口返回的窗口，超过阈值生成检查点摘要并保留最近原文，可手动压缩，失败时降级裁剪并明确告知模型）；模型下拉**只列你在设置里勾选的模型**（带搜索）；流式输出、多会话、停止生成；**每条消息可「存入记事本」**（自动带对话来源） |
 | 小说阅读 | TXT 导入（UTF-8 / BOM / UTF-16 / GBK 探测）、章节解析、书架分组与排序、三种翻页模式、目录、书内搜索、书签、阅读统计（今日 / 累计 / **任意区间**）；**选中正文可直接存入记事本**（自动带书名、章节与引用来源），或点**「问 AI」把原文与来源放入对话草稿** |
 | 密码箱 | 敏感字段 AES-256-GCM 加密落库；固定格式 / AI 识别双通道批量导入，AI 流式展示脱敏预览、支持停止，完整校验后才可导入；重复检测、拼音分组、字母索引；**随机密码生成器**（密码学安全随机数 + 拒绝采样，可调长度，带强度评估） |
 | 记事本 | Markdown 编辑与左右分栏预览（原文与渲染实时对照、滚动联动）、保存后留在编辑页、导入导出 `.md`；**支持按标题与正文搜索**；**多条笔记可多选合并成一条**（按顺序保留各自标题，合并后进入编辑页，原笔记保留）；正文里的 **`- [ ]` 清单项可一键加入待办清单**（跳过已有同名待办，最多 50 条）；**预览中的代码块支持右上角复制，聚焦后 Ctrl+A 只选中该代码块** |
@@ -97,7 +97,7 @@ AI 优先的本地个人工具箱。桌面端采用 **Electron + React 19 + Type
 
 隐私：不配置向量 / 重排模型时，文档完全在本机解析与检索；配置后，导入会把**分块正文**发送给当前 AI 服务的 `/embeddings` 生成向量，检索会发送**查询词**，配置重排时会把**候选片段**发送给 `/rerank`。首次导入/补齐前会明确提示；配置向量模型时，即使 Agent 权限是「完全访问」，AI 导入资料也会要求一次确认。只有命中的片段会作为工具结果交给对话模型。Agent 可用 `kb_search` / `kb_list_documents` 检索，`kb_add_document` / `kb_remove_document` 需在审批档位下确认；导入审批卡会说明是否会把正文发给向量接口。
 
-桌面数据库升级到 v6，旧库升级前生成 `backups/toolbox-before-v6-*.db`；新增 3 张表与 1 张 FTS 虚表，不修改既有表。向量模型 / 重排模型只写 `ai-settings.json`，不升 schema。回滚需退出应用后用备份恢复；旧版本程序可正常读取既有表，但看不到知识库数据。
+桌面数据库当前为 v7：v6 新增知识库的 3 张表与 1 张 FTS 虚表，v7 只新增对话检查点表 `conversation_checkpoints`，不修改既有表。旧库升级前生成 `backups/toolbox-before-v7-*.db`。向量模型 / 重排模型 / 模型窗口只写 `ai-settings.json`，不升 schema。回滚需退出应用后用备份恢复；旧版本程序可正常读取既有表，但看不到知识库与检查点数据。
 
 隔离验收：`node verify/desktop-ui/run.cjs --knowledge-only --screenshots` 与 `--model-settings-only --screenshots`（先构建）。
 
@@ -175,7 +175,7 @@ JSON、差异、脱敏和日志工具输入最多 20 万字符，JSON 嵌套最�
 
 待办按本机时区输入，保存的是具体时刻；更换系统时区后显示会随之变化。日期不填则不提醒。编辑草稿仅在本次运行保留，退出前请保存。待办与普通笔记一样是本地普通数据，不用于保存密码；现已支持用户通过对话查询和操作，遵循当前 Agent 权限和审批。
 
-桌面数据库升级到 v6，旧库升级前自动生成 `backups/toolbox-before-v6-*.db` 一致备份；备份失败停止启动并提示。回滚需退出所有使用数据库的应用，由用户手动从备份恢复 `toolbox.db`（升级后新增内容会丢失）；不要在运行时覆盖数据库或把旧 WAL 文件与备份混用。旧程序能读取既有表，但看不到知识库数据。规格与验证见 [首批工具扩展](docs/tool-expansion-first-batch-verification.md) 与 [知识库方案](docs/PLAN-knowledge-base.md)。
+桌面数据库当前为 v7，旧库升级前自动生成 `backups/toolbox-before-v7-*.db` 一致备份；备份失败停止启动并提示。回滚需退出所有使用数据库的应用，由用户手动从备份恢复 `toolbox.db`（升级后新增内容会丢失）；不要在运行时覆盖数据库或把旧 WAL 文件与备份混用。旧程序能读取既有表，但看不到知识库与检查点数据。规格与验证见 [首批工具扩展](docs/tool-expansion-first-batch-verification.md) 与 [知识库方案](docs/PLAN-knowledge-base.md)。
 
 ### 在对话中管理待办、笔记与用量
 
@@ -192,6 +192,16 @@ JSON、差异、脱敏和日志工具输入最多 20 万字符，JSON 嵌套最�
 只读权限不提供写工具；写操作确认沿用审批卡，拒绝或停止不继续写入。待办提醒仍仅在应用运行／托盘驻留时工作。需要被查询的普通笔记、待办和用量元数据会作为工具结果交给当前配置的模型，不发送密码箱明文或 Agent 会话正文。
 
 实现边界及验证见 [对话扩展规格](docs/SPEC-chat-priority-tools.md) 与 [交付记录](docs/chat-priority-tools-verification.md)。隔离验收命令：`node verify/desktop-ui/run.cjs --chat-tools-only --screenshots`（先按仓库门槛构建）。
+
+### 长对话的上下文压缩
+
+对话标题栏右侧显示当前上下文占用，点开可看系统提示、工具定义、检查点摘要与最近消息的分项估算、窗口来源和上次实测用量。窗口优先取供应商 `/models` 返回的元数据（DeepSeek 的 `context_window`、Kimi 的 `context_length` 等）；接口不返回时用手动值、超长错误学习值，再退到内置供应商目录（如 OpenCode Go 的 `deepseek-v4.1-flash` 按 1M 计），最后才是默认 128k。设置页可按模型手动覆盖。
+
+请求前估算超过 `min(窗口×80%, 窗口−输出预留−安全余量)` 时，自动把较早的一段对话交给一次模型调用生成检查点摘要，保留最近约 15k token 原文；摘要替换后原始消息仍留在界面，只是不再整段发送。也可以点「立即压缩」手动执行，并显示覆盖条数与释放的 token。摘要失败不阻塞发送，会退回按 token 预算裁剪并在 system prompt 里明确告诉模型「更早的部分没有带上」。
+
+供应商明确报上下文超长时，如果本轮还没有输出、也没有执行工具，会解析错误里的真实上限、强制压缩一次并重试一次；已经输出或执行过工具则不自动重试，避免重复写操作。保存档案后会在后台尝试刷新一次窗口元数据，设置页的「获取模型列表」也会同时解析；切换模型/供应商不会沿用上一个模型的手动窗口。
+
+检查点只存本机 `toolbox.db`，不写日志；摘要正文和聊天记录同等敏感。实现方案与边界见 [上下文管理方案](docs/PLAN-context-management.md)。
 
 ### AI 流式输出
 
@@ -449,7 +459,7 @@ Gemini CLI、GitHub Copilot CLI、Grok CLI、MiMoCode、MCode 和 Cline CLI 的�
 - React 19 + TypeScript strict + Tailwind CSS
 - Zustand
 - LangChain.js（`@langchain/core` + `@langchain/openai`）
-- better-sqlite3（SQLite，桌面 schema v6）
+- better-sqlite3（SQLite，桌面 schema v7）
 - Electron `safeStorage`（Windows DPAPI）保管 AI Key 与密码箱主密钥
 - Vitest
 
@@ -485,6 +495,7 @@ node verify/capability-batch.cjs --dialog-failure  # 恢复结果系统提示异
 node verify/desktop-ui/run.cjs --sidebar-only --screenshots  # 树形侧栏、键盘、页面跳转及窄栏
 node verify/desktop-ui/run.cjs --knowledge-only --screenshots  # 知识库列表、检索、导入汇总与空状态
 node verify/desktop-ui/run.cjs --model-settings-only --screenshots  # 设置页向量 / 重排模型字段与保存
+node verify/desktop-ui/run.cjs --context-only --screenshots  # 对话上下文占用、浮层与压缩入口
 ```
 
 覆盖搜索定位与草稿保护、顶层 Esc 与键盘焦点、流式滚动、窗口缩放、文本输出与复制，
@@ -572,7 +583,7 @@ src/
 │   └── services/
 │       ├── agent/        工具注册表 + Agent 循环 + 审批门
 │       ├── ai-gateway/   LangChain Agent 编排、流式事件与错误映射
-│       ├── chat-store/   统一 SQLite 数据层（桌面 v6）
+│       ├── chat-store/   统一 SQLite 数据层（桌面 v7）
 │       ├── crypto/       safeStorage 主密钥 + AES-GCM
 │       ├── knowledge-base/ 导入、分块、关键词检索
 │       ├── library/      编码探测、章节解析、密码文本解析、拼音

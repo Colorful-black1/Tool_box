@@ -19,6 +19,7 @@ import type {
   Bookmark,
   ChapterContent,
   ChapterMeta,
+  ChatCheckpointView,
   ChatMessage,
   ChatRole,
   ConversationSummary,
@@ -42,7 +43,7 @@ import { dueTodoReminder } from '../../../shared/todo-reminders'
 import type { TodoReminder, TodoReminderCandidate } from '../../../shared/todo-reminders'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 /** 知识库文档摘要列：附带指定模型的已向量化块数，列表与详情共用。 */
 const KB_DOCUMENT_COLUMNS = `id, title, category, source_path, file_size, status, chunk_count,
   (SELECT COUNT(*) FROM kb_chunks c
@@ -95,6 +96,55 @@ interface MessageRow {
   role: string
   content: string
   created_at_ms: number
+}
+
+interface CheckpointRow {
+  id: string
+  conversation_id: string
+  summary: string
+  covered_message_id: string
+  covered_message_count: number
+  omitted_message_count: number
+  summary_tokens: number
+  source_tokens: number
+  model: string
+  created_at_ms: number
+}
+
+/** 写入检查点的入参；token 均为本地估算值 */
+export interface ChatCheckpointInput {
+  conversationId: string
+  summary: string
+  coveredMessageId: string
+  coveredMessageCount: number
+  omittedMessageCount: number
+  summaryTokens: number
+  sourceTokens: number
+  model: string
+}
+
+function toMessage(row: MessageRow): ChatMessage {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    role: row.role as ChatRole,
+    content: row.content,
+    createdAtMs: row.created_at_ms
+  }
+}
+
+function toCheckpoint(row: CheckpointRow): ChatCheckpointView {
+  return {
+    id: row.id,
+    coveredMessageId: row.covered_message_id,
+    coveredMessageCount: row.covered_message_count,
+    omittedMessageCount: row.omitted_message_count,
+    summary: row.summary,
+    tokens: row.summary_tokens,
+    sourceTokens: row.source_tokens,
+    model: row.model,
+    createdAtMs: row.created_at_ms
+  }
 }
 
 interface BookRow {
@@ -378,13 +428,7 @@ export class ToolboxStore {
          ORDER BY created_at_ms ASC, rowid ASC`
       )
       .all(conversationId) as MessageRow[]
-    return rows.map((row) => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      role: row.role as ChatRole,
-      content: row.content,
-      createdAtMs: row.created_at_ms
-    }))
+    return rows.map(toMessage)
   }
 
   appendMessage(input: {
@@ -413,6 +457,87 @@ export class ToolboxStore {
       conversationId: input.conversationId,
       role: input.role,
       content: input.content,
+      createdAtMs: now
+    }
+  }
+
+  messageCount(conversationId: string): number {
+    this.requireConversation(conversationId)
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ?')
+      .get(conversationId) as { count: number }
+    return row.count
+  }
+
+  /** 当前生效的检查点：最新一条；没有时返回 null */
+  latestCheckpoint(conversationId: string): ChatCheckpointView | null {
+    this.requireConversation(conversationId)
+    const row = this.db
+      .prepare(
+        `SELECT id, conversation_id, summary, covered_message_id, covered_message_count,
+                omitted_message_count, summary_tokens, source_tokens, model, created_at_ms
+         FROM conversation_checkpoints
+         WHERE conversation_id = ?
+         ORDER BY created_at_ms DESC, rowid DESC
+         LIMIT 1`
+      )
+      .get(conversationId) as CheckpointRow | undefined
+    return row ? toCheckpoint(row) : null
+  }
+
+  /** 检查点之后仍需原文发送的消息；边界不存在时安全回退为全部消息 */
+  listMessagesAfter(conversationId: string, messageId: string | null): ChatMessage[] {
+    this.requireConversation(conversationId)
+    if (!messageId) return this.listMessages(conversationId)
+
+    const boundary = this.db
+      .prepare('SELECT rowid AS row_id FROM messages WHERE id = ? AND conversation_id = ?')
+      .get(messageId, conversationId) as { row_id: number } | undefined
+    if (!boundary) return this.listMessages(conversationId)
+
+    const rows = this.db
+      .prepare(
+        `SELECT id, conversation_id, role, content, created_at_ms
+         FROM messages
+         WHERE conversation_id = ? AND rowid > ?
+         ORDER BY created_at_ms ASC, rowid ASC`
+      )
+      .all(conversationId, boundary.row_id) as MessageRow[]
+    return rows.map(toMessage)
+  }
+
+  insertCheckpoint(input: ChatCheckpointInput): ChatCheckpointView {
+    this.requireConversation(input.conversationId)
+    const id = randomUUID()
+    const now = Date.now()
+    this.db
+      .prepare(
+        `INSERT INTO conversation_checkpoints
+           (id, conversation_id, summary, covered_message_id, covered_message_count,
+            omitted_message_count, summary_tokens, source_tokens, model, created_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        input.conversationId,
+        input.summary,
+        input.coveredMessageId,
+        input.coveredMessageCount,
+        input.omittedMessageCount,
+        input.summaryTokens,
+        input.sourceTokens,
+        input.model,
+        now
+      )
+    return {
+      id,
+      coveredMessageId: input.coveredMessageId,
+      coveredMessageCount: input.coveredMessageCount,
+      omittedMessageCount: input.omittedMessageCount,
+      summary: input.summary,
+      tokens: input.summaryTokens,
+      sourceTokens: input.sourceTokens,
+      model: input.model,
       createdAtMs: now
     }
   }
@@ -1458,7 +1583,8 @@ export class ToolboxStore {
         [3, 'SELECT date, duration_ms, char_count FROM reading_stats LIMIT 0'],
         [5, 'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0'],
         [6, 'SELECT id, title, category, source_path, file_size, sha256, status, chunk_count, error, created_at_ms, updated_at_ms FROM kb_documents LIMIT 0'],
-        [6, 'SELECT id, document_id, ordinal, heading, content, start_offset, char_count, tokens FROM kb_chunks LIMIT 0']
+        [6, 'SELECT id, document_id, ordinal, heading, content, start_offset, char_count, tokens FROM kb_chunks LIMIT 0'],
+        [7, 'SELECT id, conversation_id, summary, covered_message_id, covered_message_count, omitted_message_count, summary_tokens, source_tokens, model, created_at_ms FROM conversation_checkpoints LIMIT 0']
       ]
       for (const [minimum, sql] of checks) {
         if (version >= minimum) database.prepare(sql).all()
@@ -1728,6 +1854,28 @@ export class ToolboxStore {
           tokenize = 'unicode61 remove_diacritics 2'
         );`)
     }
+
+    if (current < 7) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS conversation_checkpoints (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          covered_message_id TEXT NOT NULL,
+          covered_message_count INTEGER NOT NULL,
+          omitted_message_count INTEGER NOT NULL DEFAULT 0,
+          summary_tokens INTEGER NOT NULL,
+          source_tokens INTEGER NOT NULL,
+          model TEXT NOT NULL,
+          created_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conversation_checkpoints_conversation
+          ON conversation_checkpoints(conversation_id, created_at_ms DESC);
+      `)
+    }
+
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
   }
 

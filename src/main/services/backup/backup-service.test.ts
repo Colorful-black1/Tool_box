@@ -93,11 +93,11 @@ describe('本机快照', () => {
     try {
       const first = await service.export(documents)
       const manifest = await service.validate(first.path)
-      expect(manifest).toMatchObject({ version: 1, schemaVersion: 6, localOnly: true })
+      expect(manifest).toMatchObject({ version: 1, schemaVersion: 7, localOnly: true })
       expect(manifest.files.map((file) => file.path)).toEqual(
         expect.arrayContaining(['toolbox.db', 'password-master-key.json', 'covers/cover.txt'])
       )
-      expect(ToolboxStore.inspectSnapshot(join(first.path, 'toolbox.db'))).toBe(6)
+      expect(ToolboxStore.inspectSnapshot(join(first.path, 'toolbox.db'))).toBe(7)
       const separate = new ToolboxStore(join(first.path, 'toolbox.db'), box)
       expect(separate.listNotes()).toHaveLength(1)
       separate.close()

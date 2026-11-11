@@ -244,7 +244,9 @@ export default function App(): JSX.Element {
       bridge.onToolResult((event) => useAppStore.getState().completeToolResult(event)),
       bridge.onToolApprovalRequest((event) =>
         useAppStore.getState().requestToolApproval(event)
-      )
+      ),
+      bridge.onContext((event) => useAppStore.getState().receiveContext(event)),
+      bridge.onCompaction((event) => useAppStore.getState().receiveCompaction(event))
     ]
     return () => disposers.forEach((dispose) => dispose())
   }, [])

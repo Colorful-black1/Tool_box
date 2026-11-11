@@ -425,6 +425,34 @@ module.exports = function createFixture() {
           }
         },
         stop: async () => emit('stopped', { conversationId: streamingId }),
+        context: async (conversationId) => ({
+          conversationId,
+          model: 'fixture-model',
+          windowTokens: 128_000,
+          windowSource: 'api',
+          thresholdTokens: 102_400,
+          estimatedTokens: conversationId === 'c0' ? 54_000 : 1_200,
+          percent: conversationId === 'c0' ? 42 : 1,
+          breakdown: {
+            system: 2_100,
+            tools: 4_800,
+            summary: 0,
+            messages: conversationId === 'c0' ? 47_100 : 1_200
+          },
+          lastUsage: null,
+          checkpoint: null,
+          autoCompact: true,
+          compacting: false,
+          messageCount: conversationId === 'c0' ? 24 : 1
+        }),
+        compact: async () => ({
+          compacted: false,
+          coveredMessages: 0,
+          freedTokens: 0,
+          message: '对话还短，无需压缩'
+        }),
+        onContext: subscribe('context'),
+        onCompaction: subscribe('compaction'),
         onDelta: subscribe('delta'),
         onCompleted: subscribe('completed'),
         onError: subscribe('error'),

@@ -12,6 +12,7 @@ import type {
 } from '@shared/types'
 import { DEFAULT_SHORTCUT_CONFIG, SHORTCUT_ACCELERATORS } from '@shared/types'
 import { applyModelToggle } from '@shared/model-list'
+import { catalogContextWindow } from '@shared/model-context'
 import { useAppStore } from '../stores/app-store'
 import { confirmDialog } from '../stores/dialog-store'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
@@ -46,6 +47,8 @@ interface ProfileDraft {
   embeddingModel: string
   /** 知识库重排模型；空串表示不重排 */
   rerankModel: string
+  /** 当前模型的手动窗口；空串表示使用接口值 / 默认值 */
+  contextWindow: string
 }
 
 type SaveStatus =
@@ -61,6 +64,8 @@ interface ModelListState {
   source: AiModelSource
   /** 降级原因（已脱敏） */
   message?: string
+  /** 本次从 /models 解析到的窗口 */
+  contextWindows?: Record<string, number>
 }
 
 export function SettingsPage(): JSX.Element {
@@ -168,7 +173,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       // 默认勾上推荐模型：新配置保存后对话下拉直接可用
       selectedModels: defaultModel ? [defaultModel] : [],
       embeddingModel: '',
-      rerankModel: ''
+      rerankModel: '',
+      contextWindow: ''
     })
     setStatus({ type: 'idle' })
     setFetchedModels([])
@@ -188,7 +194,9 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
             model: defaultModel,
             name: current.id ? current.name : preset.name,
             // 勾选清单跟着供应商走：上一个供应商的模型在这里多半不存在
-            selectedModels: defaultModel ? [defaultModel] : []
+            selectedModels: defaultModel ? [defaultModel] : [],
+            // 手填窗口属于具体模型，换供应商后清掉
+            contextWindow: ''
           }
         : current
     )
@@ -201,6 +209,20 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     event.preventDefault()
     if (!draft || status.type === 'saving') return
 
+    const modelContextLimits: NonNullable<AiProfileInput['modelContextLimits']> = {}
+    for (const [model, tokens] of Object.entries(modelList?.contextWindows ?? {})) {
+      modelContextLimits[model] = { tokens, source: 'api' }
+    }
+    if (draft.model) {
+      const manual = Number(draft.contextWindow.trim())
+      if (draft.contextWindow.trim() && Number.isInteger(manual) && manual > 0) {
+        modelContextLimits[draft.model] = { tokens: manual, source: 'manual' }
+      } else {
+        // 留空 = 清除该模型的手动值，回落到接口值 / 学习值 / 默认
+        modelContextLimits[draft.model] = null
+      }
+    }
+
     const input: AiProfileInput = {
       id: draft.id ?? undefined,
       name: draft.name,
@@ -210,7 +232,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
       selectedModels: draft.selectedModels,
       embeddingModel: draft.embeddingModel,
-      rerankModel: draft.rerankModel
+      rerankModel: draft.rerankModel,
+      modelContextLimits
     }
 
     setStatus({ type: 'saving' })
@@ -276,7 +299,8 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       setModelList({
         count: result.models.length,
         source: result.source,
-        message: result.message
+        message: result.message,
+        ...(result.contextWindows ? { contextWindows: result.contextWindows } : {})
       })
       // 实时列表拉到了就把模型名填进草稿，省得再去对话页选一次
       if (result.source === 'remote' && result.models.length > 0 && !draft.model) {
@@ -303,7 +327,11 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const toggleModel = (name: string): void => {
     if (!draft) return
     const next = applyModelToggle(draft.model, draft.selectedModels, name)
-    patchDraft({ selectedModels: next.selectedModels, model: next.model })
+    patchDraft({
+      selectedModels: next.selectedModels,
+      model: next.model,
+      contextWindow: next.model === draft.model ? draft.contextWindow : ''
+    })
   }
 
   const onActivate = async (): Promise<void> => {
@@ -338,6 +366,24 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   for (const name of findAiProvider(draft?.provider ?? 'custom').models) pushCandidate(name)
   for (const name of draft?.selectedModels ?? []) pushCandidate(name)
   if (draft?.model) pushCandidate(draft.model)
+
+  const fetchedWindow = draft ? modelList?.contextWindows?.[draft.model] : undefined
+  const storedLimit = activeProfile?.modelContextLimits?.[draft?.model ?? ''] ?? null
+  const catalogWindow = draft
+    ? catalogContextWindow(draft.provider, draft.model, draft.baseUrl)
+    : null
+  const detectedTokens = fetchedWindow ?? storedLimit?.tokens ?? catalogWindow ?? null
+  const detectedSource = fetchedWindow
+    ? '模型接口'
+    : storedLimit?.source === 'api'
+      ? '模型接口'
+      : storedLimit?.source === 'learned'
+        ? '超长错误学习'
+        : storedLimit?.source === 'manual'
+          ? '手动设置'
+          : catalogWindow
+            ? '模型目录'
+            : '默认 128k'
 
   return (
     <div className="settings-layout settings-layout-wide settings-stack view-enter">
@@ -477,10 +523,36 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                   placeholder="gpt-6-luna"
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(event) => patchDraft({ model: event.target.value })}
+                  onChange={(event) =>
+                    patchDraft({ model: event.target.value, contextWindow: '' })
+                  }
                 />
                 <p className="field-hint">
                   实际发请求用的模型；下面勾选任一模型会自动切到它。自定义供应商可直接手填模型名。
+                </p>
+              </div>
+
+              <div>
+                <label className="field-label" htmlFor="profile-context-window">
+                  上下文窗口 · CONTEXT WINDOW
+                </label>
+                <input
+                  id="profile-context-window"
+                  className="field-input"
+                  type="number"
+                  min={4000}
+                  max={10000000}
+                  step={1000}
+                  value={draft.contextWindow}
+                  placeholder={detectedTokens ? String(detectedTokens) : '默认 128000'}
+                  autoComplete="off"
+                  onChange={(event) => patchDraft({ contextWindow: event.target.value })}
+                />
+                <p className="field-hint">
+                  {detectedTokens
+                    ? `自动检测：${detectedTokens.toLocaleString('zh-CN')} Token（${detectedSource}）`
+                    : '未检测到窗口，使用默认 128k'}
+                  ；可点下方「获取模型列表」按接口刷新，留空使用自动值，手填会覆盖它。
                 </p>
               </div>
 
@@ -730,6 +802,10 @@ function toDraft(profile: AiProfileView | null): ProfileDraft | null {
     apiKey: '',
     selectedModels: profile.selectedModels ?? [],
     embeddingModel: profile.embeddingModel ?? '',
-    rerankModel: profile.rerankModel ?? ''
+    rerankModel: profile.rerankModel ?? '',
+    contextWindow:
+      profile.modelContextLimits?.[profile.model]?.source === 'manual'
+        ? String(profile.modelContextLimits[profile.model].tokens)
+        : ''
   }
 }

@@ -54,7 +54,8 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
-  validateConfigPatch
+  validateConfigPatch,
+  validateModelContextLimits
 } from './validation'
 
 export interface IpcDependencies {
@@ -154,7 +155,8 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       }),
       // 不传 = 保留；空串 = 清空知识库的向量 / 重排模型
       embeddingModel: optionalModelName(body.embeddingModel, '向量模型'),
-      rerankModel: optionalModelName(body.rerankModel, '重排模型')
+      rerankModel: optionalModelName(body.rerankModel, '重排模型'),
+      modelContextLimits: validateModelContextLimits(body.modelContextLimits)
     })
   })
 
@@ -203,6 +205,14 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   ipcMain.handle(IPC.chatStop, (_event, id: unknown) => {
     aiGateway.stop(requireString(id, '会话 ID'))
+  })
+
+  ipcMain.handle(IPC.chatContext, (_event, id: unknown) => {
+    return aiGateway.context(requireString(id, '会话 ID'))
+  })
+
+  ipcMain.handle(IPC.chatCompact, (event, id: unknown) => {
+    return aiGateway.compact(requireString(id, '会话 ID'), createChatEventSink(event.sender))
   })
 
   // ---------- AI 助手 Agent ----------
@@ -465,7 +475,9 @@ function createChatEventSink(sender: Electron.WebContents): ChatEventSink {
     onStopped: (event) => send(CHAT_EVENT.stopped, event),
     onToolCall: (event) => send(CHAT_EVENT.toolCall, event),
     onToolResult: (event) => send(CHAT_EVENT.toolResult, event),
-    onToolApprovalRequest: (event) => send(CHAT_EVENT.toolApproval, event)
+    onToolApprovalRequest: (event) => send(CHAT_EVENT.toolApproval, event),
+    onContext: (event) => send(CHAT_EVENT.context, event),
+    onCompaction: (event) => send(CHAT_EVENT.compaction, event)
   }
 }
 

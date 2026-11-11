@@ -10,6 +10,8 @@
 
 当前版本 **0.3.0**（桌面端新增 Token 统计与多 Agent 工作台；手机端暂停维护，保留 M0–M7 历史实现）。
 
+2026-11-11 对话上下文：`schema v6 → v7`，只新增 `conversation_checkpoints` 与索引，不改 `messages`；升级前生成 `backups/toolbox-before-v7-*.db`。标题栏新增上下文占用与浮层分项（系统提示 / 工具定义 / 检查点摘要 / 最近消息 / 上次实测），窗口优先解析 `/models` 元数据（DeepSeek `context_window`、Kimi `context_length` 等），其次按模型手填、超长错误学习，再退到内置供应商目录（OpenCode Go 的 `deepseek-v4.1-flash` 按 1M），最后默认 128k。超过 `min(0.8W, W−O−B)` 自动把较早消息压成检查点摘要，保留最近约 15k token 原文；支持手动压缩、失败退回 token 裁剪、供应商确认超长且无输出/无工具时压缩重试一次；检查点卡片保留原始消息。新增 `chat:context` / `chat:compact` 与两个事件，无新增依赖、不改加密链路。验证：`npm run typecheck`、桌面 `lint`、桌面 `test`（153 files / 1151 tests）与 `build` 通过；`node verify/desktop-ui/run.cjs --context-only --screenshots` 2 项通过。真实供应商窗口元数据/摘要质量仍需用实际模型体验确认。
+
 2026-11-07 知识库 P2：设置页新增 **向量模型 / 重排模型**（`embeddingModel` / `rerankModel`，只写 `ai-settings.json`，不升 schema）；导入与重建时按 32 块一批、并发 2 调 `/embeddings` 写 float32 BLOB，检索做余弦（阈值 0.25）+ RRF(k=60)，配置重排时再把前 20 段交给 `/rerank`。未配置、未向量化、调用失败、向量块超 2 万都会如实降级为关键词并显示原因；资料库新增向量覆盖率与「补齐向量」，首次外发正文前会明确提示，导入审批卡同步说明。没有真实向量模型，接口、排序与降级用注入的 mock fetch 覆盖，未发起真实 embedding / rerank 请求。`npm run typecheck`、桌面 `lint`、`test`（148 files / 1099 tests）与 `build` 通过；新增 `--model-settings-only` 3 项、`--knowledge-only` 7 项、`--sidebar-only` 11 项通过。
 
 2026-11-06 桌面增量：新增本地知识库（`schema v6`）。导入 `.md` / `.txt`，标题切段 + 递归换行，代码围栏与表格保持完整；FTS5 中文二元组关键词检索，结果带章节出处并可跳转到分块；Agent 新增 `kb_search` / `kb_list_documents` 与走审批的 `kb_add_document` / `kb_remove_document`，引用格式新增 `toolbox://open/kb/...`。新增 6 个 IPC 通道与 1 个进度事件、新顶层「知识库 → 资料库」入口；无新增依赖、不改既有表与加密链路。`npm run typecheck`、桌面 `lint`、`test`（146 files / 1082 tests）与 `build` 通过；`node verify/desktop-ui/run.cjs --knowledge-only --screenshots` 7 项、`--sidebar-only` 11 项与全量 UI 113 项通过。真实 SQLite + FTS5 的导入、检索、重建、删除由 `kb-service.test.ts` 覆盖。
@@ -552,8 +554,10 @@ M10（工具页 / 全局搜索 / 桌面端常驻）新增的验收项：
 
 - 聊天：两端按 Markdown 渲染回答（粗体 / 列表 / 代码块 / 链接）、时间戳、复制按钮；
   手机端加「回到最新」悬浮按钮（往回翻历史时不再被新内容顶走）。
-- 长对话：两端按字符预算（8000）裁剪历史，**只裁剪不摘要**，
+- 长对话：最初两端按字符预算（8000）裁剪历史，**只裁剪不摘要**，
   并在系统提示词里明说「更早的 N 条消息未包含」——不假装还记得。
+  桌面端已由 2026-11-11 的「上下文占用 + 检查点压缩」取代（见本轮记录）；
+  手机端冻结，仍保留旧裁剪逻辑。
 - 手机端：阅读器书内全文搜索（SQL 检索，不把整本书读进内存）、
   记事本搜索 / Markdown 预览 / 导入 `.md` / 导出（复制 + 系统分享）、
   会话重命名、占位封面、设置页分组、Tab 长按快捷操作。
@@ -565,7 +569,7 @@ M10（工具页 / 全局搜索 / 桌面端常驻）新增的验收项：
 | --- | --- | --- |
 | 小说全文检索（跨章节搜正文） | **不做** | 小说正文量太大，检索结果要塞进模型上下文，token 消耗不可接受 |
 | 手机端密码箱「保存 / 覆盖」 | 仍然不给 | 会把解密失败条目的原密文永久替换成占位文本；收藏与删除不经过加解密，可以给 |
-| 对话历史的摘要 | 只裁剪，不摘要 | 摘要要额外调一次模型，成本与延迟都不划算 |
+| 对话历史的摘要 | 最初只裁剪，不摘要 | 摘要要额外调一次模型，成本与延迟都不划算；桌面端 2026-11-11 已改为阈值触发的检查点摘要，手机端冻结仍裁剪 |
 | 桌面端书内搜索 | 不动 | 已有实现（JS 全量扫描），改 SQL 收益不大、风险不小 |
 | 手机端笔记导出 | 复制全文 + 系统分享 | 写文件再分享文件需要新增 `expo-sharing` 依赖（未授权） |
 | 手机端占位封面 | 纯色 + 压暗层近似渐变 | RN 没有内置渐变，`expo-linear-gradient` 是新依赖 |
