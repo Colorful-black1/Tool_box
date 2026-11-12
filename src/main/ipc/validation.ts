@@ -39,6 +39,11 @@ import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
 import { parseAgentDraftDocument } from '../../shared/agent-drafts'
 import type { AgentDraftDocument, AgentDraftSaveInput } from '../../shared/agent-drafts'
 import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
+import {
+  TRENDING_LANGUAGE_VALUES,
+  TRENDING_PERIOD_VALUES
+} from '../../shared/github-trending'
+import type { TrendingQuery } from '../../shared/github-trending'
 
 /** 新增内存服务入参统一在主进程做类型、数量与长度检查。 */
 export function validateClipboardConfig(value: unknown): ClipboardHistoryConfig {
@@ -561,6 +566,41 @@ export function assertObject(value: unknown, name: string): Record<string, unkno
     throw new Error(`${name}无效`)
   }
   return value as Record<string, unknown>
+}
+
+/** 热榜查询：周期与语言都走白名单，缓存标记只接受布尔值。 */
+export function validateTrendingQuery(value: unknown): TrendingQuery {
+  const body = assertObject(value, '热榜查询')
+  const result: TrendingQuery = {
+    period: requireEnum(body.period, '榜单周期', TRENDING_PERIOD_VALUES)
+  }
+  if (body.language !== undefined && body.language !== null && body.language !== '') {
+    result.language = requireEnum(body.language, '榜单语言', TRENDING_LANGUAGE_VALUES)
+  }
+  if (body.force !== undefined) result.force = requireBoolean(body.force, '刷新标记')
+  if (body.allowStale !== undefined)
+    result.allowStale = requireBoolean(body.allowStale, '缓存标记')
+  return result
+}
+
+/** 打开仓库只接受 owner/repo，主进程自己拼固定 GitHub 地址。 */
+export function validateRepoFullName(value: unknown): string {
+  const name = requireString(value, '仓库名', { maxLength: 201 })
+  const [owner, repo, ...rest] = name.split('/')
+  if (
+    rest.length > 0 ||
+    !owner ||
+    !repo ||
+    owner === '.' ||
+    owner === '..' ||
+    repo === '.' ||
+    repo === '..' ||
+    !/^[A-Za-z0-9_.-]{1,100}$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]{1,100}$/.test(repo)
+  ) {
+    throw new Error('仓库名无效')
+  }
+  return name
 }
 
 /** 校验工具与外观的新增字段，保留既有阅读配置和快捷键的合并语义。 */

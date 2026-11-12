@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
 import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
-import { CaretIcon, ChevronIcon, CodeIcon, TodoIcon } from './icons'
+import { CaretIcon, ChevronIcon, CodeIcon, FlameIcon, SparklesIcon, TodoIcon } from './icons'
 
 /** 叶子保留原来的页面标识和导航动作。 */
 interface RailItem {
@@ -44,6 +44,10 @@ function RailIcon({ name }: { name: string }): JSX.Element {
       return <TodoIcon />
     case 'code':
       return <CodeIcon />
+    case 'flame':
+      return <FlameIcon />
+    case 'sparkles':
+      return <SparklesIcon />
     case 'book':
       return (
         <svg {...common}>

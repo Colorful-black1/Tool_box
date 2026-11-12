@@ -24,6 +24,8 @@ import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
 import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
 import { AgentUsagePage } from './components/agent-usage/agent-usage-page'
+import { TrendingPage } from './components/trending/trending-page'
+import { AiWorldPage } from './components/ai-world/ai-world-page'
 import { useCodingAgentStore } from './stores/coding-agent-store'
 import { WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
 import { codingAgentClient } from './lib/coding-agent-client'
@@ -42,6 +44,8 @@ import { confirmDialog } from './stores/dialog-store'
 const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   commands: { title: '命令速查', subtitle: 'COMMANDS · 开发常用命令' },
   'agent-usage': { title: 'Token 统计', subtitle: 'USAGE · 本机 Agent 用量' },
+  trending: { title: '开源热榜', subtitle: 'GITHUB TRENDING · 最近走红的项目' },
+  'ai-world': { title: 'AI 模型世界', subtitle: 'AI MODEL WORLD · 模型、评测与价格' },
   opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
@@ -57,6 +61,14 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
 
 const RAIL_ITEMS: RailNode[] = [
   { view: 'chat', label: '对话', icon: 'chat' },
+  {
+    id: 'ai-intel',
+    label: 'AI 情报',
+    children: [
+      { view: 'trending', label: '开源热榜', icon: 'flame' },
+      { view: 'ai-world', label: 'AI 模型世界', icon: 'sparkles' }
+    ]
+  },
   {
     id: 'development',
     label: '开发工作台',
@@ -335,6 +347,8 @@ export default function App(): JSX.Element {
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}
                 {view === 'agent-usage' ? <AgentUsagePage /> : null}
+                {view === 'trending' ? <TrendingPage /> : null}
+                {view === 'ai-world' ? <AiWorldPage /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}
               </>
             )}

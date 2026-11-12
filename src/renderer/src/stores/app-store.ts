@@ -38,6 +38,8 @@ import type { UsageQuery } from '../../../shared/agent-usage'
 export type AppView =
   | 'commands'
   | 'agent-usage'
+  | 'trending'
+  | 'ai-world'
   | 'opencode'
   | 'chat'
   | 'shelf'

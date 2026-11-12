@@ -41,6 +41,7 @@ import type {
   ConversationSummary,
   ImportResult,
   LocalIpAddressView,
+  PublicIpView,
   PortSnapshot,
   PortProcessStopResult,
   CertificateView,
@@ -78,6 +79,8 @@ import type {
   GitStatusView
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
+import type { TrendingQuery, TrendingResult } from './github-trending'
+import type { AiWorldQuery, AiWorldResult } from './ai-model-world'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
 import type {
   KbDocumentDetail,
@@ -139,6 +142,17 @@ export interface ToolboxBridge {
     query(input: UsageQuery): Promise<UsageReport>
     chooseSource(client: UsageClient): Promise<boolean>
     resetSource(client: UsageClient): Promise<void>
+  }
+  trending: {
+    /** allowStale：只读缓存，可能返回 null；普通查询返回最新结果或抛错 */
+    list(query: TrendingQuery): Promise<TrendingResult | null>
+    open(fullName: string): Promise<void>
+  }
+  aiWorld: {
+    /** 读取 AI 模型快照；allowStale 只读本地缓存。 */
+    get(query?: AiWorldQuery): Promise<AiWorldResult>
+    /** 只允许打开当前快照中出现过的来源链接。 */
+    openSource(url: string): Promise<void>
   }
   knowledge: {
     /** 资料列表只回摘要，不含正文与绝对路径。 */
@@ -326,6 +340,8 @@ export interface ToolboxBridge {
   system: {
     /** 本机非回环网卡地址，不发起公网请求。 */
     networkAddresses(): Promise<LocalIpAddressView[]>
+    /** 分别查询当前公网 IPv4 / IPv6；会请求第三方服务，仅在用户触发时调用。 */
+    publicIp(): Promise<PublicIpView>
     portProcesses(): Promise<PortSnapshot>
     /** 只接受本次端口快照签发的停止引用，不接受 PID 或命令。 */
     stopPortProcess(token: string): Promise<PortProcessStopResult>

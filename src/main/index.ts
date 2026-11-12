@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 
-import { BrowserWindow, Menu, Tray, app, safeStorage, dialog } from 'electron'
+import { BrowserWindow, Menu, Tray, app, safeStorage, dialog, net } from 'electron'
 
-import { DB_FILE_NAME } from '../shared/constants'
+import { DB_FILE_NAME, AI_WORLD_CACHE_FILE_NAME, TRENDING_CACHE_FILE_NAME } from '../shared/constants'
 import type { SafeStorageAdapter } from '../shared/safe-storage'
 import { registerIpcHandlers } from './ipc/register-ipc'
 import { AiGateway } from './services/ai-gateway/ai-gateway'
@@ -20,6 +20,8 @@ import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
 import { KnowledgeBaseService } from './services/knowledge-base/kb-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
+import { GithubTrendingService } from './services/github-trending/service'
+import { AiWorldService } from './services/ai-model-world/service'
 
 // 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
 // 还会让数据库、AI 配置和密码箱状态混在一起。测试入口若已显式 setPath，则保留其隔离目录。
@@ -119,7 +121,15 @@ function initializeServices(): void {
   shortcuts = new ShortcutManager(store, () => showMainWindow(mainWindow))
 
   const opencode = new OpenCodeService(store)
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge })
+  const trending = new GithubTrendingService({
+    fetchImpl: (input, init) => net.fetch(input, init),
+    cacheFile: join(userDataDir, TRENDING_CACHE_FILE_NAME)
+  })
+  const aiWorld = new AiWorldService({
+    fetchImpl: (input, init) => net.fetch(input, init),
+    cacheFile: join(userDataDir, AI_WORLD_CACHE_FILE_NAME)
+  })
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge, trending, aiWorld })
 
   app.on('quit', () => {
     store.close()

@@ -32,6 +32,8 @@ import type { ClipboardHistorySnapshot } from '../shared/clipboard'
 import type { FileScanSnapshot } from '../shared/file-tools'
 import type { CodingAgentEvent } from '../shared/coding-agents'
 import type { KbProgressEvent } from '../shared/knowledge-base'
+import type { TrendingQuery } from '../shared/github-trending'
+import type { AiWorldQuery } from '../shared/ai-model-world'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const wrapped = (_event: unknown, payload: T): void => {
@@ -87,6 +89,14 @@ const bridge: ToolboxBridge = {
     query: (input) => ipcRenderer.invoke(IPC.agentUsageQuery, input),
     chooseSource: (client) => ipcRenderer.invoke(IPC.agentUsageChooseSource, client),
     resetSource: (client) => ipcRenderer.invoke(IPC.agentUsageResetSource, client)
+  },
+  trending: {
+    list: (query: TrendingQuery) => ipcRenderer.invoke(IPC.trendingList, query),
+    open: (fullName: string) => ipcRenderer.invoke(IPC.trendingOpen, fullName)
+  },
+  aiWorld: {
+    get: (query?: AiWorldQuery) => ipcRenderer.invoke(IPC.aiWorldGet, query),
+    openSource: (url: string) => ipcRenderer.invoke(IPC.aiWorldOpenSource, url)
   },
   knowledge: {
     list: (input) => ipcRenderer.invoke(IPC.kbList, input),
@@ -267,6 +277,7 @@ const bridge: ToolboxBridge = {
   },
   system: {
     networkAddresses: () => ipcRenderer.invoke(IPC.systemNetworkAddresses),
+    publicIp: () => ipcRenderer.invoke(IPC.systemNetworkPublicIp),
     portProcesses: () => ipcRenderer.invoke(IPC.systemNetworkPorts),
     stopPortProcess: (token: string) => ipcRenderer.invoke(IPC.systemNetworkProcessStop, token),
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),

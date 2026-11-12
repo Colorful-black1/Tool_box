@@ -21,6 +21,20 @@ export interface LocalIpAddressView {
   netmask: string
 }
 
+/** 公网出口的单个地址；同一协议可能由不同第三方服务返回。 */
+export interface PublicIpEntry {
+  address: string
+  family: 'IPv4' | 'IPv6'
+  source: string
+}
+
+/** 公网出口查询结果；IPv4 / IPv6 分别查询，结果不保存归属地或历史。 */
+export interface PublicIpView {
+  ipv4: PublicIpEntry | null
+  ipv6: PublicIpEntry | null
+  checkedAt: string
+}
+
 /** 端口快照不包含路径或命令行；停止引用仅在主进程短期有效。 */
 export interface PortProcessView {
   protocol: 'TCP' | 'UDP'

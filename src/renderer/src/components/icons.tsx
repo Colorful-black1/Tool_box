@@ -165,6 +165,36 @@ export function StopIcon(): JSX.Element {
   )
 }
 
+/** 火苗：开源热榜入口。 */
+export function FlameIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path
+        d="M12 21c4 0 7-2.7 7-6.6 0-3.2-2-5.5-4.2-7.6-.9-.9-1.8-1.8-2.3-3.2-2.2 1.7-3 3.8-3 5.7 0 1.2.3 2.2.8 3.1-.9-.2-1.6-.6-2.2-1.2-.4 1-.9 2-.9 3.2C7.2 18.3 9.8 21 12 21z"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 21c-1.7 0-3-1.3-3-3 0-1.4.7-2.4 1.6-3.3.5-.5 1-1 1.3-1.8 1.1.9 1.8 2.1 1.8 3.4 0 1.1-.4 1.9-1 2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** 星芒：AI 情报分类下的模型世界入口。 */
+export function SparklesIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path
+        d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9 12 3.5Z"
+        strokeLinejoin="round"
+      />
+      <path d="M18.5 16.5 19.2 19l2.5.7-2.5.7-.7 2.5-.7-2.5-2.5-.7 2.5-.7.7-2.5Z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function RefreshIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, app } from 'electron'
+import { BrowserWindow, dialog, ipcMain, app, net } from 'electron'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
@@ -33,6 +33,7 @@ import { DshAdapter } from '../services/coding-agents/dsh-adapter'
 import { AgentProjectMemory } from '../services/coding-agents/agent-project-memory'
 import { mergeAgentPreferences } from '../../shared/agent-projects'
 import { listLocalAddresses } from '../services/developer-tools'
+import { PublicIpResolver } from '../services/public-ip'
 import { registerAiOutputIpc } from './ai-output-ipc'
 import { registerDeveloperDiagnosticsIpc } from './developer-diagnostics-ipc'
 import { registerTodosIpc } from './todos-ipc'
@@ -44,6 +45,10 @@ import type { TodoService } from '../services/todo-service'
 import type { AgentUsageService } from '../services/agent-usage/usage-service'
 import type { KnowledgeBaseService } from '../services/knowledge-base/kb-service'
 import { registerKnowledgeIpc } from './knowledge-ipc'
+import { registerTrendingIpc } from './trending-ipc'
+import type { GithubTrendingService } from '../services/github-trending/service'
+import { registerAiWorldIpc } from './ai-world-ipc'
+import type { AiWorldService } from '../services/ai-model-world/service'
 import {
   assertObject,
   optionalModelName,
@@ -69,6 +74,8 @@ export interface IpcDependencies {
   todos?: TodoService
   usage?: Promise<AgentUsageService>
   knowledge?: KnowledgeBaseService
+  trending?: GithubTrendingService
+  aiWorld?: AiWorldService
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
@@ -77,6 +84,8 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerDeveloperCommandsIpc(dependencies.store)
   registerTodosIpc(dependencies.store, dependencies.todos)
   registerAgentUsageIpc(dependencies.usage)
+  registerTrendingIpc(dependencies.trending)
+  registerAiWorldIpc(dependencies.aiWorld)
   if (dependencies.knowledge) registerKnowledgeIpc(dependencies.knowledge)
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService(
@@ -127,6 +136,19 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
       return listLocalAddresses()
     } catch (error) {
       throw new Error('无法读取本机 IP，请稍后刷新重试', { cause: error })
+    }
+  })
+
+  const publicIp = new PublicIpResolver({
+    fetchImpl: (input, init) => net.fetch(input, init)
+  })
+  ipcMain.handle(IPC.systemNetworkPublicIp, async (event) => {
+    if (!BrowserWindow.fromWebContents(event.sender) || event.senderFrame !== event.sender.mainFrame)
+      throw new Error('当前页面无权查询公网 IP')
+    try {
+      return await publicIp.get()
+    } catch (error) {
+      throw new Error('公网 IP 查询失败，请检查网络或代理后重试', { cause: error })
     }
   })
 
