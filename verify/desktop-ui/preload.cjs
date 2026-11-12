@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron')
 const fixture = require('./fixture.cjs')()
+{
+  const aiWorld = require('./ai-world-fixture.cjs')()
+  fixture.toolbox.aiWorld = aiWorld.bridge
+  Object.assign(fixture.controls, aiWorld.controls)
+}
 fixture.toolbox.developerCommands = {
   read: () => ipcRenderer.invoke('developer-commands:read'),
   save: (input) => ipcRenderer.invoke('developer-commands:save', input),
@@ -11,6 +16,11 @@ if (process.env.TOOLBOX_USAGE_VERIFY === '1') {
   const usage = require('./agent-usage-fixture.cjs')()
   fixture.toolbox.agentUsage = usage.bridge
   Object.assign(fixture.controls, usage.controls)
+}
+if (process.env.TOOLBOX_TRENDING_VERIFY === '1') {
+  const trending = require('./trending-fixture.cjs')()
+  fixture.toolbox.trending = trending.bridge
+  Object.assign(fixture.controls, trending.controls)
 }
 if (
   process.env.TOOLBOX_CODING_AGENT_VERIFY === '1' ||

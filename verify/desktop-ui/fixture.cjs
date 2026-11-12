@@ -163,6 +163,7 @@ module.exports = function createFixture() {
   let polishCount = 0
   let failPolish = false
   let failIp = false
+  let failPublicIp = false
   let holdAi = false
   let pendingAi = null
   const waitForAi = (kind, requestId) =>
@@ -217,6 +218,9 @@ module.exports = function createFixture() {
       },
       failNextIp: () => {
         failIp = true
+      },
+      failNextPublicIp: () => {
+        failPublicIp = true
       },
       failNextPorts: () => { failPorts = true },
       lastNote: () => copy(notes.at(-1)),
@@ -400,6 +404,17 @@ module.exports = function createFixture() {
               netmask: 'ffff:ffff:ffff:ffff::'
             }
           ]
+        },
+        publicIp: async () => {
+          if (failPublicIp) {
+            failPublicIp = false
+            throw new Error('公网 IP 查询失败，请检查网络或代理后重试')
+          }
+          return {
+            ipv4: { address: '203.0.113.45', family: 'IPv4', source: '合成服务' },
+            ipv6: { address: '2001:db8::45', family: 'IPv6', source: '合成服务' },
+            checkedAt: new Date().toISOString()
+          }
         },
         getShortcut: async () => ({ enabled: false, accelerator: 'Control+Shift+Space' }),
         copyText: async (text) => {

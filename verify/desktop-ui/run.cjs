@@ -17,6 +17,8 @@ const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyKnowledge = require('./knowledge.cjs')
 const verifyModelSettings = require('./model-settings.cjs')
 const verifyContext = require('./context.cjs')
+const verifyTrending = require('./trending.cjs')
+const verifyAiWorld = require('./ai-world.cjs')
 const verifyIpPrompt = require('./ip-prompt.cjs')
 const verifyAiStream = require('./ai-stream.cjs')
 const verifyDeveloperUtilities = require('./developer-utilities.cjs')
@@ -32,6 +34,7 @@ async function main() {
   const env = { ...process.env, TOOLBOX_UI_VERIFY_PROFILE: profile }
   if (process.argv.includes('--capability-batch-only')) env.TOOLBOX_CAPABILITY_VERIFY = '1'
   if (process.argv.includes('--agent-usage-only')) env.TOOLBOX_USAGE_VERIFY = '1'
+  if (process.argv.includes('--trending-only')) env.TOOLBOX_TRENDING_VERIFY = '1'
   if (process.argv.includes('--chat-tools-only')) {
     env.TOOLBOX_CHAT_TOOLS_VERIFY = '1'
     env.TOOLBOX_USAGE_VERIFY = '1'
@@ -156,6 +159,18 @@ async function main() {
       await verifyAgentUsage({ page, app, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`Token 统计验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--trending-only')) {
+      await verifyTrending({ page, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`开源热榜验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+    if (process.argv.includes('--ai-world-only')) {
+      await verifyAiWorld({ page, app, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`AI 模型世界验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
     if (process.argv.includes('--agent-basics-only')) {

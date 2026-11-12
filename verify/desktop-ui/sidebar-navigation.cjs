@@ -6,6 +6,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   const nav = page.getByRole('navigation', { name: '主导航', exact: true })
   const button = (name) => nav.getByRole('button', { name, exact: true })
   const groups = {
+    'AI 情报': ['开源热榜', 'AI 模型世界'],
     开发工作台: ['编程 Agent', 'Token 统计', '命令速查', '工具'],
     阅读空间: ['书架', '统计'],
     个人管理: ['密码箱', '记事本', '待办清单'],
@@ -28,8 +29,8 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   await resize(1280, 820)
   await button('对话').waitFor()
 
-  await check('主导航五类树形分组，AI 助手保持首个独立入口', async () => {
-    assert.equal(await nav.locator('.nav-tree > li').count(), 6)
+  await check('主导航六类树形分组，AI 助手保持首个独立入口', async () => {
+    assert.equal(await nav.locator('.nav-tree > li').count(), 7)
     assert.equal(await nav.locator('.nav-tree > li').first().innerText(), '对话')
     assert.equal(await button('对话').getAttribute('aria-current'), 'page')
     for (const [name, children] of Object.entries(groups)) {
@@ -77,6 +78,8 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('所有原 TAB 仍可切换，当前子项和归属分类标记正确', async () => {
     for (const [name, title] of [
+      ['开源热榜', '开源热榜'],
+      ['AI 模型世界', 'AI 模型世界'],
       ['编程 Agent', '编程 Agent'],
       ['Token 统计', 'Token 统计'],
       ['工具', '开发者工具'],
@@ -137,7 +140,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     await button('个人管理').click()
     await button('收起侧边栏').click()
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 12)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 14)
     await button('工具').click()
     assert.equal(await button('工具').getAttribute('aria-current'), 'page')
     await capture('sidebar-tree-icons')
@@ -148,13 +151,15 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('窄窗自动显示全部图标，变宽后恢复手动侧栏偏好', async () => {
     await resize(1024, 680)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 12)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 14)
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
-    assert.equal(await nav.evaluate((element) => element.scrollWidth > element.clientWidth), false)
+    // 折叠栏出现纵向滚动条时，scrollWidth 会比 clientWidth 多 1px 边框 / 滚动条取整。
+    assert.ok((await nav.evaluate((element) => element.scrollWidth)) <=
+      (await nav.evaluate((element) => element.clientWidth)) + 2)
     await button('记事本').click()
     await capture('sidebar-tree-narrow')
     await resize(1280, 820)
-    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 5)
+    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 6)
     await button('收起侧边栏').click()
     await resize(1024, 680, true)
     await resize(1280, 820, true)
