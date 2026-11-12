@@ -9,20 +9,20 @@
 1. 原生对话回退、回退并取回编辑。先交付原生协议支持的 Codex 分页会话，包含完整轮次锚点、受影响尾部预览、单次确认凭据、执行前历史核对、执行后权威回读和未知结果恢复；文件不恢复。
 2. OpenCode 表单与 Codex MCP elicitation。复用现有问答卡片和答复通道，支持受限平面 schema，逐字段校验、取消和失效；秘密／URL／未知 schema 回原生客户端。
 
-详细范围、协议和验收见 [基础能力计划](../docs/PLAN-coding-agent-basic-features.md)。实施顺序为表单 → 原生历史 → service／IPC → UI／草稿 → 回归／记录。不自动提交、推送、调用真实付费模型或修改真实用户会话。
+详细范围、协议和验收见 [基础能力计划](../docs/coding-agent.md)。实施顺序为表单 → 原生历史 → service／IPC → UI／草稿 → 回归／记录。不自动提交、推送、调用真实付费模型或修改真实用户会话。
 
 ## 已交付功能索引
 
 | 功能 | 当前依据 |
 | --- | --- |
-| 统一工作台、按需发送、原生历史、消息转用 | [工作台规格](../docs/SPEC-coding-agent-workbench.md)、[交付](../docs/coding-agent-verification.md) |
-| 工具收藏／最近使用、加密草稿、Claude／DSH | [交付](../docs/desktop-convenience-agent-verification.md) |
-| Token 统计 | [交付](../docs/agent-token-usage-verification.md) |
-| 待办与首批转换工具 | [交付](../docs/tool-expansion-first-batch-verification.md) |
-| 对话工具扩展 | [交付](../docs/chat-priority-tools-verification.md) |
-| 命令速查 | [交付](../docs/developer-command-library-verification.md) |
-| 首批基础交互 | [交付](../docs/coding-agent-basic-features-verification.md) |
-| Claude Desktop 供应商／历史／退出 | [历史交付](../docs/claude-desktop-history-verification.md)、[供应商交付](../docs/claude-desktop-provider-verification.md) |
+| 统一工作台、按需发送、原生历史、消息转用 | [工作台规格](../docs/coding-agent.md)、[交付](../docs/coding-agent.md) |
+| 工具收藏／最近使用、加密草稿、Claude／DSH | [交付](../docs/coding-agent.md) |
+| Token 统计 | [交付](../docs/token-usage.md) |
+| 待办与首批转换工具 | [交付](../docs/todo-reminders.md) |
+| 对话工具扩展 | [交付](../docs/chat.md) |
+| 命令速查 | [交付](../docs/developer-command-library.md) |
+| 首批基础交互 | [交付](../docs/coding-agent.md) |
+| Claude Desktop 供应商／历史／退出 | [历史交付](../docs/claude-providers.md)、[供应商交付](../docs/claude-providers.md) |
 
 ## 后置可选，未启动
 

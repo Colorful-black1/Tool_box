@@ -1,6 +1,6 @@
 import type { DeveloperCommand, CommandRisk } from './developer-commands'
 
-// 语法来源与核对范围见 docs/developer-command-library-verification.md。
+// 语法来源与核对范围见 docs/developer-command-library.md。
 type Preset = [id: string, title: string, command: string, description: string, risk?: CommandRisk]
 const docker: Preset[] = [
   ['containers', '查看所有容器', 'docker ps -a', '列出运行中和已停止的容器'],

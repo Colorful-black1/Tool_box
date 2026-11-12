@@ -174,7 +174,7 @@ API Key、Token / Secret、密码箱主密钥与密文信封、AccessKey、完�
 
 # 数据库规范
 
-数据层统一在 `src/main/services/chat-store/chat-store.ts`，版本由 `SCHEMA_VERSION` + `user_version` pragma 管理（当前桌面 v5；手机冻结版本不随之更新）。
+数据层统一在 `src/main/services/chat-store/chat-store.ts`，版本由 `SCHEMA_VERSION` + `user_version` pragma 管理（当前桌面 v7；手机冻结版本不随之更新）。
 
 **表结构变更**必须提供：
 

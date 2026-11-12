@@ -118,15 +118,22 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 | 文档 | 内容 |
 | --- | --- |
 | [`AGENTS.md`](AGENTS.md) | 协作与改动纪律：验证门槛、Git 规范、安全与数据库红线 |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 待办、真机验收清单、环境坑与历史决策 |
-| [`docs/SPEC-coding-agent-workbench.md`](docs/SPEC-coding-agent-workbench.md) | 编程 Agent 工作台的范围与边界 |
-| [`docs/PLAN-context-management.md`](docs/PLAN-context-management.md) | 长对话上下文压缩方案 |
-| [`docs/PLAN-knowledge-base.md`](docs/PLAN-knowledge-base.md) | 本地知识库的分块与检索设计 |
-| [`docs/PLAN-agent-token-usage.md`](docs/PLAN-agent-token-usage.md) | Token 统计的数据来源与口径 |
-| [`docs/developer-utilities.md`](docs/developer-utilities.md) | 开发者工具的语法边界与限制 |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 当前状态、待人工验收项、环境与已知坑、后续能力 |
+| [`docs/coding-agent.md`](docs/coding-agent.md) | 编程 Agent 五个入口的契约、交互、边界与未验收项 |
+| [`docs/claude-providers.md`](docs/claude-providers.md) | Claude Code / Desktop 双入口、历史续接与 CC Switch 排障 |
+| [`docs/chat.md`](docs/chat.md) | 对话工具、内部引用、审批与流式约定 |
+| [`docs/context-management.md`](docs/context-management.md) | 上下文占用、压缩阈值与检查点 |
+| [`docs/knowledge-base.md`](docs/knowledge-base.md) | 知识库分块、检索、降级与外发边界 |
+| [`docs/token-usage.md`](docs/token-usage.md) | 14 类本机来源的统计口径与上限 |
+| [`docs/ai-intel.md`](docs/ai-intel.md) | 开源热榜与 AI 模型世界的数据链路 |
+| [`docs/developer-utilities.md`](docs/developer-utilities.md) | 开发者工具边界与输入上限 |
+| [`docs/developer-command-library.md`](docs/developer-command-library.md) | 命令速查的内置库与编辑规则 |
+| [`docs/ui-controls.md`](docs/ui-controls.md) | 下拉、日期、弹窗等公共控件行为 |
+| [`docs/todo-reminders.md`](docs/todo-reminders.md) | 待办字段、提醒与迁移回滚 |
+| [`docs/user-data.md`](docs/user-data.md) | 密码健康、剪贴板、查重与快照的隐私边界 |
 | [`docs/mobile-frozen.md`](docs/mobile-frozen.md) | 手机端冻结说明（恢复维护前先读） |
 
-其余规格与交付记录见 [`docs/`](docs/)。
+专题按主题拆分；不保留「计划 / 交付记录」类过程文档，实现过程见 git 历史。
 
 ## 贡献
 
