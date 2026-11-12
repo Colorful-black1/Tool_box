@@ -1,5 +1,20 @@
 # Capability Map: Tool_box
 
+## 2026-11-12 AI 模型世界
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| ai-model-world-native | 主进程直接采集 models.dev 与 Epoch AI，fflate 解压、csv-parse 解析、归一化匹配、结构校验、12 小时缓存与来源白名单 | electron-shell, shared | [AI 模型世界方案](docs/PLAN-ai-model-world.md) |
+| ai-model-world-index | 今日格局、ECI 名次、编程共识、能力分位、模型类型推导 | shared | 同上 |
+| ai-model-world-ui | 模型列表、筛选 / 搜索 / 排序 / 分页、详情抽屉、数据来源与许可 | renderer-ui, shared | 同上 |
+
+## 2026-11-11 GitHub 开源热榜
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| github-trending | Trending 页面解析、10 分钟缓存、Search API 兜底、来源标注 | electron-shell, shared | [开源热榜方案](docs/PLAN-github-trending.md) |
+| github-trending-ui | 今日/本周/本月、语言筛选、当前列表搜索、复制与打开 | renderer-ui, shared | 同上 |
+
 ## 2026-11-11 对话上下文管理
 
 | Module id | Responsibility | Depends on | Spec |
