@@ -19,8 +19,29 @@ describe('catalogContextWindow', () => {
       catalogContextWindow('custom', 'deepseek-v4.1-flash', 'https://opencode.ai/zen/go/v1')
     ).toBe(1_000_000)
     expect(
+      catalogContextWindow('custom', 'deepseek-v4.1-flash', 'https://opencode.ai/inference/go/v1')
+    ).toBe(1_000_000)
+    expect(
       catalogContextWindow('custom', 'deepseek-v4-pro', 'https://api.deepseek.com/v1')
     ).toBe(1_048_576)
+  })
+
+  it('OpenCode Zen 只匹配自己的免费模型，不套用 Go 目录', () => {
+    expect(catalogContextWindow('opencode-zen', 'deepseek-v4.1-flash-free')).toBe(200_000)
+    expect(catalogContextWindow('opencode-zen', 'deepseek-v4.1-flash')).toBeNull()
+    expect(
+      catalogContextWindow('custom', 'deepseek-v4.1-flash-free', 'https://opencode.ai/zen/v1')
+    ).toBe(200_000)
+    expect(
+      catalogContextWindow(
+        'custom',
+        'deepseek-v4.1-flash-free',
+        'https://opencode.ai/inference/openai/v1'
+      )
+    ).toBe(200_000)
+    expect(
+      catalogContextWindow('custom', 'deepseek-v4.1-flash', 'https://opencode.ai/zen/v1')
+    ).toBeNull()
   })
 
   it('未知模型、空值与未收录供应商返回 null', () => {

@@ -30,13 +30,13 @@ describe('buildProviderHeaders', () => {
   })
 
   it('does not treat OpenCode Zen as Go', () => {
-    expect(
-      buildProviderHeaders({
-        provider: 'custom',
-        baseUrl: 'https://opencode.ai/zen/v1',
-        sessionId: 'abc'
-      })
-    ).toEqual({})
+    for (const [provider, baseUrl] of [
+      ['opencode-zen', 'https://opencode.ai/zen/v1'],
+      ['custom', 'https://opencode.ai/zen/v1']
+    ] as const) {
+      expect(buildProviderHeaders({ provider, baseUrl, sessionId: 'abc' })).toEqual({})
+      expect(requiresCustomUserAgent({ provider, baseUrl, sessionId: 'abc' })).toBe(false)
+    }
   })
 
   it('returns no headers for other OpenAI-compatible providers', () => {

@@ -89,6 +89,23 @@ describe('extractModelList', () => {
     })
   })
 
+  it('reads OpenCode Zen limit.context and falls back to limit.input', () => {
+    expect(
+      extractModelList({
+        data: [
+          {
+            id: 'deepseek-v4.1-flash-free',
+            limit: { context: 200_000, input: 160_000, output: 32_000 }
+          },
+          { id: 'fallback-input', limit: { input: 131_072 } }
+        ]
+      }).contextWindows
+    ).toEqual({
+      'deepseek-v4.1-flash-free': 200_000,
+      'fallback-input': 131_072
+    })
+  })
+
   it('ignores missing, non-numeric and out-of-range values', () => {
     const result = extractModelList({
       data: [

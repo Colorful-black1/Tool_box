@@ -164,6 +164,7 @@ export const AI_PROVIDER_IDS = [
   'mimo',
   'openai',
   'opencode-go',
+  'opencode-zen',
   'kimi',
   'qwen',
   'siliconflow',
@@ -247,6 +248,35 @@ export const AI_PROVIDER_PRESETS: readonly AiProviderPreset[] = [
       'deepseek-v4.1-flash'
     ],
     consoleUrl: 'https://opencode.ai/go'
+  },
+  {
+    id: 'opencode-zen',
+    name: 'OpenCode Zen',
+    /**
+     * Zen 是 OpenCode 的按量 / 免费模型入口，和 Go 订阅不是同一条链路。
+     * `/zen/v1` 是 Zen 的 OpenAI 兼容根路径；免费模型都走
+     * `/chat/completions`，因此不需要像 Go 那样额外发送会话头。
+     */
+    baseUrl: 'https://opencode.ai/zen/v1',
+    /**
+     * 内置推荐 = 免费模型的兜底快照，不是全部。
+     * 免费档会随 OpenCode 活动调整，完整列表（含付费模型）靠「获取模型」实时拉取。
+     */
+    models: [
+      'deepseek-v4.1-flash-free',
+      'glm-5.3-flash-free',
+      'mimo-v2.6-flash-free',
+      'minimax-m3.1-flash-free',
+      'longcat-2.5-free',
+      'nemotron-3.5-lightning-free',
+      'nemotron-3.5-super-vl-free',
+      'iceman-free',
+      'inkling-2-small-free',
+      'beam-free',
+      'flint-40b-free',
+      'big-pickle'
+    ],
+    consoleUrl: 'https://opencode.ai/zen'
   },
   {
     id: 'kimi',

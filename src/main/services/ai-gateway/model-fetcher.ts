@@ -40,6 +40,9 @@ const CONTEXT_FIELDS = [
 ] as const
 
 const NESTED_CONTEXT_PATHS: ReadonlyArray<readonly string[]> = [
+  // OpenCode Zen / Console 把窗口放在 limit 对象里；context 是总窗口，input 是输入上限
+  ['limit', 'context'],
+  ['limit', 'input'],
   ['model_info', 'context_window'],
   ['model_info', 'max_input_tokens'],
   ['meta', 'n_ctx_train'],

@@ -37,4 +37,24 @@ module.exports = async function verifyModelSettings({ page, check, capture }) {
     await page.getByRole('button', { name: '补齐向量（1）', exact: true }).waitFor()
     await capture('knowledge-vector-pending')
   })
+
+  await check('设置页提供 OpenCode Zen 供应商与免费模型', async () => {
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('heading', { name: '星轨链路', exact: true }).waitFor()
+    await page.getByRole('button', { name: '服务商', exact: true }).click()
+    await page.getByRole('option', { name: 'OpenCode Zen', exact: true }).click()
+
+    assert.equal(
+      await page.getByLabel('接口地址 · BASE URL', { exact: true }).inputValue(),
+      'https://opencode.ai/zen/v1'
+    )
+    assert.equal(
+      await page.getByLabel('当前模型 · MODEL', { exact: true }).inputValue(),
+      'deepseek-v4.1-flash-free'
+    )
+    await page
+      .getByRole('checkbox', { name: /deepseek-v4\.1-flash-free/ })
+      .waitFor()
+    await capture('settings-opencode-zen')
+  })
 }

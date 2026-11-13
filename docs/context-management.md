@@ -23,10 +23,10 @@
 
 `windowSource` 的完整取值是 `manual | api | learned | catalog | default`，浮层如实展示。
 
-- `/models` 识别 `context_window`、`context_length`、`top_provider.context_length`、`model_info.context_window`、`max_model_len`、`meta.n_ctx_train`、`inputTokenLimit`、`max_context_length` 等别名；同一响应多个字段时按上述顺序取第一个可信值。
+- `/models` 识别 `context_window`、`context_length`、`top_provider.context_length`、`limit.context`、`limit.input`、`model_info.context_window`、`max_model_len`、`meta.n_ctx_train`、`inputTokenLimit`、`max_context_length` 等别名；同一响应多个字段时按上述顺序取第一个可信值。
 - 只接受 `4,000 ≤ N ≤ 10,000,000` 的整数；越界、非数字、字符串数字按缺失处理。
 - 只返回 `id` 的端点不报错，窗口留空，继续走 `catalog` / `default`。
-- 目录按供应商分组，同名模型不跨组套用，带 `-free` 等后缀的模型不命中目录。
+- 目录按供应商和完整模型 id 精确匹配，同名模型不跨组套用；带 `-free` 等后缀的模型不会回退到无后缀条目，OpenCode Zen 的免费档已单独收录。
 - 不内置「模型名 → 窗口」的全局硬编码，也不发试探请求探测窗口。
 
 ## 3. 占用估算与阈值参数
