@@ -14,7 +14,7 @@
 
 | 来源 | 读取位置 | 兼容要点 |
 | --- | --- | --- |
-| Codex | `CODEX_HOME` 下 `sessions` / `archived_sessions` 的 JSONL | 新版 `token_usage_record`、旧 `token_count` 与累计补差；补差无时间 / 模型时只进累计 |
+| Codex | `CODEX_HOME` 下 `sessions` / `archived_sessions` 的 `.jsonl` 与 `.jsonl.zst` | 新版 `token_usage_record`、旧 `token_count` 与累计补差；混合文件保留新版开始前的旧格式历史、丢弃镜像通知；压缩历史按 Zstandard 帧解码；补差无时间 / 模型时只进累计 |
 | OpenCode | `OPENCODE_DB` 或 `opencode.db` 的 `message` / `session_message` | 新版 `data.model` 是对象，取 `$.model.id` 并回退旧字段；新旧会话镜像只选一套 |
 | Claude Code | `CLAUDE_CONFIG_DIR/projects` 或 `.claude/projects` | 按原生消息身份去重；缓存是独立输入桶 |
 | Kimi Code | `.kimi` / `.kimi-code` 的 `wire.jsonl` | 协议 1.1 / 1.4 / 1.5；增量 `usage.record` 与汇总事件不叠加 |

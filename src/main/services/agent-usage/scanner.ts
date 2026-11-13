@@ -31,6 +31,9 @@ function accepts(client: UsageClient, path: string): boolean {
   const name = basename(path)
   if (DB_CLIENTS.has(client)) return /\.(?:db|sqlite|sqlite3)$/.test(name)
   switch (client) {
+    case 'codex':
+      // 新版 Codex 会把历史会话压成 .jsonl.zst，和未压缩日志同源同格式。
+      return /\.jsonl(?:\.zst)?$/.test(name)
     case 'kimi':
       return name === 'wire.jsonl'
     case 'dsh':
@@ -104,7 +107,7 @@ async function readLog(client: UsageClient, path: string): Promise<ParsedFile> {
   const parser = new UsageLogParser(client, path)
   const file = createReadStream(path)
   const decoder = new StringDecoder('utf8')
-  const stream = path.endsWith('.zstd') ? decodeZstdFrames(file, true) : file
+  const stream = /\.zst(?:d)?$/.test(path) ? decodeZstdFrames(file, true) : file
   let buffer = ''
   let bytes = 0
   let line = 0

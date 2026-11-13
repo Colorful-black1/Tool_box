@@ -11,6 +11,8 @@ export class UsageLogParser {
   private parent = ''
   private modern = new Map<string, UsageRecord>()
   private legacy = new Map<string, UsageRecord>()
+  private legacyLine = new Map<string, number>()
+  private firstModernLine: number | null = null
   private attempts = new Map<string, number>()
   private lastAttempt = ''
   private seedCut = 0
@@ -29,7 +31,7 @@ export class UsageLogParser {
     private client: UsageClient,
     private path: string
   ) {
-    this.session = basename(path).replace(/\.jsonl(?:\.zstd)?$/, '')
+    this.session = basename(path).replace(/\.jsonl(?:\.zst(?:d)?)?$/, '')
     if (client === 'kimi' || client === 'dsh') this.session = basename(dirname(path))
     if (client === 'kimi' && basename(dirname(dirname(path))) === 'agents')
       this.session = basename(dirname(dirname(dirname(path))))
@@ -88,15 +90,37 @@ export class UsageLogParser {
       this.issues++
       return []
     }
-    const rows =
-      this.client === 'codex'
-        ? [...(this.modern.size ? this.modern : this.legacy).values()]
-        : [...this.rows.values()]
+    const rows = this.client === 'codex' ? this.codexRows() : [...this.rows.values()]
     return [...rows, ...this.cumulativeSnapshots.values()].map((row) => ({
       ...row,
       project: row.project || this.project,
       partial: row.partial || this.issues > 0
     }))
+  }
+
+  /**
+   * 混合文件只保留「新版开始前只有旧格式」的历史。
+   * 与下一条新版记录总量相同的旧事件是同一次请求的镜像，必须丢弃；新版开始后仍未配对的旧事件
+   * 多为重复通知（同一累计值重复上报），也不再计入，避免同一请求被算两次。
+   */
+  private codexRows(): UsageRecord[] {
+    if (!this.modern.size) return [...this.legacy.values()]
+    const modern = [...this.modern.values()]
+    const firstModern = this.firstModernLine ?? Number.MAX_SAFE_INTEGER
+    const prefix: UsageRecord[] = []
+    let mirror = 0
+    for (const [id, row] of this.legacy) {
+      const matches =
+        mirror < modern.length &&
+        row.tokens.total !== null &&
+        row.tokens.total === modern[mirror].tokens.total
+      if (matches) {
+        mirror++
+        continue
+      }
+      if ((this.legacyLine.get(id) ?? Number.MAX_SAFE_INTEGER) < firstModern) prefix.push(row)
+    }
+    return [...prefix, ...modern]
   }
 
   private codex(r: Record<string, unknown>, line: number): void {
@@ -181,7 +205,13 @@ export class UsageLogParser {
         })
       }
     }
-    this.put(key, tokens, r.timestamp ?? p.timestamp, modern ? this.modern : this.legacy, session)
+    const target = modern ? this.modern : this.legacy
+    this.put(key, tokens, r.timestamp ?? p.timestamp, target, session)
+    if (modern) {
+      if (this.firstModernLine === null && this.modern.has(key)) this.firstModernLine = line
+    } else if (this.legacy.has(key) && !this.legacyLine.has(key)) {
+      this.legacyLine.set(key, line)
+    }
   }
 
   private claude(r: Record<string, unknown>): void {

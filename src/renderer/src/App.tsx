@@ -17,7 +17,7 @@ import { PasswordBoxPage } from './components/password/password-box-page'
 import { Reader } from './components/reader/reader'
 import { CommandPalette, openCommandPalette } from './components/search/command-palette'
 import { SearchIcon } from './components/icons'
-import { SideRail, TopBar } from './components/shell'
+import { SideRail, TopBar, WindowTitleBar } from './components/shell'
 import type { RailNode } from './components/shell'
 import { StatsPage } from './components/stats/stats-page'
 import { Starfield } from './components/starfield'
@@ -273,6 +273,7 @@ export default function App(): JSX.Element {
       <CommandPalette />
       <AppDialog />
       {clipboardOpen ? <ClipboardPanel /> : null}
+      <WindowTitleBar />
       <div className={`app-shell${railCollapsed ? ' rail-collapsed' : ' rail-expanded'}`}>
         <SideRail
           view={view}

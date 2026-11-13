@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
 import { BACKGROUNDS_DIR, COVERS_DIR } from '../../shared/constants'
+import { readAppAppearance } from '../../shared/appearance'
 import { CHAT_EVENT, IPC } from '../../shared/ipc-contract'
 import { AGENT_PERMISSION_MODES, AI_PROVIDER_IDS, DEFAULT_AGENT_PERMISSION, isAgentPermission } from '../../shared/types'
 import type {
@@ -49,6 +50,7 @@ import { registerTrendingIpc } from './trending-ipc'
 import type { GithubTrendingService } from '../services/github-trending/service'
 import { registerAiWorldIpc } from './ai-world-ipc'
 import type { AiWorldService } from '../services/ai-model-world/service'
+import { applyWindowTheme } from '../window-theme'
 import {
   assertObject,
   optionalModelName,
@@ -154,8 +156,15 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   // ---------- 阅读与桌面外观配置 kv ----------
   ipcMain.handle(IPC.configGet, () => store.configGet())
-  ipcMain.handle(IPC.configSet, (_event, patch: unknown) => {
-    return store.configSet(mergeAgentPreferences(store.configGet(), validateConfigPatch(patch)))
+  ipcMain.handle(IPC.configSet, (event, patch: unknown) => {
+    const validated = validateConfigPatch(patch)
+    const saved = store.configSet(mergeAgentPreferences(store.configGet(), validated))
+    // 只有外观配置真的变化时才重设原生标题栏，避免字体 / 模板保存也触发窗口重绘
+    if (Object.hasOwn(validated, 'appearance')) {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (win) applyWindowTheme(win, readAppAppearance(saved?.appearance))
+    }
+    return saved
   })
 
   // ---------- AI 配置（多档案） ----------

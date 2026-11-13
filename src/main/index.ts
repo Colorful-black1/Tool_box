@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 
-import { BrowserWindow, Menu, Tray, app, safeStorage, dialog, net } from 'electron'
+import { BrowserWindow, Menu, Tray, app, nativeTheme, safeStorage, dialog, net } from 'electron'
 
 import { DB_FILE_NAME, AI_WORLD_CACHE_FILE_NAME, TRENDING_CACHE_FILE_NAME } from '../shared/constants'
+import { readAppAppearance } from '../shared/appearance'
 import type { SafeStorageAdapter } from '../shared/safe-storage'
 import { registerIpcHandlers } from './ipc/register-ipc'
 import { AiGateway } from './services/ai-gateway/ai-gateway'
@@ -22,6 +23,7 @@ import { KnowledgeBaseService } from './services/knowledge-base/kb-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 import { GithubTrendingService } from './services/github-trending/service'
 import { AiWorldService } from './services/ai-model-world/service'
+import { applyWindowTheme, windowThemeOptions } from './window-theme'
 
 // 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
 // 还会让数据库、AI 配置和密码箱状态混在一起。测试入口若已显式 setPath，则保留其隔离目录。
@@ -39,6 +41,8 @@ const safeStorageAdapter = safeStorage as SafeStorageAdapter
 
 /** 主窗口引用：托盘与快捷键都要用它 */
 let mainWindow: BrowserWindow | null = null
+/** 读取已保存的外观主题；创建窗口与系统主题变化时共用 */
+let toolboxStore: ToolboxStore | null = null
 /** 系统托盘：关窗后应用仍在后台待命 */
 let tray: Tray | null = null
 /** 快捷键管理器 */
@@ -59,13 +63,14 @@ app.on('second-instance', () => {
 })
 
 function createMainWindow(): BrowserWindow {
+  const appearance = readAppAppearance(toolboxStore?.configGet()?.appearance)
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 1024,
     minHeight: 680,
     show: false,
-    backgroundColor: '#080b16',
+    ...windowThemeOptions(appearance),
     autoHideMenuBar: true,
     title: '私人百宝箱',
     icon: join(app.getAppPath(), 'assets/icon.png'),
@@ -104,6 +109,7 @@ function initializeServices(): void {
   const settings = new SettingsService(userDataDir, safeStorageAdapter)
   const secretBox = new SafeStorageSecretBox(userDataDir, safeStorageAdapter)
   const store = new ToolboxStore(join(userDataDir, DB_FILE_NAME), secretBox)
+  toolboxStore = store
   registerAgentDraftsIpc(new AgentDraftService(store, secretBox), draftQuitFlush)
   const importService = new ImportService()
   const todos = new TodoService(store)
@@ -149,6 +155,13 @@ app.whenReady().then(() => {
     return
   }
   mainWindow = createMainWindow()
+
+  // 跟随系统主题只影响「跟随系统」这一档；固定主题由 renderer 的 config:set 同步。
+  nativeTheme.on('updated', () => {
+    if (!toolboxStore || !mainWindow || mainWindow.isDestroyed()) return
+    const appearance = readAppAppearance(toolboxStore.configGet()?.appearance)
+    if (appearance.theme === 'system') applyWindowTheme(mainWindow, appearance)
+  })
 
   try {
     tray = createTray({

@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 
 import { useEffect, useState } from 'react'
+
+import appIcon from '../../../../assets/icon.png'
 import { useRailStore } from '../stores/rail-store'
 import type { AppView } from '../stores/app-store'
 import { CaretIcon, ChevronIcon, CodeIcon, FlameIcon, SparklesIcon, TodoIcon } from './icons'
@@ -161,9 +163,6 @@ export function SideRail({ view, onChange, items, alertViews }: SideRailProps): 
 
   return (
     <nav className={`side-rail${collapsed ? ' collapsed' : ''}`} aria-label="主导航">
-      <div className="logo-mark" aria-hidden="true">
-        智
-      </div>
       <button
         type="button"
         className="rail-toggle"
@@ -209,11 +208,29 @@ export function SideRail({ view, onChange, items, alertViews }: SideRailProps): 
           )
         })}
       </ul>
-      <div className="rail-spacer" />
-      <div className="rail-badge" aria-hidden="true">
-        T
-      </div>
     </nav>
+  )
+}
+
+/**
+ * Windows 自绘标题栏。
+ *
+ * 仅在主进程启用 titleBarOverlay（Window Controls Overlay）时渲染；
+ * 浏览器预览和合成 UI 验收没有这个 API，不会凭空多出一条标题栏。
+ */
+export function WindowTitleBar(): JSX.Element | null {
+  const overlay = (
+    navigator as Navigator & {
+      windowControlsOverlay?: { visible: boolean }
+    }
+  ).windowControlsOverlay
+  if (!overlay?.visible) return null
+
+  return (
+    <div className="window-titlebar" aria-hidden="true">
+      <img className="window-titlebar-icon" src={appIcon} alt="" draggable={false} />
+      <span className="window-titlebar-title">Tool_box · AI Companion</span>
+    </div>
   )
 }
 

@@ -10,6 +10,27 @@ function parse(client: UsageClient, rows: unknown[]) {
 
 describe('本地日志采集规则', () => {
   const usage = { input_tokens: 100, output_tokens: 20, cached_input_tokens: 80, total_tokens: 120 }
+  const legacyEvent = (ordinal: number, total: number) => ({
+    type: 'event_msg',
+    ordinal,
+    timestamp: '2026-10-24T00:00:00Z',
+    payload: {
+      type: 'token_count',
+      info: {
+        last_token_usage: { input_tokens: total, output_tokens: 0, total_tokens: total },
+        total_token_usage: { input_tokens: total, output_tokens: 0, total_tokens: total }
+      }
+    }
+  })
+  const modernEvent = (ordinal: number, total: number) => ({
+    type: 'token_usage_record',
+    ordinal,
+    timestamp: '2026-10-24T00:00:00Z',
+    payload: {
+      thread_id: 'thread',
+      usage: { input_tokens: total, output_tokens: 0, total_tokens: total }
+    }
+  })
   it('Codex 新旧事件共存只计新版，并去重重放', () => {
     const event = {
       type: 'token_usage_record',
@@ -58,6 +79,24 @@ describe('本地日志采集规则', () => {
         { type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: usage } } }
       ])
     ).toHaveLength(0)
+  })
+  it('Codex 混合文件保留新版开始前只有旧格式的历史', () => {
+    const rows = parse('codex', [
+      { type: 'session_meta', payload: { id: 'thread' } },
+      legacyEvent(1, 100),
+      legacyEvent(2, 200),
+      modernEvent(3, 300)
+    ])
+    expect(rows.map((row) => row.tokens.total)).toEqual([100, 200, 300])
+  })
+  it('Codex 新版开始后未配对的旧事件按重复通知丢弃', () => {
+    const rows = parse('codex', [
+      { type: 'session_meta', payload: { id: 'thread' } },
+      modernEvent(1, 300),
+      legacyEvent(2, 300),
+      legacyEvent(3, 999)
+    ])
+    expect(rows.map((row) => row.tokens.total)).toEqual([300])
   })
   it('Claude 同一消息的流式重复仅保留最终 usage，正文不在结果中', () => {
     const a = {

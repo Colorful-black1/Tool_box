@@ -267,4 +267,20 @@ describe('来源文件生命周期', () => {
     expect((await scanner.scan('dsh', [path])).records).toHaveLength(1)
     expect(await readFile(join(dir, 'session.v4.jsonl.zstd'))).toEqual(compressed)
   })
+  it('Codex 压缩历史会话 .jsonl.zst 与未压缩日志同样计入', async () => {
+    const path = await root()
+    const file = join(path, 'rollout-2026-10-30T02-00-00-abc.jsonl.zst')
+    const data = codexUsage(1) + '\n' + codexUsage(2) + '\n'
+    await writeFile(file, zstdCompressSync(Buffer.from(data)))
+    const scanner = new UsageScanner()
+    const result = await scanner.scan('codex', [path])
+    expect(result.source.status).toBe('ready')
+    expect(result.records.map((row) => row.id)).toEqual(['response-1', 'response-2'])
+    expect(result.records[0].tokens.total).toBe(15)
+    // 压缩后缀不能留在会话名里，否则同一会话会被拆成两条。
+    expect(result.records[0].sessionId).toBe('rollout-2026-10-30T02-00-00-abc')
+    const cached = await scanner.scan('codex', [path])
+    expect(cached.records).toEqual(result.records)
+    expect(cached.source.status).toBe('ready')
+  })
 })
