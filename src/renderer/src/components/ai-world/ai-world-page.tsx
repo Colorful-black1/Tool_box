@@ -20,6 +20,7 @@ import {
   formatRankPercentile
 } from '../../lib/ai-world-format'
 import { AiWorldDetail } from './ai-world-detail'
+import { AiWorldFrontier } from './ai-world-frontier'
 import { AiWorldSources } from './ai-world-sources'
 
 const PAGE_SIZE = 30
@@ -27,6 +28,7 @@ const PAGE_SIZE = 30
 type RegionFilter = 'all' | 'east' | 'west'
 type KindFilter = 'all' | keyof typeof AI_WORLD_KIND_LABELS
 type SortKey = 'eci' | 'code' | 'context' | 'price' | 'release'
+type ViewMode = 'list' | 'frontier'
 
 const REGION_OPTIONS = [
   { value: 'all', label: '全部地区' },
@@ -152,6 +154,7 @@ export function AiWorldPage(): JSX.Element {
   const [kind, setKind] = useState<KindFilter>('all')
   const [openOnly, setOpenOnly] = useState(false)
   const [sort, setSort] = useState<SortKey>('eci')
+  const [view, setView] = useState<ViewMode>('list')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<AiWorldModel | null>(null)
   const [sourcesOpen, setSourcesOpen] = useState(false)
@@ -310,10 +313,30 @@ export function AiWorldPage(): JSX.Element {
 
           <section aria-labelledby="ai-world-models-title">
             <div className="ai-world-section-head">
-              <h3 id="ai-world-models-title">模型列表</h3>
-              <span className="field-hint">
-                {rows.length} 个匹配 · 当前显示第 {safePage + 1} / {pageCount} 页
-              </span>
+              <div className="ai-world-section-title">
+                <h3 id="ai-world-models-title">{view === 'list' ? '模型列表' : '能力-价格前沿'}</h3>
+                <span className="field-hint">
+                  {view === 'list'
+                    ? `${rows.length} 个匹配 · 当前显示第 ${safePage + 1} / ${pageCount} 页`
+                    : `${rows.length} 个候选 · 金线为同价位 ECI 上限`}
+                </span>
+              </div>
+              <div className="ai-world-view-switch" role="group" aria-label="模型展示方式">
+                <button
+                  type="button"
+                  aria-pressed={view === 'list'}
+                  onClick={() => setView('list')}
+                >
+                  列表
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view === 'frontier'}
+                  onClick={() => setView('frontier')}
+                >
+                  能力-价格前沿
+                </button>
+              </div>
             </div>
             <div className="ai-world-toolbar">
               <label className="ai-world-search">
@@ -338,12 +361,14 @@ export function AiWorldPage(): JSX.Element {
                 options={KIND_OPTIONS}
                 onChange={(value) => setKind(value as KindFilter)}
               />
-              <Dropdown
-                ariaLabel="排序方式"
-                value={sort}
-                options={SORT_OPTIONS}
-                onChange={(value) => setSort(value as SortKey)}
-              />
+              {view === 'list' ? (
+                <Dropdown
+                  ariaLabel="排序方式"
+                  value={sort}
+                  options={SORT_OPTIONS}
+                  onChange={(value) => setSort(value as SortKey)}
+                />
+              ) : null}
               <label className="tool-check">
                 <input
                   type="checkbox"
@@ -354,7 +379,9 @@ export function AiWorldPage(): JSX.Element {
               </label>
             </div>
 
-            {visible.length ? (
+            {view === 'frontier' ? (
+              <AiWorldFrontier index={index} models={rows} onSelect={setSelected} />
+            ) : visible.length ? (
               <div className="ai-world-table-wrap">
                 <table className="ai-world-table" aria-label="AI 模型列表">
                   <thead>
@@ -428,7 +455,7 @@ export function AiWorldPage(): JSX.Element {
               </p>
             )}
 
-            {rows.length > PAGE_SIZE ? (
+            {view === 'list' && rows.length > PAGE_SIZE ? (
               <div className="ai-world-pager">
                 <button
                   type="button"

@@ -39,6 +39,42 @@ module.exports = async function verifyAiWorld({ page, app, check, capture }) {
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   })
 
+  await check('能力-价格前沿显示 ECI × 价格点、前沿线与详情入口', async () => {
+    await page.getByRole('button', { name: '能力-价格前沿', exact: true }).click()
+    await page.getByRole('img', { name: 'AI 模型能力-价格前沿图' }).waitFor()
+    assert.ok((await page.locator('.ai-world-frontier-dot').count()) > 0)
+    assert.ok((await page.locator('.ai-world-frontier-dot.is-frontier').count()) > 0)
+    await page.locator('.ai-world-frontier-card').scrollIntoViewIfNeeded()
+    const allDots = await page.locator('.ai-world-frontier-dot').count()
+    await page.getByRole('button', { name: '国内', exact: true }).click()
+    await page.waitForFunction((expectedAll) => {
+      const dots = document.querySelectorAll('.ai-world-frontier-dot')
+      return dots.length > 0 && dots.length < expectedAll
+    }, allDots)
+    assert.ok((await page.locator('.ai-world-frontier-dot').count()) < allDots)
+    assert.equal(
+      await page.getByRole('button', { name: '国内', exact: true }).getAttribute('aria-pressed'),
+      'true'
+    )
+    await capture('ai-world-frontier-east')
+    await page.getByRole('button', { name: '全部', exact: true }).click()
+    await page.locator('.ai-world-frontier-dot.is-frontier').first().hover()
+    const tooltip = page.locator('.ai-world-frontier-tooltip')
+    await tooltip.waitFor()
+    assert.match(await tooltip.innerText(), /ECI/)
+    await capture('ai-world-frontier-hover')
+    await page.mouse.move(0, 0)
+    await capture('ai-world-frontier')
+
+    await page.locator('.ai-world-frontier-model').first().click()
+    const dialog = page.getByRole('dialog').first()
+    await dialog.waitFor()
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+    await page.getByRole('button', { name: '列表', exact: true }).click()
+    await table().waitFor()
+  })
+
   await check('筛选、搜索与空状态不会把未参赛当成 0', async () => {
     const search = page.getByRole('textbox', { name: '搜索 AI 模型' })
     await search.fill('Claude')
@@ -113,6 +149,18 @@ module.exports = async function verifyAiWorld({ page, app, check, capture }) {
       .getByRole('dialog', { name: 'Claude Fable 5.2' })
       .getByRole('button', { name: '关闭', exact: true })
       .click()
+
+    await page.getByRole('button', { name: '能力-价格前沿', exact: true }).click()
+    await page.getByRole('img', { name: 'AI 模型能力-价格前沿图' }).waitFor()
+    assert.equal(
+      await page.locator('.viewport').evaluate((node) => node.scrollWidth > node.clientWidth),
+      false
+    )
+    await page.locator('.ai-world-frontier-card').scrollIntoViewIfNeeded()
+    await capture('ai-world-frontier-1024')
+    await page.getByRole('button', { name: '列表', exact: true }).click()
+    await table().waitFor()
+
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
     )

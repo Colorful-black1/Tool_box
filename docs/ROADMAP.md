@@ -102,7 +102,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
-| 2026-11-12 | 新增「AI 情报」分类，含 GitHub 开源热榜与 AI 模型世界（models.dev + Epoch 原生采集，新增 `fflate` / `csv-parse`） |
+| 2026-11-12 | 新增「AI 情报」分类，含 GitHub 开源热榜与 AI 模型世界（models.dev + Epoch 原生采集，新增 `fflate` / `csv-parse`；含 ECI × 价格前沿视图） |
 | 2026-11-11 | GitHub 开源热榜（Trending 解析 + Search 兜底）；对话上下文占用可视化与自动压缩（schema v7） |
 | 2026-11-07 | 知识库 P2：向量模型 / 重排模型、RRF 融合与降级 |
 | 2026-11-06 | 本地知识库 P1：导入、分块、FTS5 检索（schema v6） |

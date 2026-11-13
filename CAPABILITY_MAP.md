@@ -6,7 +6,8 @@
 | --- | --- | --- | --- |
 | ai-model-world-native | 主进程直接采集 models.dev 与 Epoch AI，fflate 解压、csv-parse 解析、归一化匹配、结构校验、12 小时缓存与来源白名单 | electron-shell, shared | [AI 模型世界方案](docs/ai-intel.md) |
 | ai-model-world-index | 今日格局、ECI 名次、编程共识、能力分位、模型类型推导 | shared | 同上 |
-| ai-model-world-ui | 模型列表、筛选 / 搜索 / 排序 / 分页、详情抽屉、数据来源与许可 | renderer-ui, shared | 同上 |
+| ai-model-world-frontier | ECI × 输出价格帕累托前沿、分类筛选、SVG 图表、悬浮详情、前沿模型入口 | renderer-ui, shared | 同上 |
+| ai-model-world-ui | 列表 / 前沿视图切换、筛选 / 搜索 / 排序 / 分页、详情抽屉、数据来源与许可 | renderer-ui, shared | 同上 |
 
 ## 2026-11-11 GitHub 开源热榜
 

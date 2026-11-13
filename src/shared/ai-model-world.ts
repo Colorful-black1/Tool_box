@@ -196,6 +196,61 @@ export interface AiWorldIndex {
   scoresOf(model: AiWorldModel): AiWorldBenchmarkScore[]
 }
 
+export interface AiWorldFrontierPoint {
+  model: AiWorldModel
+  price: number
+  eci: number
+}
+
+export interface AiWorldFrontier {
+  /** 所有同时具备文本输出价格和 ECI 的模型，按价格升序。 */
+  points: AiWorldFrontierPoint[]
+  /** 每个价位上 ECI 最高的模型，且只保留刷新过此前最高 ECI 的点。 */
+  frontier: AiWorldFrontierPoint[]
+  priceRange: [number, number] | null
+  eciRange: [number, number] | null
+}
+
+/**
+ * 能力-价格前沿：同价位下 ECI 最高的模型连线。
+ * 这是 ToolBox 自己的 ECI × 输出价格视图，不是 Artificial Analysis 的 IQ / 每任务成本。
+ */
+export function buildAiWorldFrontier(
+  models: AiWorldModel[],
+  metricsOf: (model: AiWorldModel) => AiWorldMetrics
+): AiWorldFrontier {
+  const points: AiWorldFrontierPoint[] = []
+  for (const model of models) {
+    if (model.retiredAt != null) continue
+    if (!model.modalities.output.includes('text')) continue
+    const price = model.pricing.outputPerMTok
+    const eci = metricsOf(model).eci
+    if (price == null || price <= 0 || eci == null || !Number.isFinite(eci)) continue
+    points.push({ model, price, eci })
+  }
+  points.sort((a, b) => a.price - b.price || b.eci - a.eci || a.model.id.localeCompare(b.model.id))
+
+  const frontier: AiWorldFrontierPoint[] = []
+  let highest = Number.NEGATIVE_INFINITY
+  for (const point of points) {
+    if (point.eci > highest) {
+      frontier.push(point)
+      highest = point.eci
+    }
+  }
+
+  if (points.length === 0) return { points, frontier, priceRange: null, eciRange: null }
+  return {
+    points,
+    frontier,
+    priceRange: [points[0].price, points[points.length - 1].price],
+    eciRange: [
+      Math.min(...points.map((point) => point.eci)),
+      Math.max(...points.map((point) => point.eci))
+    ]
+  }
+}
+
 function percentile(sorted: number[], value: number): number {
   if (sorted.length === 0) return 0.5
   if (sorted.length === 1) return 0.5

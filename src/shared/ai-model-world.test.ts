@@ -6,7 +6,7 @@ import type {
   AiWorldSnapshot,
   AiWorldVendor
 } from './ai-model-world'
-import { aiWorldKindOf, createAiWorldIndex } from './ai-model-world'
+import { aiWorldKindOf, buildAiWorldFrontier, createAiWorldIndex } from './ai-model-world'
 
 function score(
   league: string,
@@ -223,5 +223,56 @@ describe('AI 模型世界派生逻辑', () => {
     expect(index.scoresOf(m).map((item) => item.league)).toEqual(
       expect.arrayContaining(['eci', 'swe_bench_verified', 'aime', 'cursorbench'])
     )
+  })
+})
+
+describe('AI 模型世界：能力-价格前沿', () => {
+  it('按价格升序保留刷新最高 ECI 的前沿点，同价只留最高分', () => {
+    const eci = (value: number): AiWorldModel['benchmarks'] => ({
+      ...model('x').benchmarks,
+      eci: value
+    })
+    const models = [
+      model('a', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 1, cachedInputPerMTok: null },
+        benchmarks: eci(100)
+      }),
+      model('b', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 2, cachedInputPerMTok: null },
+        benchmarks: eci(90)
+      }),
+      model('c', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 3, cachedInputPerMTok: null },
+        benchmarks: eci(110)
+      }),
+      model('d', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 4, cachedInputPerMTok: null },
+        benchmarks: eci(105)
+      }),
+      model('e', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 5, cachedInputPerMTok: null },
+        benchmarks: eci(120)
+      }),
+      model('tie', {
+        pricing: { inputPerMTok: 1, outputPerMTok: 1, cachedInputPerMTok: null },
+        benchmarks: eci(95)
+      }),
+      model('no-price', {
+        pricing: { inputPerMTok: null, outputPerMTok: null, cachedInputPerMTok: null },
+        benchmarks: eci(200)
+      }),
+      model('image', {
+        modalities: { input: ['text'], output: ['image'] },
+        pricing: { inputPerMTok: 1, outputPerMTok: 0.5, cachedInputPerMTok: null },
+        benchmarks: eci(300)
+      })
+    ]
+    const index = createAiWorldIndex(snapshot(models))
+    const frontier = buildAiWorldFrontier(models, index.metricsOf)
+
+    expect(frontier.points).toHaveLength(6)
+    expect(frontier.frontier.map((point) => point.model.id)).toEqual(['a', 'c', 'e'])
+    expect(frontier.priceRange).toEqual([1, 5])
+    expect(frontier.eciRange).toEqual([90, 120])
   })
 })

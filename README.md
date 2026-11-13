@@ -27,7 +27,7 @@
 | 开发者工具 | JSON、差异比较、数据脱敏、Java 日志、MyBatis SQL 还原、Cron、JWT / 证书、时区、编码哈希等成套本机工具，外加命令速查 |
 | 编程 Agent | OpenCode / Codex / Claude Code / Claude Desktop / DeepSeek Harness 统一工作台：会话切换、审批、停止、消息转用、加密草稿 |
 | Token 统计 | 直接读取 14 类本机 Agent 的用量记录，按周期 / 项目 / 模型筛选并导出 CSV，无需连接 Agent |
-| AI 情报 | GitHub 开源热榜（含搜索兜底）与 AI 模型世界（models.dev + Epoch AI） |
+| AI 情报 | GitHub 开源热榜（含搜索兜底）与 AI 模型世界（models.dev + Epoch AI，含可筛选的 ECI × 价格前沿） |
 | 全局搜索 | `Ctrl+K` 命令面板：跨模块搜数据、直接执行命令、跳转页面 |
 
 ## 技术栈
