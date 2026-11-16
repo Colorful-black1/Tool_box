@@ -26,7 +26,7 @@ const within = (root: string, path: string): boolean => {
 }
 
 /** 支持常见标量与折叠／字面量说明；不执行 YAML 标签或读取整个技能正文。 */
-function skillHeader(text: string): { name: string; description: string } | null {
+export function skillHeader(text: string): { name: string; description: string } | null {
   const front = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text)
   if (!front) return null
   const lines = front[1].split(/\r?\n/)

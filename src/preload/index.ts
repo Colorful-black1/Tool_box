@@ -34,6 +34,7 @@ import type { CodingAgentEvent } from '../shared/coding-agents'
 import type { KbProgressEvent } from '../shared/knowledge-base'
 import type { TrendingQuery } from '../shared/github-trending'
 import type { AiWorldQuery } from '../shared/ai-model-world'
+import type { McpSearchInput, SkillSearchInput } from '../shared/extensions'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const wrapped = (_event: unknown, payload: T): void => {
@@ -89,6 +90,17 @@ const bridge: ToolboxBridge = {
     query: (input) => ipcRenderer.invoke(IPC.agentUsageQuery, input),
     chooseSource: (client) => ipcRenderer.invoke(IPC.agentUsageChooseSource, client),
     resetSource: (client) => ipcRenderer.invoke(IPC.agentUsageResetSource, client)
+  },
+  skillHub: {
+    list: (input?: { refresh?: boolean }) => ipcRenderer.invoke(IPC.skillHubList, input),
+    search: (input: SkillSearchInput) => ipcRenderer.invoke(IPC.skillHubSearch, input),
+    roots: () => ipcRenderer.invoke(IPC.skillHubRootsList),
+    addRoot: (path: string) => ipcRenderer.invoke(IPC.skillHubRootsAdd, { path }),
+    removeRoot: (path: string) => ipcRenderer.invoke(IPC.skillHubRootsRemove, { path })
+  },
+  mcpHub: {
+    list: (input?: { refresh?: boolean }) => ipcRenderer.invoke(IPC.mcpHubList, input),
+    search: (input: McpSearchInput) => ipcRenderer.invoke(IPC.mcpHubSearch, input)
   },
   trending: {
     list: (query: TrendingQuery) => ipcRenderer.invoke(IPC.trendingList, query),

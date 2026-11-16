@@ -48,6 +48,8 @@ import type { KnowledgeBaseService } from '../services/knowledge-base/kb-service
 import { registerKnowledgeIpc } from './knowledge-ipc'
 import { registerTrendingIpc } from './trending-ipc'
 import type { GithubTrendingService } from '../services/github-trending/service'
+import { registerExtensionsIpc } from './extensions-ipc'
+import type { ExtensionsService } from '../services/extensions/service'
 import { registerAiWorldIpc } from './ai-world-ipc'
 import type { AiWorldService } from '../services/ai-model-world/service'
 import { applyWindowTheme } from '../window-theme'
@@ -78,6 +80,7 @@ export interface IpcDependencies {
   knowledge?: KnowledgeBaseService
   trending?: GithubTrendingService
   aiWorld?: AiWorldService
+  extensions?: ExtensionsService
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
@@ -88,6 +91,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerAgentUsageIpc(dependencies.usage)
   registerTrendingIpc(dependencies.trending)
   registerAiWorldIpc(dependencies.aiWorld)
+  registerExtensionsIpc(dependencies.extensions)
   if (dependencies.knowledge) registerKnowledgeIpc(dependencies.knowledge)
   registerDeveloperDiagnosticsIpc()
   const codingAgents = new CodingAgentService(

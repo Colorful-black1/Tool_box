@@ -42,6 +42,8 @@ const VIEW_COMMANDS: Array<{ view: AppView; title: string }> = [
   { view: 'trending', title: '打开开源热榜' },
   { view: 'ai-world', title: '打开 AI 模型世界' },
   { view: 'agent-usage', title: '切换到 Token 统计' },
+  { view: 'skills', title: '打开技能' },
+  { view: 'mcp', title: '打开 MCP' },
   { view: 'chat', title: '切换到对话' },
   { view: 'shelf', title: '切换到书架' },
   { view: 'stats', title: '切换到统计' },

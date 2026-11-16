@@ -31,6 +31,13 @@ if (
   Object.assign(fixture.controls, agents.controls)
 }
 
+if (process.env.TOOLBOX_EXTENSIONS_VERIFY === '1') {
+  const extensions = require('./extensions-fixture.cjs')()
+  fixture.toolbox.skillHub = extensions.bridge.skillHub
+  fixture.toolbox.mcpHub = extensions.bridge.mcpHub
+  Object.assign(fixture.controls, extensions.controls)
+}
+
 fixture.toolbox.config = {
   get: () => ipcRenderer.invoke('verify:config:get'),
   set: (patch) => ipcRenderer.invoke('verify:config:set', patch)

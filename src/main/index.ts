@@ -23,6 +23,7 @@ import { KnowledgeBaseService } from './services/knowledge-base/kb-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 import { GithubTrendingService } from './services/github-trending/service'
 import { AiWorldService } from './services/ai-model-world/service'
+import { ExtensionsService } from './services/extensions/service'
 import { applyWindowTheme, windowThemeOptions } from './window-theme'
 
 // 开发/预览模式使用独立的数据目录：与安装版共用 userData 会抢同一个单实例锁，
@@ -135,7 +136,11 @@ function initializeServices(): void {
     fetchImpl: (input, init) => net.fetch(input, init),
     cacheFile: join(userDataDir, AI_WORLD_CACHE_FILE_NAME)
   })
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge, trending, aiWorld })
+  const extensions = new ExtensionsService({
+    fetchImpl: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
+    rootsFile: join(userDataDir, 'skill-roots.json')
+  })
+  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge, trending, aiWorld, extensions })
 
   app.on('quit', () => {
     store.close()

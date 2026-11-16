@@ -24,6 +24,8 @@ import { Starfield } from './components/starfield'
 import { ToolsPage } from './components/tools/tools-page'
 import { OpenCodeWorkbench } from './components/opencode/opencode-workbench'
 import { AgentUsagePage } from './components/agent-usage/agent-usage-page'
+import { SkillsPage } from './components/skills/skills-page'
+import { McpPage } from './components/mcp/mcp-page'
 import { TrendingPage } from './components/trending/trending-page'
 import { AiWorldPage } from './components/ai-world/ai-world-page'
 import { useCodingAgentStore } from './stores/coding-agent-store'
@@ -46,6 +48,8 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   'agent-usage': { title: 'Token 统计', subtitle: 'USAGE · 本机 Agent 用量' },
   trending: { title: '开源热榜', subtitle: 'GITHUB TRENDING · 最近走红的项目' },
   'ai-world': { title: 'AI 模型世界', subtitle: 'AI MODEL WORLD · 模型、评测与价格' },
+  skills: { title: '技能', subtitle: 'SKILLS · 本机技能与在线发现' },
+  mcp: { title: 'MCP', subtitle: 'MCP · 本机服务与在线目录' },
   opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },
   chat: { title: '星轨对话', subtitle: 'AI CHAT · 与群星同行' },
   shelf: { title: '星轨书架', subtitle: 'BOOKSHELF · 愿此行，终抵群星' },
@@ -77,6 +81,14 @@ const RAIL_ITEMS: RailNode[] = [
       { view: 'agent-usage', label: 'Token 统计', icon: 'stats' },
       { view: 'commands', label: '命令速查', icon: 'code' },
       { view: 'tools', label: '工具', icon: 'tool' }
+    ]
+  },
+  {
+    id: 'extensions',
+    label: 'AI 扩展',
+    children: [
+      { view: 'skills', label: '技能', icon: 'sparkles' },
+      { view: 'mcp', label: 'MCP', icon: 'tool' }
     ]
   },
   {
@@ -348,6 +360,8 @@ export default function App(): JSX.Element {
                 {view === 'tools' ? <ToolsPage /> : null}
                 {view === 'opencode' ? <OpenCodeWorkbench /> : null}
                 {view === 'agent-usage' ? <AgentUsagePage /> : null}
+                {view === 'skills' ? <SkillsPage /> : null}
+                {view === 'mcp' ? <McpPage /> : null}
                 {view === 'trending' ? <TrendingPage /> : null}
                 {view === 'ai-world' ? <AiWorldPage /> : null}
                 {view === 'settings' ? <SettingsPage /> : null}

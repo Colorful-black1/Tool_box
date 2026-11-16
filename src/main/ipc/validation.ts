@@ -44,6 +44,8 @@ import {
   TRENDING_PERIOD_VALUES
 } from '../../shared/github-trending'
 import type { TrendingQuery } from '../../shared/github-trending'
+import { EXTENSION_SEARCH_MAX_LIMIT, SKILL_SEARCH_MAX_CHARS } from '../../shared/extensions'
+import type { McpSearchInput, SkillSearchInput } from '../../shared/extensions'
 
 /** 新增内存服务入参统一在主进程做类型、数量与长度检查。 */
 export function validateClipboardConfig(value: unknown): ClipboardHistoryConfig {
@@ -774,4 +776,51 @@ export function validateTodoQuery(value: unknown): TodoQuery {
     offset,
     limit
   }
+}
+
+/** 技能与 MCP 只有两种入参：刷新开关、检索关键词。 */
+export function validateExtensionListInput(value?: unknown): { refresh: boolean } {
+  if (value === undefined || value === null) return { refresh: false }
+  const body = assertObject(value, '刷新参数')
+  if (body.refresh === undefined) return { refresh: false }
+  return { refresh: requireBoolean(body.refresh, '刷新参数') }
+}
+
+const extensionLimit = (value: unknown): number | undefined => {
+  if (value === undefined) return undefined
+  const limit = requireNonNegativeInt(value, '分页数量')
+  if (limit < 1 || limit > EXTENSION_SEARCH_MAX_LIMIT) throw new Error('分页数量超出范围')
+  return limit
+}
+
+export function validateSkillSearchInput(value: unknown): SkillSearchInput {
+  const body = assertObject(value, '技能搜索')
+  const query = requireString(body.query, '搜索关键词', { maxLength: SKILL_SEARCH_MAX_CHARS })
+  const result: SkillSearchInput = { query }
+  const limit = extensionLimit(body.limit)
+  if (limit !== undefined) result.limit = limit
+  if (body.offset !== undefined) {
+    const offset = requireNonNegativeInt(body.offset, '分页位置')
+    if (offset > 1000) throw new Error('分页位置超出范围')
+    result.offset = offset
+  }
+  return result
+}
+
+export function validateMcpSearchInput(value: unknown): McpSearchInput {
+  const body = assertObject(value, 'MCP 搜索')
+  const result: McpSearchInput = {
+    query: requireString(body.query, '搜索关键词', { allowEmpty: true, maxLength: 64 })
+  }
+  const limit = extensionLimit(body.limit)
+  if (limit !== undefined) result.limit = limit
+  const cursor = optionalString(body.cursor, '分页游标', { maxLength: 256 })
+  if (cursor) result.cursor = cursor
+  return result
+}
+
+/** 技能扫描路径：只接受一段路径字符串，展开与存在性由主进程校验。 */
+export function validateSkillRootPath(value: unknown): string {
+  const body = assertObject(value, '扫描路径')
+  return requireString(body.path, '扫描路径', { maxLength: 1024 }).trim()
 }

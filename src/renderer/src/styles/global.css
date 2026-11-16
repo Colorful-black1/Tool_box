@@ -9762,3 +9762,326 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
     grid-template-columns: 36px minmax(60px, 1fr) 58px;
   }
 }
+
+/* 技能与 MCP：只读看板，复用星轨面板、按钮与下拉，不引入新控件。 */
+.ext-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  overflow: auto;
+  padding: 2px 2px 24px;
+}
+.ext-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ext-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ext-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.ext-metric {
+  padding: 16px 20px;
+  min-width: 0;
+}
+.ext-metric strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 23px;
+  overflow-wrap: anywhere;
+}
+.ext-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px;
+  position: relative;
+  z-index: 10;
+}
+.ext-filters .field-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+.ext-filters > .ui-dropdown {
+  min-width: 160px;
+  max-width: 240px;
+}
+.ext-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ext-group {
+  padding: 14px 16px;
+  min-width: 0;
+}
+.ext-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ext-group-head strong {
+  color: var(--text-hi);
+  font-family: var(--mono);
+}
+.ext-desc {
+  margin: 8px 0 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.ext-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ext-badge[data-tone='warn'] {
+  color: var(--gold);
+  border-color: rgba(232, 201, 138, 0.4);
+}
+.ext-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.ext-chips .agent-identity {
+  font-size: 11px;
+  color: var(--text-mid);
+}
+.ext-chips .agent-icon {
+  flex-basis: 13px;
+  width: 13px;
+  height: 13px;
+}
+.ext-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-mid);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ext-chip-muted {
+  color: var(--text-dim);
+}
+.ext-copies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ext-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--gold-line);
+}
+.ext-copy-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.ext-copy-main code {
+  color: var(--text-hi);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.ext-copy-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ext-path {
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.ext-hash {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ext-empty,
+.ext-hint,
+.ext-notice {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.ext-notice {
+  padding: 8px 12px;
+  border-left: 2px solid var(--gold-line);
+}
+.ext-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.ext-search-head h3 {
+  margin: 0 0 6px;
+  color: var(--text-hi);
+  font-family: var(--serif);
+  font-size: 16px;
+}
+.ext-search-head p {
+  margin: 0;
+}
+.ext-search-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ext-search-form .field-input {
+  flex: 1;
+  min-width: 220px;
+}
+.ext-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ext-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid var(--gold-line);
+}
+.ext-result-wide {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ext-result-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.ext-result-main strong {
+  color: var(--text-hi);
+}
+.ext-command,
+.ext-snippet {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ext-snippet {
+  margin: 0;
+  color: var(--text-mid);
+  white-space: pre-wrap;
+}
+.ext-result-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ext-result-line .ext-command,
+.ext-result-line .ext-snippet {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .ext-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 技能描述可能很长，列表里只显示三行，完整内容走 title。 */
+.ext-group .ext-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 技能扫描路径：设置页里的只读默认来源 + 自定义路径列表。 */
+.skill-root-defaults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.skill-root-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  color: var(--text-mid);
+  font-size: 11px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.skill-root-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+.skill-root-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--gold-line);
+}
+.skill-root-row code {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-hi);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.skill-root-form {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.skill-root-form .field-input {
+  flex: 1;
+  min-width: 200px;
+}

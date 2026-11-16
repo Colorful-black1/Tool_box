@@ -79,6 +79,15 @@ import type {
   GitStatusView
 } from './coding-agents'
 import type { UsageClient, UsageQuery, UsageReport } from './agent-usage'
+import type {
+  McpScanResult,
+  McpSearchInput,
+  McpSearchResult,
+  SkillRootsView,
+  SkillScanResult,
+  SkillSearchInput,
+  SkillSearchResult
+} from './extensions'
 import type { TrendingQuery, TrendingResult } from './github-trending'
 import type { AiWorldQuery, AiWorldResult } from './ai-model-world'
 import type { AgentDraftSnapshot, AgentDraftSaveInput } from './agent-drafts'
@@ -142,6 +151,20 @@ export interface ToolboxBridge {
     query(input: UsageQuery): Promise<UsageReport>
     chooseSource(client: UsageClient): Promise<boolean>
     resetSource(client: UsageClient): Promise<void>
+  }
+  /** 本机技能只读扫描；在线结果只给可复制的安装命令。 */
+  skillHub: {
+    list(input?: { refresh?: boolean }): Promise<SkillScanResult>
+    search(input: SkillSearchInput): Promise<SkillSearchResult>
+    /** 默认来源与自定义扫描路径；自定义路径只写 Tool_box 自己的配置文件。 */
+    roots(): Promise<SkillRootsView>
+    addRoot(path: string): Promise<SkillRootsView>
+    removeRoot(path: string): Promise<SkillRootsView>
+  }
+  /** 本机 MCP 配置只读扫描；在线结果只给启动命令与配置片段。 */
+  mcpHub: {
+    list(input?: { refresh?: boolean }): Promise<McpScanResult>
+    search(input: McpSearchInput): Promise<McpSearchResult>
   }
   trending: {
     /** allowStale：只读缓存，可能返回 null；普通查询返回最新结果或抛错 */

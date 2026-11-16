@@ -40,6 +40,8 @@ export type AppView =
   | 'agent-usage'
   | 'trending'
   | 'ai-world'
+  | 'skills'
+  | 'mcp'
   | 'opencode'
   | 'chat'
   | 'shelf'
