@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent } from 'react'
 
 import type { AiWorldFrontierPoint, AiWorldIndex, AiWorldModel } from '@shared/ai-model-world'
 import { buildAiWorldFrontier } from '@shared/ai-model-world'
 import { formatCount, formatPrice } from '../../lib/ai-world-format'
+import { SearchIcon } from '../icons'
+import { Popover } from '../popover'
 
 const WIDTH = 1000
 const HEIGHT = 420
@@ -149,6 +151,14 @@ export function AiWorldFrontier({
 }): JSX.Element {
   const [category, setCategory] = useState<FrontierCategory>('all')
   const [hovered, setHovered] = useState<LayoutPoint | null>(null)
+  const [pinned, setPinned] = useState<LayoutPoint | null>(null)
+  const [locator, setLocator] = useState('')
+  const [locatorOpen, setLocatorOpen] = useState(false)
+  const [locatorActive, setLocatorActive] = useState(0)
+  const locatorBox = useRef<HTMLDivElement>(null)
+  const locatorInput = useRef<HTMLInputElement>(null)
+  const skipLocatorFocusOpen = useRef(false)
+  const locatorId = useId()
   const filteredModels = useMemo(() => {
     if (category === 'all' || category === 'frontier') return models
     return models.filter((model) => categoryOf(index, model) === category)
@@ -157,8 +167,39 @@ export function AiWorldFrontier({
     () => buildLayout(index, category === 'frontier' ? models : filteredModels),
     [category, filteredModels, index, models]
   )
-  const shownPoints = layout ? (category === 'frontier' ? layout.frontier : layout.points) : []
-  const shownLabels = layout ? (category === 'frontier' ? layout.frontier : layout.labels) : []
+  const shownPoints = useMemo(
+    () => (layout ? (category === 'frontier' ? layout.frontier : layout.points) : []),
+    [category, layout]
+  )
+  const focusPoint =
+    pinned && shownPoints.some((point) => point.model.id === pinned.model.id) ? pinned : null
+  const baseLabels = layout ? (category === 'frontier' ? layout.frontier : layout.labels) : []
+  const locatorMatches = useMemo(() => {
+    const keyword = locator.trim().toLowerCase()
+    if (!keyword) return []
+    return shownPoints
+      .filter((point) => {
+        const vendor = index.vendors.get(point.model.vendorId)
+        return [
+          point.model.name,
+          point.model.id,
+          point.model.vendorId,
+          vendor?.name,
+          vendor?.nameZh
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(keyword))
+      })
+      .sort((a, b) => b.eci - a.eci || a.model.name.localeCompare(b.model.name))
+      .slice(0, 8)
+  }, [index.vendors, locator, shownPoints])
+  const pinnedRank = focusPoint ? (index.ranks.get(focusPoint.model.id) ?? null) : null
+
+  useEffect(() => {
+    if (!pinned) return
+    if (shownPoints.some((point) => point.model.id === pinned.model.id)) return
+    setPinned(null)
+  }, [pinned, shownPoints])
 
   if (!layout || shownPoints.length === 0) {
     return (
@@ -173,13 +214,65 @@ export function AiWorldFrontier({
     setCategory(next)
     setHovered(null)
   }
+  const focusLocator = (): void => {
+    if (document.activeElement === locatorInput.current) return
+    skipLocatorFocusOpen.current = true
+    locatorInput.current?.focus()
+  }
+  const choosePoint = (point: LayoutPoint): void => {
+    setPinned(point)
+    setHovered(null)
+    setLocator(point.model.name)
+    setLocatorOpen(false)
+    focusLocator()
+  }
+  const clearPinned = (): void => {
+    setPinned(null)
+    setLocator('')
+    setLocatorOpen(false)
+    focusLocator()
+  }
+  const onLocatorChange = (value: string): void => {
+    setLocator(value)
+    setLocatorOpen(value.trim().length > 0)
+    setLocatorActive(0)
+    if (pinned) setPinned(null)
+  }
+  const onLocatorKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!locator.trim()) return
+      event.preventDefault()
+      if (!locatorOpen) {
+        setLocatorOpen(true)
+        return
+      }
+      if (locatorMatches.length === 0) return
+      setLocatorActive((current) =>
+        Math.max(
+          0,
+          Math.min(locatorMatches.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1))
+        )
+      )
+      return
+    }
+    if (event.key === 'Enter') {
+      if (!locatorMatches.length) return
+      event.preventDefault()
+      choosePoint(locatorMatches[Math.min(locatorActive, locatorMatches.length - 1)])
+      return
+    }
+    if (event.key === 'Escape') setLocatorOpen(false)
+  }
   const open = (point: LayoutPoint): void => onSelect(point.model)
   const onKeyDown = (event: KeyboardEvent<SVGCircleElement>, point: LayoutPoint): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     open(point)
   }
-  const tooltipClass = hovered && hovered.x > WIDTH * 0.68 ? 'is-right' : ''
+  const tooltipPoint = hovered ?? focusPoint
+  const tooltipRank = tooltipPoint ? (index.ranks.get(tooltipPoint.model.id) ?? null) : null
+  const tooltipClass = tooltipPoint && tooltipPoint.x > WIDTH * 0.68 ? 'is-right' : ''
 
   return (
     <div className="ai-world-frontier-card">
@@ -192,22 +285,117 @@ export function AiWorldFrontier({
             每任务成本。
           </p>
         </div>
-        <div className="ai-world-frontier-legend" role="group" aria-label="前沿图分类筛选">
-          {FRONTIER_CATEGORIES.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={category === item.id}
-              onClick={() => changeCategory(item.id)}
-            >
-              <i style={{ background: item.color }} />
-              {item.label}
-            </button>
-          ))}
+        <div className="ai-world-frontier-actions">
+          <div className="ai-world-frontier-legend" role="group" aria-label="前沿图分类筛选">
+            {FRONTIER_CATEGORIES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={category === item.id}
+                onClick={() => changeCategory(item.id)}
+              >
+                <i style={{ background: item.color }} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="ai-world-locator">
+            <div className="ai-world-locator-box" ref={locatorBox}>
+              <label className="ai-world-search">
+                <SearchIcon />
+                <input
+                  ref={locatorInput}
+                  className="field-input"
+                  type="text"
+                  value={locator}
+                  onChange={(event) => onLocatorChange(event.target.value)}
+                  onFocus={() => {
+                    if (skipLocatorFocusOpen.current) {
+                      skipLocatorFocusOpen.current = false
+                      return
+                    }
+                    if (locator.trim()) setLocatorOpen(true)
+                  }}
+                  onKeyDown={onLocatorKeyDown}
+                  placeholder="在图中定位模型"
+                  aria-label="在图中搜索模型"
+                  role="combobox"
+                  aria-expanded={locatorOpen && locator.trim().length > 0}
+                  aria-controls={`${locatorId}-options`}
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    locatorMatches[locatorActive]
+                      ? `${locatorId}-option-${locatorActive}`
+                      : undefined
+                  }
+                  autoComplete="off"
+                />
+              </label>
+              {locatorOpen && locator.trim() ? (
+                <Popover
+                  anchor={locatorBox}
+                  align="left"
+                  onClose={() => setLocatorOpen(false)}
+                  className="ai-world-locator-popover"
+                  maxPanelHeight={300}
+                >
+                  <ul
+                    id={`${locatorId}-options`}
+                    className="ai-world-locator-list"
+                    role="listbox"
+                    aria-label="匹配的模型"
+                  >
+                    {locatorMatches.length ? (
+                      locatorMatches.map((point, optionIndex) => {
+                        const vendor = index.vendors.get(point.model.vendorId)
+                        return (
+                          <li key={point.model.id}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={focusPoint?.model.id === point.model.id}
+                              id={`${locatorId}-option-${optionIndex}`}
+                              className={`ai-world-locator-option${optionIndex === locatorActive ? ' is-active' : ''}`}
+                              onMouseMove={() => setLocatorActive(optionIndex)}
+                              onClick={() => choosePoint(point)}
+                            >
+                              <span className="ai-world-locator-name">
+                                <strong>{point.model.name}</strong>
+                                <small>
+                                  {vendor?.nameZh || vendor?.name || point.model.vendorId}
+                                </small>
+                              </span>
+                              <span className="ai-world-locator-metric">
+                                <b>ECI {point.eci.toFixed(1)}</b>
+                                <small>排名 #{index.ranks.get(point.model.id) ?? '—'}</small>
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })
+                    ) : (
+                      <li className="ai-world-locator-empty">当前分类下没有匹配的模型</li>
+                    )}
+                  </ul>
+                </Popover>
+              ) : null}
+            </div>
+            {focusPoint ? (
+              <div className="ai-world-frontier-located" role="status">
+                <span>
+                  ECI {focusPoint.eci.toFixed(1)} · 综合排名 #{pinnedRank ?? '—'} /{' '}
+                  {index.ranks.size}
+                </span>
+                <button type="button" className="btn-ghost btn-mini" onClick={clearPinned}>
+                  清除定位
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="ai-world-frontier-plot">
+      <div className={`ai-world-frontier-plot${focusPoint ? ' has-pin' : ''}`}>
         <svg
           className="ai-world-frontier-svg"
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -282,34 +470,57 @@ export function AiWorldFrontier({
             </text>
           </g>
 
+          {focusPoint ? (
+            <g className="ai-world-frontier-guides" aria-hidden="true">
+              <line x1={MARGIN.left} y1={focusPoint.y} x2={focusPoint.x} y2={focusPoint.y} />
+              <line
+                x1={focusPoint.x}
+                y1={focusPoint.y}
+                x2={focusPoint.x}
+                y2={MARGIN.top + PLOT_HEIGHT}
+              />
+            </g>
+          ) : null}
+
           <polyline className="ai-world-frontier-line" points={layout.path} aria-hidden="true" />
 
-          {shownPoints.map((point) => (
-            <circle
-              key={point.model.id}
-              className={
-                point.isFrontier ? 'ai-world-frontier-dot is-frontier' : 'ai-world-frontier-dot'
-              }
-              cx={point.x}
-              cy={point.y}
-              r={point.isFrontier ? 5.2 : 3.4}
-              fill={point.color}
-              tabIndex={0}
-              role="button"
-              aria-label={`${point.model.name}，ECI ${point.eci.toFixed(1)}，输出价 ${formatPrice(point.price)}`}
-              onMouseEnter={() => setHovered(point)}
-              onMouseLeave={() => setHovered(null)}
-              onFocus={() => setHovered(point)}
-              onBlur={() => setHovered(null)}
-              onClick={() => open(point)}
-              onKeyDown={(event) => onKeyDown(event, point)}
-            />
-          ))}
+          {shownPoints.map((point) => {
+            const isPinned = focusPoint?.model.id === point.model.id
+            return (
+              <circle
+                key={point.model.id}
+                className={`ai-world-frontier-dot${point.isFrontier ? ' is-frontier' : ''}${isPinned ? ' is-pinned' : ''}${focusPoint && !isPinned ? ' is-dimmed' : ''}`}
+                cx={point.x}
+                cy={point.y}
+                r={isPinned ? 6.4 : point.isFrontier ? 5.2 : 3.4}
+                fill={point.color}
+                tabIndex={0}
+                role="button"
+                aria-label={`${point.model.name}，ECI ${point.eci.toFixed(1)}，输出价 ${formatPrice(point.price)}${isPinned ? '，已定位' : ''}`}
+                onMouseEnter={() => setHovered(point)}
+                onMouseLeave={() => setHovered(null)}
+                onFocus={() => setHovered(point)}
+                onBlur={() => setHovered(null)}
+                onClick={() => open(point)}
+                onKeyDown={(event) => onKeyDown(event, point)}
+              />
+            )
+          })}
 
-          {shownLabels.map((point) => (
+          {focusPoint ? (
+            <circle
+              className="ai-world-frontier-halo"
+              cx={focusPoint.x}
+              cy={focusPoint.y}
+              r={12}
+              aria-hidden="true"
+            />
+          ) : null}
+
+          {baseLabels.map((point) => (
             <text
               key={`label-${point.model.id}`}
-              className="ai-world-frontier-label"
+              className={`ai-world-frontier-label${focusPoint?.model.id === point.model.id ? ' is-pinned' : ''}`}
               x={point.x + (point.x > WIDTH * 0.82 ? -8 : 8)}
               y={point.y - 8}
               textAnchor={point.x > WIDTH * 0.82 ? 'end' : 'start'}
@@ -320,35 +531,40 @@ export function AiWorldFrontier({
           ))}
         </svg>
 
-        {hovered ? (
+        {tooltipPoint ? (
           <div
             className={`ai-world-frontier-tooltip ${tooltipClass}`}
             style={{
-              left: `${(hovered.x / WIDTH) * 100}%`,
-              top: `${(hovered.y / HEIGHT) * 100}%`
+              left: `${(tooltipPoint.x / WIDTH) * 100}%`,
+              top: `${(tooltipPoint.y / HEIGHT) * 100}%`
             }}
             role="status"
           >
-            <strong>{hovered.model.name}</strong>
+            <strong>{tooltipPoint.model.name}</strong>
             <span>
-              {index.vendors.get(hovered.model.vendorId)?.nameZh || hovered.model.vendorId}
+              {index.vendors.get(tooltipPoint.model.vendorId)?.nameZh ||
+                tooltipPoint.model.vendorId}
             </span>
             <dl>
               <div>
                 <dt>ECI</dt>
-                <dd>{hovered.eci.toFixed(1)}</dd>
+                <dd>{tooltipPoint.eci.toFixed(1)}</dd>
+              </div>
+              <div>
+                <dt>综合排名</dt>
+                <dd>{tooltipRank == null ? '—' : `#${tooltipRank} / ${index.ranks.size}`}</dd>
               </div>
               <div>
                 <dt>输出价</dt>
-                <dd>{formatPrice(hovered.price)}</dd>
+                <dd>{formatPrice(tooltipPoint.price)}</dd>
               </div>
               <div>
                 <dt>上下文</dt>
-                <dd>{formatCount(hovered.model.contextWindow)}</dd>
+                <dd>{formatCount(tooltipPoint.model.contextWindow)}</dd>
               </div>
               <div>
                 <dt>权重</dt>
-                <dd>{hovered.model.openWeights ? '开源' : '闭源'}</dd>
+                <dd>{tooltipPoint.model.openWeights ? '开源' : '闭源'}</dd>
               </div>
             </dl>
           </div>

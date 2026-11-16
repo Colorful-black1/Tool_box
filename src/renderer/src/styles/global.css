@@ -8960,6 +8960,129 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   margin-top: 4px;
 }
 
+.ai-world-frontier-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-world-locator {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 5px;
+  width: min(280px, 100%);
+}
+
+.ai-world-locator-box {
+  width: 100%;
+}
+
+.ai-world-locator .ai-world-search {
+  flex: none;
+  width: 100%;
+}
+
+.ai-world-locator .field-input {
+  padding: 6px 10px;
+  font-size: 11.5px;
+}
+
+.ai-world-locator-popover {
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+}
+
+.ai-world-locator-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+.ai-world-locator-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-mid);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-world-locator-option:hover,
+.ai-world-locator-option.is-active {
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--gold);
+}
+
+.ai-world-locator-option:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.ai-world-locator-name,
+.ai-world-locator-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-world-locator-name strong {
+  overflow: hidden;
+  color: var(--text-hi);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-world-locator-name small,
+.ai-world-locator-metric small {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.ai-world-locator-metric {
+  flex: none;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.ai-world-locator-metric b {
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.ai-world-locator-empty {
+  padding: 10px 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.ai-world-frontier-located {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--gold-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
 .ai-world-frontier-legend {
   display: flex;
   flex-wrap: wrap;
@@ -9074,6 +9197,37 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   stroke-width: 2.5;
 }
 
+.ai-world-frontier-dot.is-pinned {
+  opacity: 1;
+  stroke: var(--gold);
+  stroke-width: 2.6;
+}
+
+.ai-world-frontier-dot.is-dimmed {
+  opacity: 0.16;
+}
+
+.ai-world-frontier-dot.is-dimmed:hover,
+.ai-world-frontier-dot.is-dimmed:focus-visible {
+  opacity: 1;
+}
+
+.ai-world-frontier-guides line {
+  stroke: var(--gold);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.55;
+}
+
+.ai-world-frontier-halo {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 3;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
 .ai-world-frontier-label {
   fill: var(--text-hi);
   font-family: var(--sans);
@@ -9083,6 +9237,10 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   stroke-width: 3px;
   stroke-linejoin: round;
   pointer-events: none;
+}
+
+.ai-world-frontier-label.is-pinned {
+  display: none;
 }
 
 .ai-world-frontier-tooltip {
@@ -9319,6 +9477,92 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   white-space: normal;
 }
 
+.ai-world-recent {
+  cursor: default;
+}
+
+.ai-world-recent:hover {
+  border-color: var(--gold-line);
+  background: rgba(var(--neutral-rgb), 0.035);
+  transform: none;
+}
+
+.ai-world-recent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.ai-world-recent-window {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.ai-world-recent-count {
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.ai-world-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  max-height: 126px;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 0 2px 0 0;
+  list-style: none;
+}
+
+.ai-world-recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-mid);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-world-recent-item:hover,
+.ai-world-recent-item:focus-visible {
+  background: rgba(var(--accent-rgb), 0.09);
+  color: var(--text-hi);
+  outline: none;
+}
+
+.ai-world-recent-name {
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-world-recent-date {
+  flex: none;
+  color: var(--gold-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.ai-world-recent-empty {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .ai-world-toolbar {
   display: flex;
   align-items: center;
@@ -9432,6 +9676,25 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 10px;
+}
+
+.ai-world-page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ai-world-page-jump .field-hint {
+  margin: 0;
+}
+
+.ai-world-page-input {
+  width: 46px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
 }
 
 .ai-world-detail-backdrop {
@@ -9726,6 +9989,20 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
 
   .ai-world-frontier-card {
     padding: 12px 10px 10px;
+  }
+
+  .ai-world-frontier-actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .ai-world-locator {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .ai-world-frontier-located {
+    justify-content: space-between;
   }
 
   .ai-world-frontier-list {

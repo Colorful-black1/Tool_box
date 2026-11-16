@@ -39,6 +39,36 @@ module.exports = async function verifyAiWorld({ page, app, check, capture }) {
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   })
 
+  await check('最新发布显示最近一周模型并按日期倒序', async () => {
+    const recent = page.locator('.ai-world-recent')
+    await recent.waitFor()
+    const text = await recent.innerText()
+    assert.match(text, /近 7 天/)
+    assert.match(text, /2 个模型/)
+    const items = recent.locator('.ai-world-recent-item')
+    assert.equal(await items.count(), 2)
+    assert.match(await items.nth(0).innerText(), /Hy4 flash/)
+    assert.match(await items.nth(1).innerText(), /Qwen4 Max/)
+    await page.locator('.viewport').evaluate((node) => {
+      node.scrollTop = 0
+    })
+    await capture('ai-world-recent')
+  })
+
+  await check('模型列表支持跳转到指定页', async () => {
+    await table().waitFor()
+    const jump = page.getByRole('textbox', { name: '跳转页码' })
+    await jump.fill('2')
+    await button('跳转').click()
+    await table().getByText('Filler 26', { exact: true }).waitFor()
+    assert.equal(await table().getByText('Claude Fable 5.2', { exact: true }).count(), 0)
+    await capture('ai-world-page-jump')
+
+    await jump.fill('1')
+    await jump.press('Enter')
+    await table().getByText('Claude Fable 5.2', { exact: true }).waitFor()
+  })
+
   await check('能力-价格前沿显示 ECI × 价格点、前沿线与详情入口', async () => {
     await page.getByRole('button', { name: '能力-价格前沿', exact: true }).click()
     await page.getByRole('img', { name: 'AI 模型能力-价格前沿图' }).waitFor()
@@ -65,6 +95,15 @@ module.exports = async function verifyAiWorld({ page, app, check, capture }) {
     await capture('ai-world-frontier-hover')
     await page.mouse.move(0, 0)
     await capture('ai-world-frontier')
+
+    const locator = page.getByRole('combobox', { name: '在图中搜索模型' })
+    await locator.fill('Qwen3.8 Max')
+    await page.getByRole('option', { name: /Qwen3\.8 Max/ }).click()
+    await page.locator('.ai-world-frontier-dot.is-pinned').waitFor()
+    assert.match(await page.locator('.ai-world-frontier-located').innerText(), /综合排名 #4 \/ 35/)
+    await capture('ai-world-frontier-locate')
+    await button('清除定位').click()
+    assert.equal(await page.locator('.ai-world-frontier-dot.is-pinned').count(), 0)
 
     await page.locator('.ai-world-frontier-model').first().click()
     const dialog = page.getByRole('dialog').first()

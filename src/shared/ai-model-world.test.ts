@@ -173,6 +173,25 @@ describe('AI 模型世界派生逻辑', () => {
     expect(index.metricsOf(models[2]).eciPercentile).toBeNull()
   })
 
+  it('最近一周发布按日期倒序，只取日期精确到日的在役模型', () => {
+    const models = [
+      model('today', { releaseDate: '2026-06-01' }),
+      model('six-days', { releaseDate: '2026-05-26' }),
+      model('boundary', { releaseDate: '2026-05-25' }),
+      model('older', { releaseDate: '2026-05-24' }),
+      model('month', { releaseDate: '2026-05-30', releaseDatePrecision: 'month' }),
+      model('retired', { releaseDate: '2026-06-01', retiredAt: '2026-06-01' }),
+      model('no-data', {
+        releaseDate: '2026-05-30',
+        contextWindow: null,
+        pricing: { inputPerMTok: null, outputPerMTok: null, cachedInputPerMTok: null }
+      }),
+      model('future', { releaseDate: '2026-06-02' })
+    ]
+    const index = createAiWorldIndex(snapshot(models))
+    expect(index.recentReleases.map((item) => item.id)).toEqual(['today', 'six-days', 'boundary'])
+  })
+
   it('模型类型只看模态，编程共识只取第三方赛制', () => {
     expect(
       aiWorldKindOf(model('vision', { modalities: { input: ['text', 'image'], output: ['text'] } }))

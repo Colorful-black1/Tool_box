@@ -47,6 +47,16 @@ module.exports = function createAiWorldFixture() {
       homepage: 'https://tongyi.aliyun.com'
     },
     {
+      id: 'tencent',
+      name: 'Tencent',
+      nameZh: '腾讯',
+      country: 'CN',
+      continent: 'east',
+      motif: 'wanderer',
+      accentColor: '#7fe7ff',
+      homepage: 'https://www.tencent.com'
+    },
+    {
       id: 'meta',
       name: 'Meta',
       nameZh: 'Meta',
@@ -246,14 +256,100 @@ module.exports = function createAiWorldFixture() {
         fiction_live: null,
         webdev_arena_elo: null
       }
+    },
+    {
+      ...base,
+      id: 'alibaba/qwen4-max',
+      slug: 'alibaba-qwen4-max',
+      name: 'Qwen4 Max',
+      vendorId: 'qwen',
+      releaseDate: '2026-11-12',
+      contextWindow: 1000000,
+      pricing: { inputPerMTok: null, outputPerMTok: null, cachedInputPerMTok: null },
+      modalities: { input: ['text'], output: ['text'] },
+      openWeights: null,
+      license: null,
+      coding: [],
+      scores: [],
+      benchmarks: {
+        eci: null,
+        swe_bench_verified: null,
+        swe_bench_vendor: null,
+        swe_bench_pro: null,
+        aime: null,
+        gpqa_diamond: null,
+        arc_agi_2: null,
+        fiction_live: null,
+        webdev_arena_elo: null
+      }
+    },
+    {
+      ...base,
+      id: 'tencent/hy4-flash',
+      slug: 'tencent-hy4-flash',
+      name: 'Hy4 flash',
+      vendorId: 'tencent',
+      releaseDate: '2026-11-12',
+      contextWindow: 1000000,
+      pricing: { inputPerMTok: null, outputPerMTok: null, cachedInputPerMTok: null },
+      modalities: { input: ['text'], output: ['text'] },
+      openWeights: null,
+      license: null,
+      coding: [],
+      scores: [],
+      benchmarks: {
+        eci: null,
+        swe_bench_verified: null,
+        swe_bench_vendor: null,
+        swe_bench_pro: null,
+        aime: null,
+        gpqa_diamond: null,
+        arc_agi_2: null,
+        fiction_live: null,
+        webdev_arena_elo: null
+      }
     }
   ]
+
+  const fillerModels = Array.from({ length: 30 }, (_, index) => {
+    const serial = String(index + 1).padStart(2, '0')
+    return {
+      ...base,
+      id: `meta/filler-${serial}`,
+      slug: `meta-filler-${serial}`,
+      name: `Filler ${serial}`,
+      vendorId: 'meta',
+      releaseDate: `2025-01-${String((index % 28) + 1).padStart(2, '0')}`,
+      contextWindow: 8000,
+      pricing: {
+        inputPerMTok: 0.01,
+        outputPerMTok: 0.01 + index * 0.001,
+        cachedInputPerMTok: null
+      },
+      modalities: { input: ['text'], output: ['text'] },
+      openWeights: false,
+      license: null,
+      coding: [],
+      scores: [],
+      benchmarks: {
+        eci: 60,
+        swe_bench_verified: null,
+        swe_bench_vendor: null,
+        swe_bench_pro: null,
+        aime: null,
+        gpqa_diamond: null,
+        arc_agi_2: null,
+        fiction_live: null,
+        webdev_arena_elo: null
+      }
+    }
+  })
 
   const snapshot = {
     generatedAt: '2026-11-12T01:42:43.147Z',
     sources: { 'epoch.ai': { ok: true, fetchedAt: '2026-11-12T01:42:43.147Z' } },
     vendors,
-    models,
+    models: [...models, ...fillerModels],
     benchmarks: []
   }
 

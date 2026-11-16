@@ -149,6 +149,9 @@ export interface AiWorldResult {
 /** 上游 GitHub Actions 每 12 小时同步一次；超过这个时间就主动刷新。 */
 export const AI_WORLD_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
+/** 「最新发布」展示最近一周内发布的模型。 */
+export const AI_WORLD_RECENT_RELEASE_DAYS = 7
+
 export type AiWorldKind = 'text' | 'vision' | 'omni' | 'image' | 'video' | 'audio'
 
 export const AI_WORLD_KIND_LABELS: Record<AiWorldKind, string> = {
@@ -192,6 +195,8 @@ export interface AiWorldIndex {
   alive: AiWorldModel[]
   ranks: ReadonlyMap<string, number>
   champions: AiWorldChampion[]
+  /** 最近一周（按快照生成日倒推）内发布、且发布日期精确到日的在役模型，按发布日期倒序。 */
+  recentReleases: AiWorldModel[]
   metricsOf(model: AiWorldModel): AiWorldMetrics
   scoresOf(model: AiWorldModel): AiWorldBenchmarkScore[]
 }
@@ -275,6 +280,14 @@ function releaseTime(model: AiWorldModel): number | null {
   const parts = model.releaseDate.split('-').map(Number)
   const time = Date.UTC(parts[0], (parts[1] ?? 1) - 1, parts[2] ?? 1)
   return Number.isNaN(time) ? null : time
+}
+
+/** 以快照生成日的 UTC 日历日计算最近 N 天窗口，避免时刻差把边界日排除掉。 */
+function recentReleaseWindow(now: Date, days: number): { from: string; to: string } {
+  const to = now.toISOString().slice(0, 10)
+  const fromDate = new Date(`${to}T00:00:00.000Z`)
+  fromDate.setUTCDate(fromDate.getUTCDate() - days)
+  return { from: fromDate.toISOString().slice(0, 10), to }
 }
 
 /** 模型类型只由模态推导，不看名字。 */
@@ -473,8 +486,21 @@ export function createAiWorldIndex(snapshot: AiWorldSnapshot): AiWorldIndex {
 
   const generatedAt = new Date(snapshot.generatedAt)
   const now = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt
-  const scored = alive.filter((model) => model.benchmarks.eci != null)
   const trusted = alive.filter(hasCoreData)
+  const recentWindow = recentReleaseWindow(now, AI_WORLD_RECENT_RELEASE_DAYS)
+  const recentReleases = trusted
+    .filter(
+      (model) =>
+        model.releaseDatePrecision === 'day' &&
+        model.releaseDate != null &&
+        model.releaseDate >= recentWindow.from &&
+        model.releaseDate <= recentWindow.to
+    )
+    .sort(
+      (a, b) =>
+        (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '') || a.name.localeCompare(b.name)
+    )
+  const scored = alive.filter((model) => model.benchmarks.eci != null)
   const champions: AiWorldChampion[] = []
   const push = (key: AiWorldChampionKey, hit: { model: AiWorldModel } | null): void => {
     if (hit) champions.push({ key, model: hit.model, vendor: vendors.get(hit.model.vendorId) })
@@ -522,5 +548,5 @@ export function createAiWorldIndex(snapshot: AiWorldSnapshot): AiWorldIndex {
     )
   )
 
-  return { snapshot, vendors, alive, ranks, champions, metricsOf, scoresOf }
+  return { snapshot, vendors, alive, ranks, champions, recentReleases, metricsOf, scoresOf }
 }

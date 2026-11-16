@@ -101,30 +101,18 @@ const CHAMPION_META: Record<
   }
 }
 
-function daysSince(value: string | null, now: Date): number | null {
-  if (!value) return null
-  const parts = value.split('-').map(Number)
-  const time = Date.UTC(parts[0], (parts[1] ?? 1) - 1, parts[2] ?? 1)
-  if (Number.isNaN(time)) return null
-  return Math.floor((now.getTime() - time) / 86_400_000)
-}
-
 function ChampionCard({
   champion,
   vendor,
   metrics,
-  now,
   onOpen
 }: {
   champion: AiWorldChampion
   vendor: AiWorldVendor | undefined
   metrics: AiWorldMetrics
-  now: Date
   onOpen: () => void
 }): JSX.Element {
   const meta = CHAMPION_META[champion.key]
-  const age = champion.key === 'newest' ? daysSince(champion.model.releaseDate, now) : null
-  const detail = age == null ? meta.detail(champion) : age <= 0 ? '今天发布' : `${age} 天前发布`
   return (
     <button type="button" className="ai-world-champion" onClick={onOpen}>
       <span className="ai-world-champion-label">{meta.label}</span>
@@ -133,8 +121,45 @@ function ChampionCard({
         {vendor?.nameZh || vendor?.name || champion.model.vendorId}
       </span>
       <strong>{meta.figure(champion, metrics)}</strong>
-      <span className="ai-world-champion-detail">{detail}</span>
+      <span className="ai-world-champion-detail">{meta.detail(champion)}</span>
     </button>
+  )
+}
+
+function RecentReleasesCard({
+  models,
+  onOpen
+}: {
+  models: AiWorldModel[]
+  onOpen: (model: AiWorldModel) => void
+}): JSX.Element {
+  return (
+    <section className="ai-world-champion ai-world-recent" aria-label="最近一周发布">
+      <span className="ai-world-champion-label">最新发布</span>
+      <div className="ai-world-recent-head">
+        <span className="ai-world-recent-window">近 7 天</span>
+        <span className="ai-world-recent-count">{models.length} 个模型</span>
+      </div>
+      {models.length ? (
+        <ul className="ai-world-recent-list">
+          {models.map((model) => (
+            <li key={model.id}>
+              <button
+                type="button"
+                className="ai-world-recent-item"
+                title={`${model.name} · ${formatDate(model.releaseDate, model.releaseDatePrecision)}`}
+                onClick={() => onOpen(model)}
+              >
+                <span className="ai-world-recent-name">{model.name}</span>
+                <span className="ai-world-recent-date">{model.releaseDate?.slice(5) ?? '—'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="ai-world-recent-empty">近 7 天没有新发布</span>
+      )}
+    </section>
   )
 }
 
@@ -156,6 +181,7 @@ export function AiWorldPage(): JSX.Element {
   const [sort, setSort] = useState<SortKey>('eci')
   const [view, setView] = useState<ViewMode>('list')
   const [page, setPage] = useState(0)
+  const [pageDraft, setPageDraft] = useState('1')
   const [selected, setSelected] = useState<AiWorldModel | null>(null)
   const [sourcesOpen, setSourcesOpen] = useState(false)
 
@@ -181,8 +207,6 @@ export function AiWorldPage(): JSX.Element {
   }, [])
 
   const index = useMemo(() => (result ? createAiWorldIndex(result.snapshot) : null), [result])
-  const generatedAt = index ? new Date(index.snapshot.generatedAt) : new Date()
-  const now = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt
 
   useEffect(() => {
     setPage(0)
@@ -223,6 +247,22 @@ export function AiWorldPage(): JSX.Element {
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount - 1)
   const visible = rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+
+  useEffect(() => {
+    setPageDraft(String(safePage + 1))
+  }, [safePage])
+
+  const jumpToPage = (): void => {
+    const parsed = Number.parseInt(pageDraft, 10)
+    if (Number.isNaN(parsed)) {
+      setPageDraft(String(safePage + 1))
+      return
+    }
+    const next = Math.min(pageCount, Math.max(1, parsed))
+    setPage(next - 1)
+    setPageDraft(String(next))
+  }
+
   const selectedVendor = selected && index ? index.vendors.get(selected.vendorId) : undefined
   const selectedMetrics = selected && index ? index.metricsOf(selected) : null
   const selectedScores = selected && index ? index.scoresOf(selected) : []
@@ -298,16 +338,23 @@ export function AiWorldPage(): JSX.Element {
               <span className="field-hint">八个问题，八个当前答案；只从快照计算，不调用 AI</span>
             </div>
             <div className="ai-world-champion-grid">
-              {index.champions.map((champion) => (
-                <ChampionCard
-                  key={champion.key}
-                  champion={champion}
-                  vendor={champion.vendor}
-                  metrics={index.metricsOf(champion.model)}
-                  now={now}
-                  onOpen={() => setSelected(champion.model)}
-                />
-              ))}
+              {index.champions.map((champion) =>
+                champion.key === 'newest' ? (
+                  <RecentReleasesCard
+                    key={champion.key}
+                    models={index.recentReleases}
+                    onOpen={setSelected}
+                  />
+                ) : (
+                  <ChampionCard
+                    key={champion.key}
+                    champion={champion}
+                    vendor={champion.vendor}
+                    metrics={index.metricsOf(champion.model)}
+                    onOpen={() => setSelected(champion.model)}
+                  />
+                )
+              )}
             </div>
           </section>
 
@@ -465,9 +512,27 @@ export function AiWorldPage(): JSX.Element {
                 >
                   上一页
                 </button>
-                <span className="field-hint">
-                  第 {safePage + 1} / {pageCount} 页
+                <span className="ai-world-page-jump">
+                  <span className="field-hint">第</span>
+                  <input
+                    className="field-input ai-world-page-input"
+                    value={pageDraft}
+                    onChange={(event) =>
+                      setPageDraft(event.target.value.replace(/[^\d]/g, '').slice(0, 4))
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      jumpToPage()
+                    }}
+                    inputMode="numeric"
+                    aria-label="跳转页码"
+                  />
+                  <span className="field-hint">/ {pageCount} 页</span>
                 </span>
+                <button type="button" className="btn-ghost btn-mini" onClick={jumpToPage}>
+                  跳转
+                </button>
                 <button
                   type="button"
                   className="btn-ghost btn-mini"
