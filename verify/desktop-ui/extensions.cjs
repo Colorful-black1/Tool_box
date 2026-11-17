@@ -39,6 +39,18 @@ module.exports = async function verifyExtensions({ page, check, capture }) {
     assert.ok(copied.endsWith('SKILL.md'))
   })
 
+  await check('技能页将本机看板与在线搜索拆成两个页签', async () => {
+    assert.equal(await page.getByRole('tab').count(), 2)
+    assert.equal(
+      await page.getByRole('tab', { name: '本机技能' }).getAttribute('aria-selected'),
+      'true'
+    )
+    await page.getByRole('tab', { name: '在线搜索' }).click()
+    await page.getByLabel('搜索在线技能').waitFor()
+    assert.equal(await page.locator('.ext-filters').count(), 0)
+    assert.equal(await page.locator('.ext-group').count(), 0)
+  })
+
   await check('在线搜索给出可复制的安装命令并支持翻页', async () => {
     await page.getByLabel('搜索在线技能').fill('pdf')
     await page.locator('.ext-search-form').getByRole('button', { name: '搜索' }).click()
@@ -66,6 +78,11 @@ module.exports = async function verifyExtensions({ page, check, capture }) {
   await page.locator('.ext-group').first().waitFor()
 
   await check('MCP 页展示传输方式、环境变量名与禁用状态', async () => {
+    assert.equal(await page.getByRole('tab').count(), 2)
+    assert.equal(
+      await page.getByRole('tab', { name: '本机 MCP' }).getAttribute('aria-selected'),
+      'true'
+    )
     assert.equal(await page.locator('.ext-metric').first().innerText(), '配置条数\n3')
     assert.equal(await page.locator('.ext-metric').nth(1).innerText(), '不同服务\n2')
     assert.equal(await page.locator('.ext-group').count(), 2)
@@ -81,6 +98,8 @@ module.exports = async function verifyExtensions({ page, check, capture }) {
   await capture('mcp-local')
 
   await check('MCP 在线搜索可复制启动命令与配置片段', async () => {
+    await page.getByRole('tab', { name: '在线搜索' }).click()
+    assert.equal(await page.locator('.ext-group').count(), 0)
     await page.locator('.ext-search-form').getByRole('button', { name: '搜索' }).click()
     await page.locator('.ext-result').first().waitFor()
     assert.ok(

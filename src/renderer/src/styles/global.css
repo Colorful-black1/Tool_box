@@ -9707,6 +9707,11 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   backdrop-filter: blur(2px);
 }
 
+/* 自绘标题栏占用视口顶部；抽屉从标题栏下方展开，避免标题与关闭按钮被盖住。 */
+.window-titlebar + .app-shell .ai-world-detail-backdrop {
+  top: var(--titlebar-height);
+}
+
 .ai-world-detail {
   display: flex;
   flex-direction: column;
@@ -10052,7 +10057,7 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
 .ext-heading {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
 }
@@ -10060,6 +10065,12 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.ext-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 .ext-metrics {
   display: grid;
@@ -10225,13 +10236,7 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   gap: 10px;
   padding: 16px;
 }
-.ext-search-head h3 {
-  margin: 0 0 6px;
-  color: var(--text-hi);
-  font-family: var(--serif);
-  font-size: 16px;
-}
-.ext-search-head p {
+.ext-search > .field-hint {
   margin: 0;
 }
 .ext-search-form {

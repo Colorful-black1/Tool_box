@@ -13,6 +13,8 @@ import { ipcErrorText } from '../../lib/extension-errors'
 import { Dropdown } from '../dropdown'
 import { RefreshIcon } from '../icons'
 import { AgentChips } from '../extensions/agent-chips'
+import { ExtensionTabs } from '../extensions/extension-tabs'
+import type { ExtensionTab, ExtensionTabItem } from '../extensions/extension-tabs'
 import { useCopy } from '../extensions/use-copy'
 
 interface SkillGroup {
@@ -58,11 +60,17 @@ function timeLabel(iso: string): string {
     : date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
+const SKILL_TABS: ExtensionTabItem[] = [
+  { value: 'local', label: '本机技能' },
+  { value: 'search', label: '在线搜索' }
+]
+
 /** 本机技能只读看板 + skills.sh 在线搜索；安装命令由用户自己执行。 */
 export function SkillsPage(): JSX.Element {
   const [result, setResult] = useState<SkillScanResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<ExtensionTab>('local')
   const [keyword, setKeyword] = useState('')
   const [agent, setAgent] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -160,174 +168,198 @@ export function SkillsPage(): JSX.Element {
   return (
     <div className="ext-page view-enter">
       <header className="ext-heading">
-        <div className="ext-actions">
-          <span className="field-hint">
-            {result ? `扫描于 ${timeLabel(result.scannedAt)}` : '尚未扫描'}
-          </span>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => void load(true)}
-            disabled={loading}
-            aria-label="重新扫描本机技能"
-          >
-            <RefreshIcon />
-            刷新
-          </button>
-        </div>
-      </header>
-
-      {error ? (
-        <div className="status-banner" role="alert">
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      <div className="ext-metrics">
-        {metrics.map((metric) => (
-          <div className="glass ext-metric" key={metric.label}>
-            <span className="field-label">{metric.label}</span>
-            <strong>{metric.value}</strong>
-          </div>
-        ))}
-      </div>
-
-      <div className="glass ext-filters">
-        <input
-          className="field-input"
-          type="search"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="筛选名称、描述或路径"
-          aria-label="筛选本机技能"
+        <ExtensionTabs
+          id="skills-ext"
+          label="技能视图"
+          value={tab}
+          tabs={SKILL_TABS}
+          onChange={setTab}
         />
-        <Dropdown
-          value={agent}
-          options={agentOptions}
-          onChange={setAgent}
-          ariaLabel="按 Agent 筛选技能"
-        />
-        <span className="field-hint">
-          {filtered.length} / {groups.length}
-        </span>
-      </div>
-
-      {loading && !result ? (
-        <div>
-          <div className="loading-skeleton" />
-          <div className="loading-skeleton" />
-        </div>
-      ) : (
-        <ul className="ext-list">
-          {filtered.map((group) => (
-            <li className="glass ext-group" key={group.name}>
-              <div className="ext-group-head">
-                <strong>{group.name}</strong>
-                {group.bundled ? <span className="ext-badge">随 Codex 自带</span> : null}
-                {group.conflict ? (
-                  <span className="ext-badge" data-tone="warn">
-                    同名 {group.copies.length} 份 · {group.identical ? '内容相同' : '内容不同'}
-                  </span>
-                ) : null}
-                <AgentChips agents={group.agents} />
-              </div>
-              <p className="ext-desc" title={group.description}>
-                {group.description}
-              </p>
-              <ul className="ext-copies">
-                {group.copies.map((item) => (
-                  <li className="ext-copy" key={item.path}>
-                    <div className="ext-copy-main">
-                      <code>{item.root}</code>
-                      <span className="ext-path" title={item.path}>
-                        {item.displayPath}
-                      </span>
-                    </div>
-                    <AgentChips agents={item.agents} />
-                    {item.contentHash ? <span className="ext-hash">{item.contentHash}</span> : null}
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => copy(item.path, item.path)}
-                    >
-                      {copied === item.path ? '已复制' : '复制路径'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      )}
-      {!loading && !filtered.length ? <p className="ext-empty">没有匹配的技能。</p> : null}
-
-      <section className="glass ext-search">
-        <div className="ext-search-head">
-          <h3>在线搜索</h3>
-          <p className="field-hint">
-            数据来自 skills.sh；找到后复制命令，在终端里自己执行。本页不安装、不写任何目录。
-          </p>
-        </div>
-        <form
-          className="ext-search-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void runSearch(0)
-          }}
-        >
-          <input
-            className="field-input"
-            type="search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="至少 2 个字符，例如 pdf、blender"
-            aria-label="搜索在线技能"
-          />
-          <button type="submit" className="btn-gold" disabled={searching}>
-            {searching ? '搜索中…' : '搜索'}
-          </button>
-        </form>
-        {searchHint ? <p className="ext-hint">{searchHint}</p> : null}
-        {searchError ? (
-          <div className="status-banner" role="alert">
-            <span>{searchError}</span>
+        {tab === 'local' ? (
+          <div className="ext-actions">
+            <span className="field-hint">
+              {result ? `扫描于 ${timeLabel(result.scannedAt)}` : '尚未扫描'}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => void load(true)}
+              disabled={loading}
+              aria-label="重新扫描本机技能"
+            >
+              <RefreshIcon />
+              刷新
+            </button>
           </div>
         ) : null}
+      </header>
 
-        <ul className="ext-results">
-          {(searchResult?.items ?? []).map((item) => (
-            <li className="ext-result" key={item.id}>
-              <div className="ext-result-main">
-                <strong>{item.name}</strong>
-                <span className="field-hint">
-                  {item.source} · {item.installs.toLocaleString('zh-CN')} 次安装
-                </span>
+      {tab === 'local' ? (
+        <div
+          className="ext-tab-panel"
+          id="skills-ext-panel-local"
+          role="tabpanel"
+          aria-labelledby="skills-ext-tab-local"
+        >
+          {error ? (
+            <div className="status-banner" role="alert">
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          <div className="ext-metrics">
+            {metrics.map((metric) => (
+              <div className="glass ext-metric" key={metric.label}>
+                <span className="field-label">{metric.label}</span>
+                <strong>{metric.value}</strong>
               </div>
-              <code className="ext-command">{item.installCommand}</code>
+            ))}
+          </div>
+
+          <div className="glass ext-filters">
+            <input
+              className="field-input"
+              type="search"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="筛选名称、描述或路径"
+              aria-label="筛选本机技能"
+            />
+            <Dropdown
+              value={agent}
+              options={agentOptions}
+              onChange={setAgent}
+              ariaLabel="按 Agent 筛选技能"
+            />
+            <span className="field-hint">
+              {filtered.length} / {groups.length}
+            </span>
+          </div>
+
+          {loading && !result ? (
+            <div>
+              <div className="loading-skeleton" />
+              <div className="loading-skeleton" />
+            </div>
+          ) : (
+            <ul className="ext-list">
+              {filtered.map((group) => (
+                <li className="glass ext-group" key={group.name}>
+                  <div className="ext-group-head">
+                    <strong>{group.name}</strong>
+                    {group.bundled ? <span className="ext-badge">随 Codex 自带</span> : null}
+                    {group.conflict ? (
+                      <span className="ext-badge" data-tone="warn">
+                        同名 {group.copies.length} 份 · {group.identical ? '内容相同' : '内容不同'}
+                      </span>
+                    ) : null}
+                    <AgentChips agents={group.agents} />
+                  </div>
+                  <p className="ext-desc" title={group.description}>
+                    {group.description}
+                  </p>
+                  <ul className="ext-copies">
+                    {group.copies.map((item) => (
+                      <li className="ext-copy" key={item.path}>
+                        <div className="ext-copy-main">
+                          <code>{item.root}</code>
+                          <span className="ext-path" title={item.path}>
+                            {item.displayPath}
+                          </span>
+                        </div>
+                        <AgentChips agents={item.agents} />
+                        {item.contentHash ? (
+                          <span className="ext-hash">{item.contentHash}</span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => copy(item.path, item.path)}
+                        >
+                          {copied === item.path ? '已复制' : '复制路径'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!loading && !filtered.length ? <p className="ext-empty">没有匹配的技能。</p> : null}
+        </div>
+      ) : (
+        <div
+          className="ext-tab-panel"
+          id="skills-ext-panel-search"
+          role="tabpanel"
+          aria-labelledby="skills-ext-tab-search"
+        >
+          <section className="glass ext-search">
+            <p className="field-hint">
+              数据来自 skills.sh；找到后复制命令，在终端里自己执行。本页不安装、不写任何目录。
+            </p>
+            <form
+              className="ext-search-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void runSearch(0)
+              }}
+            >
+              <input
+                className="field-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="至少 2 个字符，例如 pdf、blender"
+                aria-label="搜索在线技能"
+              />
+              <button type="submit" className="btn-gold" disabled={searching}>
+                {searching ? '搜索中…' : '搜索'}
+              </button>
+            </form>
+            {searchHint ? <p className="ext-hint">{searchHint}</p> : null}
+            {searchError ? (
+              <div className="status-banner" role="alert">
+                <span>{searchError}</span>
+              </div>
+            ) : null}
+
+            <ul className="ext-results">
+              {(searchResult?.items ?? []).map((item) => (
+                <li className="ext-result" key={item.id}>
+                  <div className="ext-result-main">
+                    <strong>{item.name}</strong>
+                    <span className="field-hint">
+                      {item.source} · {item.installs.toLocaleString('zh-CN')} 次安装
+                    </span>
+                  </div>
+                  <code className="ext-command">{item.installCommand}</code>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => copy(item.id, item.installCommand)}
+                  >
+                    {copied === item.id ? '已复制' : '复制命令'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {searchResult?.hasMore ? (
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => copy(item.id, item.installCommand)}
+                disabled={searching}
+                onClick={() => void runSearch(searchResult.items.length)}
               >
-                {copied === item.id ? '已复制' : '复制命令'}
+                加载更多
               </button>
-            </li>
-          ))}
-        </ul>
-        {searchResult?.hasMore ? (
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={searching}
-            onClick={() => void runSearch(searchResult.items.length)}
-          >
-            加载更多
-          </button>
-        ) : null}
-        {searchResult && !searchResult.items.length ? (
-          <p className="ext-empty">没有找到匹配的技能，换个关键词试试。</p>
-        ) : null}
-      </section>
+            ) : null}
+            {searchResult && !searchResult.items.length ? (
+              <p className="ext-empty">没有找到匹配的技能，换个关键词试试。</p>
+            ) : null}
+          </section>
+        </div>
+      )}
     </div>
   )
 }

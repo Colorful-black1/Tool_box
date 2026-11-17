@@ -14,6 +14,8 @@ import { ipcErrorText } from '../../lib/extension-errors'
 import { Dropdown } from '../dropdown'
 import { RefreshIcon } from '../icons'
 import { AgentChips } from '../extensions/agent-chips'
+import { ExtensionTabs } from '../extensions/extension-tabs'
+import type { ExtensionTab, ExtensionTabItem } from '../extensions/extension-tabs'
 import { useCopy } from '../extensions/use-copy'
 
 interface ServerGroup {
@@ -54,11 +56,17 @@ function timeLabel(iso: string): string {
     : date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
+const MCP_TABS: ExtensionTabItem[] = [
+  { value: 'local', label: '本机 MCP' },
+  { value: 'search', label: '在线搜索' }
+]
+
 /** 本机 MCP 只读看板 + 官方 Registry 在线搜索；配置片段由用户自己粘贴。 */
 export function McpPage(): JSX.Element {
   const [result, setResult] = useState<McpScanResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<ExtensionTab>('local')
   const [keyword, setKeyword] = useState('')
   const [agent, setAgent] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -147,197 +155,220 @@ export function McpPage(): JSX.Element {
   return (
     <div className="ext-page view-enter">
       <header className="ext-heading">
-        <div className="ext-actions">
-          <span className="field-hint">
-            {result ? `扫描于 ${timeLabel(result.scannedAt)}` : '尚未扫描'}
-          </span>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => void load(true)}
-            disabled={loading}
-            aria-label="重新扫描本机 MCP"
-          >
-            <RefreshIcon />
-            刷新
-          </button>
-        </div>
+        <ExtensionTabs
+          id="mcp-ext"
+          label="MCP 视图"
+          value={tab}
+          tabs={MCP_TABS}
+          onChange={setTab}
+        />
+        {tab === 'local' ? (
+          <div className="ext-actions">
+            <span className="field-hint">
+              {result ? `扫描于 ${timeLabel(result.scannedAt)}` : '尚未扫描'}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => void load(true)}
+              disabled={loading}
+              aria-label="重新扫描本机 MCP"
+            >
+              <RefreshIcon />
+              刷新
+            </button>
+          </div>
+        ) : null}
       </header>
 
-      {error ? (
-        <div className="status-banner" role="alert">
-          <span>{error}</span>
-        </div>
-      ) : null}
+      {tab === 'local' ? (
+        <div
+          className="ext-tab-panel"
+          id="mcp-ext-panel-local"
+          role="tabpanel"
+          aria-labelledby="mcp-ext-tab-local"
+        >
+          {error ? (
+            <div className="status-banner" role="alert">
+              <span>{error}</span>
+            </div>
+          ) : null}
 
-      <div className="ext-metrics">
-        {metrics.map((metric) => (
-          <div className="glass ext-metric" key={metric.label}>
-            <span className="field-label">{metric.label}</span>
-            <strong>{metric.value}</strong>
+          <div className="ext-metrics">
+            {metrics.map((metric) => (
+              <div className="glass ext-metric" key={metric.label}>
+                <span className="field-label">{metric.label}</span>
+                <strong>{metric.value}</strong>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <div className="glass ext-filters">
-        <input
-          className="field-input"
-          type="search"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="筛选名称、来源或地址"
-          aria-label="筛选本机 MCP"
-        />
-        <Dropdown
-          value={agent}
-          options={agentOptions}
-          onChange={setAgent}
-          ariaLabel="按 Agent 筛选 MCP"
-        />
-        <span className="field-hint">
-          {filtered.length} / {groups.length}
-        </span>
-      </div>
+          <div className="glass ext-filters">
+            <input
+              className="field-input"
+              type="search"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="筛选名称、来源或地址"
+              aria-label="筛选本机 MCP"
+            />
+            <Dropdown
+              value={agent}
+              options={agentOptions}
+              onChange={setAgent}
+              ariaLabel="按 Agent 筛选 MCP"
+            />
+            <span className="field-hint">
+              {filtered.length} / {groups.length}
+            </span>
+          </div>
 
-      {loading && !result ? (
-        <div>
-          <div className="loading-skeleton" />
-          <div className="loading-skeleton" />
+          {loading && !result ? (
+            <div>
+              <div className="loading-skeleton" />
+              <div className="loading-skeleton" />
+            </div>
+          ) : (
+            <ul className="ext-list">
+              {filtered.map((group) => (
+                <li className="glass ext-group" key={group.name}>
+                  <div className="ext-group-head">
+                    <strong>{group.name}</strong>
+                    {group.conflict ? (
+                      <span className="ext-badge" data-tone="warn">
+                        启动方式不同
+                      </span>
+                    ) : null}
+                    <AgentChips agents={group.agents} />
+                  </div>
+                  <ul className="ext-copies">
+                    {group.copies.map((item) => (
+                      <li className="ext-copy" key={`${item.sourceId}-${item.name}`}>
+                        <div className="ext-copy-main">
+                          <span className="ext-badge">{TRANSPORT_LABEL[item.transport]}</span>
+                          <code>{item.command ?? item.urlHost ?? '未声明启动方式'}</code>
+                          {item.command && item.argCount ? (
+                            <span className="field-hint">{item.argCount} 个参数</span>
+                          ) : null}
+                          {!item.enabled ? <span className="ext-badge">已禁用</span> : null}
+                        </div>
+                        <div className="ext-copy-meta">
+                          <span className="ext-path" title={item.sourceDisplay}>
+                            {item.sourceLabel}
+                          </span>
+                          {item.envKeys.length ? (
+                            <span className="field-hint" title={item.envKeys.join('、')}>
+                              env：{item.envKeys.slice(0, 3).join('、')}
+                              {item.envKeys.length > 3 ? ` 等 ${item.envKeys.length} 个` : ''}
+                            </span>
+                          ) : null}
+                          {item.headerKeys.length ? (
+                            <span className="field-hint" title={item.headerKeys.join('、')}>
+                              headers：{item.headerKeys.slice(0, 3).join('、')}
+                              {item.headerKeys.length > 3 ? ` 等 ${item.headerKeys.length} 个` : ''}
+                            </span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!loading && !filtered.length ? <p className="ext-empty">没有匹配的 MCP 服务。</p> : null}
         </div>
       ) : (
-        <ul className="ext-list">
-          {filtered.map((group) => (
-            <li className="glass ext-group" key={group.name}>
-              <div className="ext-group-head">
-                <strong>{group.name}</strong>
-                {group.conflict ? (
-                  <span className="ext-badge" data-tone="warn">
-                    启动方式不同
-                  </span>
-                ) : null}
-                <AgentChips agents={group.agents} />
-              </div>
-              <ul className="ext-copies">
-                {group.copies.map((item) => (
-                  <li className="ext-copy" key={`${item.sourceId}-${item.name}`}>
-                    <div className="ext-copy-main">
-                      <span className="ext-badge">{TRANSPORT_LABEL[item.transport]}</span>
-                      <code>{item.command ?? item.urlHost ?? '未声明启动方式'}</code>
-                      {item.command && item.argCount ? (
-                        <span className="field-hint">{item.argCount} 个参数</span>
-                      ) : null}
-                      {!item.enabled ? <span className="ext-badge">已禁用</span> : null}
-                    </div>
-                    <div className="ext-copy-meta">
-                      <span className="ext-path" title={item.sourceDisplay}>
-                        {item.sourceLabel}
-                      </span>
-                      {item.envKeys.length ? (
-                        <span className="field-hint" title={item.envKeys.join('、')}>
-                          env：{item.envKeys.slice(0, 3).join('、')}
-                          {item.envKeys.length > 3 ? ` 等 ${item.envKeys.length} 个` : ''}
-                        </span>
-                      ) : null}
-                      {item.headerKeys.length ? (
-                        <span className="field-hint" title={item.headerKeys.join('、')}>
-                          headers：{item.headerKeys.slice(0, 3).join('、')}
-                          {item.headerKeys.length > 3 ? ` 等 ${item.headerKeys.length} 个` : ''}
-                        </span>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      )}
-      {!loading && !filtered.length ? <p className="ext-empty">没有匹配的 MCP 服务。</p> : null}
-
-      <section className="glass ext-search">
-        <div className="ext-search-head">
-          <h3>在线搜索</h3>
-          <p className="field-hint">
-            数据来自官方 MCP Registry；留空搜索返回最新条目。复制命令或配置片段后自己安装。
-          </p>
-        </div>
-        <form
-          className="ext-search-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void runSearch()
-          }}
+        <div
+          className="ext-tab-panel"
+          id="mcp-ext-panel-search"
+          role="tabpanel"
+          aria-labelledby="mcp-ext-tab-search"
         >
-          <input
-            className="field-input"
-            type="search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="例如 playwright、filesystem，留空看最新"
-            aria-label="搜索在线 MCP"
-          />
-          <button type="submit" className="btn-gold" disabled={searching}>
-            {searching ? '搜索中…' : '搜索'}
-          </button>
-        </form>
-        {searchError ? (
-          <div className="status-banner" role="alert">
-            <span>{searchError}</span>
-          </div>
-        ) : null}
-
-        <ul className="ext-results">
-          {(searchResult?.items ?? []).map((item) => (
-            <li className="ext-result ext-result-wide" key={item.name}>
-              <div className="ext-result-main">
-                <strong>{item.title}</strong>
-                <span className="field-hint">
-                  {item.name}
-                  {item.version ? ` · v${item.version}` : ''} · {TRANSPORT_LABEL[item.transport]}
-                </span>
+          <section className="glass ext-search">
+            <p className="field-hint">
+              数据来自官方 MCP Registry；留空搜索返回最新条目。复制命令或配置片段后自己安装。
+            </p>
+            <form
+              className="ext-search-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void runSearch()
+              }}
+            >
+              <input
+                className="field-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="例如 playwright、filesystem，留空看最新"
+                aria-label="搜索在线 MCP"
+              />
+              <button type="submit" className="btn-gold" disabled={searching}>
+                {searching ? '搜索中…' : '搜索'}
+              </button>
+            </form>
+            {searchError ? (
+              <div className="status-banner" role="alert">
+                <span>{searchError}</span>
               </div>
-              {item.description ? <p className="ext-desc">{item.description}</p> : null}
-              {item.commandLine ? (
-                <div className="ext-result-line">
-                  <code className="ext-command">{item.commandLine}</code>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => copy(`${item.name}:cmd`, item.commandLine ?? '')}
-                  >
-                    {copied === `${item.name}:cmd` ? '已复制' : '复制命令'}
-                  </button>
-                </div>
-              ) : null}
-              {item.configSnippet ? (
-                <div className="ext-result-line">
-                  <pre className="ext-snippet">{item.configSnippet}</pre>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => copy(`${item.name}:cfg`, item.configSnippet)}
-                  >
-                    {copied === `${item.name}:cfg` ? '已复制' : '复制配置'}
-                  </button>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        {searchResult?.nextCursor ? (
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={searching}
-            onClick={() => void runSearch(searchResult.nextCursor ?? undefined)}
-          >
-            加载更多
-          </button>
-        ) : null}
-        {searchResult && !searchResult.items.length ? (
-          <p className="ext-empty">没有找到匹配的 MCP 服务，换个关键词试试。</p>
-        ) : null}
-      </section>
+            ) : null}
+
+            <ul className="ext-results">
+              {(searchResult?.items ?? []).map((item) => (
+                <li className="ext-result ext-result-wide" key={item.name}>
+                  <div className="ext-result-main">
+                    <strong>{item.title}</strong>
+                    <span className="field-hint">
+                      {item.name}
+                      {item.version ? ` · v${item.version}` : ''} ·{' '}
+                      {TRANSPORT_LABEL[item.transport]}
+                    </span>
+                  </div>
+                  {item.description ? <p className="ext-desc">{item.description}</p> : null}
+                  {item.commandLine ? (
+                    <div className="ext-result-line">
+                      <code className="ext-command">{item.commandLine}</code>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => copy(`${item.name}:cmd`, item.commandLine ?? '')}
+                      >
+                        {copied === `${item.name}:cmd` ? '已复制' : '复制命令'}
+                      </button>
+                    </div>
+                  ) : null}
+                  {item.configSnippet ? (
+                    <div className="ext-result-line">
+                      <pre className="ext-snippet">{item.configSnippet}</pre>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => copy(`${item.name}:cfg`, item.configSnippet)}
+                      >
+                        {copied === `${item.name}:cfg` ? '已复制' : '复制配置'}
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            {searchResult?.nextCursor ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={searching}
+                onClick={() => void runSearch(searchResult.nextCursor ?? undefined)}
+              >
+                加载更多
+              </button>
+            ) : null}
+            {searchResult && !searchResult.items.length ? (
+              <p className="ext-empty">没有找到匹配的 MCP 服务，换个关键词试试。</p>
+            ) : null}
+          </section>
+        </div>
+      )}
     </div>
   )
 }

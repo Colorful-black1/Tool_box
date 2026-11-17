@@ -29,14 +29,39 @@ module.exports = async function verifyAiWorld({ page, app, check, capture }) {
     })
     await capture('ai-world-page')
 
+    // 验收窗口没有系统标题栏；补一条同等高度的自绘栏，验证抽屉不会钻到它下面。
+    await page.evaluate(() => {
+      const shell = document.querySelector('.app-shell')
+      if (!shell) return
+      const bar = document.createElement('div')
+      bar.id = 'verify-titlebar'
+      bar.className = 'window-titlebar'
+      bar.textContent = 'Tool_box · AI Companion'
+      shell.parentElement?.insertBefore(bar, shell)
+    })
     await table().getByRole('button', { name: 'DeepSeek V4 Flash', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'DeepSeek V4 Flash' })
     await dialog.waitFor()
     await dialog.getByText('编程', { exact: true }).waitFor()
+    const titlebarLayout = await page.evaluate(() => {
+      const bar = document.querySelector('#verify-titlebar')
+      const backdrop = document.querySelector('.ai-world-detail-backdrop')
+      const detail = document.querySelector('.ai-world-detail')
+      if (!bar || !backdrop || !detail) return null
+      return {
+        barBottom: Math.round(bar.getBoundingClientRect().bottom),
+        backdropTop: Math.round(backdrop.getBoundingClientRect().top),
+        detailTop: Math.round(detail.getBoundingClientRect().top)
+      }
+    })
+    assert.ok(titlebarLayout)
+    assert.equal(titlebarLayout.backdropTop, titlebarLayout.barBottom)
+    assert.equal(titlebarLayout.detailTop, titlebarLayout.barBottom)
     await dialog.getByRole('button', { name: '来源', exact: true }).first().click()
     assert.ok((await page.evaluate(() => window.uiVerification.aiWorldOpenCount())) >= 1)
-    await capture('ai-world-detail')
+    await capture('ai-world-detail-titlebar')
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.evaluate(() => document.querySelector('#verify-titlebar')?.remove())
   })
 
   await check('最新发布显示最近一周模型并按日期倒序', async () => {
