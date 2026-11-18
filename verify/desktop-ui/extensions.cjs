@@ -1,5 +1,6 @@
-﻿/* global document:readonly, window:readonly */
+/* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 module.exports = async function verifyExtensions({ page, check, capture }) {
   await page.getByRole('button', { name: '技能', exact: true }).click()
@@ -117,7 +118,7 @@ module.exports = async function verifyExtensions({ page, check, capture }) {
   })
   await capture('mcp-search')
 
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openSettings(page, '技能路径')
   const roots = page.locator('section[aria-label="技能扫描路径"]')
   await roots.waitFor()
 

@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly, innerWidth:readonly, innerHeight:readonly, localStorage:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 module.exports = async function verifyAgentUsage({ page, app, check, capture }) {
   const open = () => page.getByRole('button', { name: 'Token 统计', exact: true }).click()
@@ -130,7 +131,7 @@ module.exports = async function verifyAgentUsage({ page, app, check, capture }) 
     ['paper', '晨光纸白']
   ]) {
     await check(`${label}：双尺寸布局、日期与菜单边界`, async () => {
-      await page.getByRole('button', { name: '设置', exact: true }).click()
+      await openSettings(page, '外观与主题')
       await page.getByRole('button', { name: label, exact: true }).click()
       await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme)
       await open()

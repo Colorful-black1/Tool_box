@@ -1,5 +1,16 @@
 # Capability Map: Tool_box
 
+## 2026-11-17 助手长期记忆（P0）
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| memory-store | schema v8 `memory_items` + FTS5、状态 / 置顶 / 分页 / 关键词查询、升级前备份 | persistence, shared | [长期记忆方案](docs/assistant-memory.md) |
+| memory-service | 显式记忆校验、敏感内容拒绝、常驻 300 / 相关 800 token 预算、候选去重 / 冲突归档 / 到期归档 | memory-store, shared, ai-gateway | 同上 |
+| memory-candidates | 每 4 个用户轮次异步提取、结构化解析、来源收窄、只写 pending | memory-service, ai-gateway | 同上 |
+| memory-agent-tools | `memory_list` / `memory_search` / `memory_read` 只读；`memory_remember` / `memory_forget` 走审批 | memory-service, agent-tools | 同上 |
+| memory-settings-ui | 总开关、自动学习、候选批准 / 拒绝、筛选、新建 / 编辑 / 归档 / 恢复 / 删除 / 置顶、导出导入 | memory-service, renderer-ui, shared | 同上 |
+| memory-transfer | JSON 可恢复导出 / 导入、Markdown 只读导出、同标题合并与坏项跳过 | memory-service, shared | 同上 |
+
 ## 2026-11-12 AI 模型世界
 
 | Module id | Responsibility | Depends on | Spec |
@@ -107,4 +118,4 @@ Agent 工具调用已交付；生图、RAG、云同步和自动更新保留为�
 | claude-runtime | 官方 SDK 的增量、审批、停止、模型及原生历史；已支持结构化问答／计划确认 | coding-agent-runtime | [能力与验证](docs/coding-agent.md) |
 | dsh-runtime | 独立 ACP、受控 CLI 启动、单次审批／取消；提交后更新，不回放旧消息 | coding-agent-runtime | [能力与验证](docs/coding-agent.md) |
 
-手机端自 2026-10-23 冻结；Kimi 只保留枚举。当前数据库为 schema v7，未验收项见 [ROADMAP](docs/ROADMAP.md)。
+手机端自 2026-10-23 冻结；Kimi 只保留枚举。当前数据库为 schema v8，未验收项见 [ROADMAP](docs/ROADMAP.md)。

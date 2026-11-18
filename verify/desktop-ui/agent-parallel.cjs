@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 /** 合成桥接的多项目任务，不连接外部 Agent 或发送模型请求。 */
 module.exports = async function verifyParallelAgents({ page, app, check, capture }) {
@@ -54,7 +55,7 @@ module.exports = async function verifyParallelAgents({ page, app, check, capture
     ['paper', '晨光纸白']
   ]) {
     await check(`后台任务 ${theme} 主题布局`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await page.waitForFunction(
         () => document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
       )

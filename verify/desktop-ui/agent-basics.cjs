@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly, getComputedStyle:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 const { withDialog } = require('./dialog.cjs')
 
 /** 合成原生事件验证基本交互，不运行原生 CLI 或发送模型请求。 */
@@ -170,7 +171,7 @@ module.exports = async function verifyAgentBasics({ page, app, check, capture })
   ]) {
     await check(`问答、上下文与停止入口 ${theme} 主题布局`, async () => {
       await metadata({ questions: [{ ...question, id: `question-${theme}` }] })
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await page.waitForFunction(
         () => document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
       )

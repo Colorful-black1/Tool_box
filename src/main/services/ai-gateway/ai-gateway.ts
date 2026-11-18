@@ -12,6 +12,7 @@ import {
   DEFAULT_CONVERSATION_TITLE
 } from '../../../shared/constants'
 import { trimmedHistoryNotice } from '../../../shared/history'
+import { estimateTextTokens } from '../../../shared/context-tokens'
 import type {
   AgentPermission,
   AgentToolApprovalInput,
@@ -42,6 +43,10 @@ import { buildLangChainTools, filterToolsByPermission } from '../agent/tool-regi
 import type { AgentToolContext, AgentToolDefinition } from '../agent/tool-registry'
 import { ContextService, CompactionUnavailableError } from './context-service'
 import type { PreparedContext } from './context-service'
+import {
+  MemoryCandidateExtractor,
+  shouldExtractMemoryCandidates
+} from '../memory/memory-candidate-extractor'
 import { referenceMarkdown } from '../../../shared/app-reference'
 import type { ImportService } from '../library/import-service'
 import { validateChatInput } from './errors'
@@ -86,7 +91,11 @@ export class AiGateway {
   private readonly gate = new ApprovalGate()
   private agentPromptCache: string | null = null
   private readonly contextService: ContextService
+  private readonly candidateExtractor: MemoryCandidateExtractor
+  private readonly extracting = new Set<string>()
   private readonly lastUsage = new Map<string, ChatContextUsage>()
+  /** 上一次请求实际注入的记忆块，用于上下文分项展示 */
+  private readonly lastMemoryBlock = new Map<string, string>()
   private readonly compacting = new Set<string>()
   private readonly manualCompactions = new Map<string, AbortController>()
 
@@ -95,9 +104,12 @@ export class AiGateway {
     private readonly chatStore: ToolboxStore,
     private readonly importService: ImportService,
     private readonly promptDir: string,
-    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage' | 'knowledge'> = {}
+    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage' | 'knowledge' | 'memory'> = {}
   ) {
     this.contextService = new ContextService(chatStore, promptDir)
+    this.candidateExtractor = new MemoryCandidateExtractor(promptDir, (system, user, options) =>
+      this.complete(system, user, options)
+    )
   }
 
   async send(
@@ -129,6 +141,8 @@ export class AiGateway {
 
     void this.runAgentTurn({
       conversationId,
+      sourceMessageId: userMessage.id,
+      userText: content,
       config,
       controller,
       sink
@@ -148,9 +162,9 @@ export class AiGateway {
     this.gate.rejectConversation(conversationId)
   }
 
-  /** 恢复本机快照前不得让仍在写入对话的任务被退出流程中断。 */
+  /** 恢复本机快照前不得让仍在写入对话 / 记忆的任务被退出流程中断。 */
   hasActiveRuns(): boolean {
-    return this.active.size > 0 || this.manualCompactions.size > 0
+    return this.active.size > 0 || this.manualCompactions.size > 0 || this.extracting.size > 0
   }
 
   /** 渲染层对写 / 破坏性工具审批的回执 */
@@ -212,11 +226,13 @@ export class AiGateway {
 
   private async runAgentTurn(input: {
     conversationId: string
+    sourceMessageId: string
+    userText: string
     config: AiConfig
     controller: AbortController
     sink: ChatEventSink
   }): Promise<void> {
-    const { conversationId, config, controller, sink } = input
+    const { conversationId, sourceMessageId, userText, config, controller, sink } = input
 
     try {
       const model = new ChatOpenAI({
@@ -232,7 +248,9 @@ export class AiGateway {
 
       const tools = this.toolDefinitions()
       const permission = this.currentPermission()
-      const basePrompt = this.agentSystemPrompt(0)
+      const memoryBlock = this.memoryBlock(userText)
+      this.lastMemoryBlock.set(conversationId, memoryBlock)
+      const basePrompt = this.agentSystemPrompt(0, memoryBlock)
       let info = await this.settings.getActiveContextInfo()
       const buildPrepareInput = (force: boolean) => ({
         conversationId,
@@ -241,6 +259,7 @@ export class AiGateway {
         baseUrl: info?.baseUrl ?? '',
         limit: info?.limit ?? null,
         systemPrompt: basePrompt,
+        memoryTokens: estimateTextTokens(memoryBlock),
         toolSchemas: this.toolSchemas(tools, permission),
         lastUsage: this.lastUsage.get(conversationId) ?? null,
         autoCompact: this.autoCompact(),
@@ -265,12 +284,13 @@ export class AiGateway {
       const runOnce = (context: PreparedContext) =>
         runAgent({
           conversationId,
+          sourceMessageId,
           history: context.history,
           ...(context.summary ? { summary: context.summary } : {}),
           model,
           systemPrompt:
             context.fallbackDropped > 0
-              ? this.agentSystemPrompt(context.fallbackDropped)
+              ? this.agentSystemPrompt(context.fallbackDropped, memoryBlock)
               : basePrompt,
           tools,
           permission,
@@ -345,6 +365,8 @@ export class AiGateway {
       })
       const conversation = this.requireConversation(conversationId)
       sink.onCompleted({ conversationId, message: assistantMessage, conversation })
+      // 候选提取不阻塞回复；失败只记日志，下一次轮次再试。
+      void this.maybeExtractCandidates(conversationId)
       await this.emitContext(conversationId, sink)
     } catch (error) {
       if (controller.signal.aborted) {
@@ -359,6 +381,34 @@ export class AiGateway {
       this.gate.rejectConversation(conversationId)
       this.active.delete(conversationId)
       this.compacting.delete(conversationId)
+    }
+  }
+
+  /**
+   * 空闲候选提取：每 4 个用户轮次触发一次，单会话串行。
+   * 只写 pending，不自动激活；任何失败都不能影响已经完成的回复。
+   */
+  private async maybeExtractCandidates(conversationId: string): Promise<void> {
+    const memory = this.toolServices.memory
+    if (!memory?.isAutoLearnEnabled() || this.extracting.has(conversationId)) return
+    try {
+      const turns = this.chatStore.countMessages(conversationId, 'user')
+      if (!shouldExtractMemoryCandidates(turns)) return
+      this.extracting.add(conversationId)
+      const candidates = await this.candidateExtractor.extract({
+        messages: this.chatStore.listMessages(conversationId),
+        existingTitles: memory
+          .list({ status: 'all', limit: 50 })
+          .items.map((item) => item.title)
+      })
+      if (candidates.length > 0) memory.saveCandidates(conversationId, candidates)
+    } catch (error) {
+      console.warn('[Memory] 自动候选提取失败', {
+        conversationId,
+        reason: error instanceof Error ? error.name : 'unknown'
+      })
+    } finally {
+      this.extracting.delete(conversationId)
     }
   }
 
@@ -407,13 +457,15 @@ export class AiGateway {
     try {
       const tools = this.toolDefinitions()
       const permission = this.currentPermission()
+      const memoryBlock = this.memoryBlock()
       const result = await this.contextService.compact({
         conversationId,
         model: config.model,
         provider: info?.provider ?? '',
         baseUrl: info?.baseUrl ?? '',
         limit: info?.limit ?? null,
-        systemPrompt: this.agentSystemPrompt(0),
+        systemPrompt: this.agentSystemPrompt(0, memoryBlock),
+        memoryTokens: estimateTextTokens(memoryBlock),
         toolSchemas: this.toolSchemas(tools, permission),
         lastUsage: this.lastUsage.get(conversationId) ?? null,
         autoCompact: this.autoCompact(),
@@ -450,13 +502,17 @@ export class AiGateway {
     this.requireConversation(conversationId)
     const info = await this.settings.getActiveContextInfo()
     const permission = this.currentPermission()
+    const memoryBlock = this.toolServices.memory?.isEnabled()
+      ? (this.lastMemoryBlock.get(conversationId) ?? this.memoryBlock())
+      : ''
     return this.contextService.view({
       conversationId,
       model: info?.model ?? '',
       provider: info?.provider ?? '',
       baseUrl: info?.baseUrl ?? '',
       limit: info?.limit ?? null,
-      systemPrompt: this.agentSystemPrompt(0),
+      systemPrompt: this.agentSystemPrompt(0, memoryBlock),
+      memoryTokens: estimateTextTokens(memoryBlock),
       toolSchemas: this.toolSchemas(this.toolDefinitions(), permission),
       lastUsage: this.lastUsage.get(conversationId) ?? null,
       autoCompact: this.autoCompact(),
@@ -534,7 +590,12 @@ export class AiGateway {
     return isAgentPermission(value) ? value : DEFAULT_AGENT_PERMISSION
   }
 
-  private agentSystemPrompt(dropped = 0): string {
+  /** 当前请求要注入的记忆块；没有消息时只取常驻项。 */
+  private memoryBlock(userText?: string): string {
+    return this.toolServices.memory?.prompt(userText) ?? ''
+  }
+
+  private agentSystemPrompt(dropped = 0, memory = ''): string {
     if (this.agentPromptCache === null) {
       try {
         this.agentPromptCache = readFileSync(
@@ -547,7 +608,9 @@ export class AiGateway {
       }
     }
     const prompt = `${this.agentPromptCache}\n\n当前本机时间：${new Date().toLocaleString('sv-SE')}；时区：${Intl.DateTimeFormat().resolvedOptions().timeZone}。相对日期以此为准。`
-    return dropped > 0 ? `${prompt}\n\n${trimmedHistoryNotice(dropped)}` : prompt
+    // 记忆是数据不是指令：固定块放在系统提示末尾，并在块内声明当前指令优先。
+    const withMemory = memory ? `${prompt}\n\n${memory}` : prompt
+    return dropped > 0 ? `${withMemory}\n\n${trimmedHistoryNotice(dropped)}` : withMemory
   }
 
   private autoTitle(

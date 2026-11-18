@@ -1,5 +1,6 @@
 /* global document:readonly, window:readonly, getComputedStyle:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 /** 与交互验收共用合成数据，覆盖主题、系统事件、保存失败与阅读器隔离。 */
 module.exports = async function verifyThemes({ page, app, check, capture }) {
@@ -7,7 +8,7 @@ module.exports = async function verifyThemes({ page, app, check, capture }) {
     BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
   )
   const settings = async () => {
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await openSettings(page, '外观与主题')
     await page.waitForFunction(
       () => document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
     )

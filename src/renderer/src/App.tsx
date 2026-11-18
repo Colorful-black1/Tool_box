@@ -33,6 +33,7 @@ import { WORKBENCH_AGENT_IDS } from '@shared/coding-agents'
 import { codingAgentClient } from './lib/coding-agent-client'
 import { startAgentDraftSync, flushAgentDrafts } from './lib/agent-draft-sync'
 import { SettingsPage } from './routes/settings-page'
+import type { SettingsSection } from './routes/settings-page'
 import { applyAppAppearance } from './lib/app-appearance'
 import { useAppearanceStore } from './stores/appearance-store'
 import type { AppView } from './stores/app-store'
@@ -60,7 +61,22 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   todos: { title: '待办清单', subtitle: 'TODO · 安排下一件事' },
   kb: { title: '本地知识库', subtitle: 'KNOWLEDGE · 用自己的资料回答' },
   tools: { title: '开发者工具', subtitle: 'DEV TOOLS · 本机离线小工具' },
-  settings: { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' }
+  'settings-appearance': { title: '外观与主题', subtitle: 'SETTINGS · 配色、背景与动效' },
+  'settings-model': { title: '星轨链路', subtitle: 'SETTINGS · 连接你的模型星域' },
+  'settings-memory': { title: 'AI 记忆', subtitle: 'SETTINGS · 可审核的长期记忆' },
+  'settings-data': { title: '数据与备份', subtitle: 'SETTINGS · 本机快照与恢复' },
+  'settings-skills': { title: '技能路径', subtitle: 'SETTINGS · 扩展扫描目录' },
+  'settings-desktop': { title: '桌面与关于', subtitle: 'SETTINGS · 快捷键与版本信息' }
+}
+
+/** 设置页拆成独立子页，左侧导航与页面内容一一对应。 */
+const SETTINGS_SECTIONS: Partial<Record<AppView, SettingsSection>> = {
+  'settings-appearance': 'appearance',
+  'settings-model': 'model',
+  'settings-memory': 'memory',
+  'settings-data': 'data',
+  'settings-skills': 'skills',
+  'settings-desktop': 'desktop'
 }
 
 const RAIL_ITEMS: RailNode[] = [
@@ -114,9 +130,16 @@ const RAIL_ITEMS: RailNode[] = [
     children: [{ view: 'kb', label: '资料库', icon: 'library' }]
   },
   {
-    id: 'system',
-    label: '系统',
-    children: [{ view: 'settings', label: '设置', icon: 'settings' }]
+    id: 'settings',
+    label: '设置',
+    children: [
+      { view: 'settings-appearance', label: '外观与主题', icon: 'sparkles' },
+      { view: 'settings-model', label: '星轨链路', icon: 'settings' },
+      { view: 'settings-memory', label: 'AI 记忆', icon: 'note' },
+      { view: 'settings-data', label: '数据与备份', icon: 'library' },
+      { view: 'settings-skills', label: '技能路径', icon: 'tool' },
+      { view: 'settings-desktop', label: '桌面与关于', icon: 'settings' }
+    ]
   }
 ]
 
@@ -276,6 +299,7 @@ export default function App(): JSX.Element {
   }, [])
 
   const meta = PAGE_META[view] ?? PAGE_META.chat
+  const settingsSection = SETTINGS_SECTIONS[view]
   const activeBook = books.find((item) => item.id === activeBookId)
 
   return (
@@ -364,7 +388,7 @@ export default function App(): JSX.Element {
                 {view === 'mcp' ? <McpPage /> : null}
                 {view === 'trending' ? <TrendingPage /> : null}
                 {view === 'ai-world' ? <AiWorldPage /> : null}
-                {view === 'settings' ? <SettingsPage /> : null}
+                {settingsSection ? <SettingsPage section={settingsSection} /> : null}
               </>
             )}
           </main>

@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 module.exports = async function verifyIpPrompt({ page, app, check, capture }) {
   await page.getByRole('button', { name: '工具', exact: true }).click()
@@ -106,7 +107,7 @@ module.exports = async function verifyIpPrompt({ page, app, check, capture }) {
     ['晨光纸白', 'paper']
   ]) {
     await check(`${name}下提示词美化布局完整`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await button(name).click()
       await page.waitForFunction((id) => document.documentElement.dataset.theme === id, id)
       await button('工具').click()
@@ -138,7 +139,7 @@ module.exports = async function verifyIpPrompt({ page, app, check, capture }) {
       BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
     )
   })
-  await button('设置').click()
+  await openSettings(page, '外观与主题')
   await button('星轨深空').click()
   await button('工具').click()
 }

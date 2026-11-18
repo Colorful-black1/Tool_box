@@ -1,6 +1,7 @@
 const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 async function verifyToolExpansion({ page, app, check, capture }) {
   const button = (name) => page.getByRole('button', { name, exact: true })
@@ -110,7 +111,7 @@ async function verifyToolExpansion({ page, app, check, capture }) {
     ['晨光纸白', 'paper']
   ]) {
     await check(`${label}：待办和时区在双尺寸下可用，弹层不溢出`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await button(label).click()
       await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme)
       for (const [width, height] of [

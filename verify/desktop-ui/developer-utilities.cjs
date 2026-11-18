@@ -1,5 +1,6 @@
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 const { rootCertificates } = require('node:tls')
 const { X509Certificate } = require('node:crypto')
 const { Buffer } = require('node:buffer')
@@ -149,7 +150,7 @@ module.exports = async function verifyDeveloperUtilities({ page, app, check, cap
     ['晨光纸白', 'paper']
   ]) {
     await check(`新增工具在${label}下布局不溢出，主题下拉可操作`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await button(label).click()
       await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme)
       await button('工具').click()

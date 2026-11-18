@@ -48,6 +48,8 @@ export interface ContextViewInput {
   baseUrl: string
   limit: ModelContextLimitView | null
   systemPrompt: string
+  /** systemPrompt 中属于长期记忆的估算值；只用于分项展示，不重复计入总量 */
+  memoryTokens?: number
   toolSchemas: ReadonlyArray<unknown>
   lastUsage: ChatContextUsage | null
   autoCompact: boolean
@@ -117,6 +119,7 @@ export class ContextService {
       percent: Math.round((snapshot.estimatedTokens / snapshot.windowTokens) * 100),
       breakdown: {
         system: estimateTextTokens(input.systemPrompt),
+        memory: input.memoryTokens ?? 0,
         tools: estimateToolSchemas(input.toolSchemas),
         summary: snapshot.summaryTokens,
         messages: snapshot.messageTokens

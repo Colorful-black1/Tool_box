@@ -1,6 +1,7 @@
 const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 async function verifyToolNavigation({ page, app, check, capture }) {
   await app.evaluate(({ BrowserWindow }) =>
@@ -108,7 +109,7 @@ async function verifyToolNavigation({ page, app, check, capture }) {
     ['晨光纸白', 'paper']
   ]) {
     await check(`${name}下工具搜索与拖动手柄布局完整`, async () => {
-      await page.getByRole('button', { name: '设置', exact: true }).click()
+      await openSettings(page, '外观与主题')
       await page.getByRole('button', { name, exact: true }).click()
       await page.waitForFunction((id) => document.documentElement.dataset.theme === id, id)
       await page.getByRole('button', { name: '工具', exact: true }).click()

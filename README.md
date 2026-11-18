@@ -18,7 +18,7 @@
 
 | 模块 | 说明 |
 | --- | --- |
-| AI 助手 | 多供应商配置档案一键切换；Agent 可查书架、改笔记、管待办、看统计；三档权限 + 人在环审批，流式输出、Markdown 渲染、上下文占用可视化与自动压缩 |
+| AI 助手 | 多供应商配置档案一键切换；Agent 可查书架、改笔记、管待办、看统计；三档权限 + 人在环审批，流式输出、Markdown 渲染、上下文占用可视化与自动压缩；显式长期记忆（偏好 / 约束 / 画像）可置顶跨会话注入、按当前问题检索，支持自动候选审核与 JSON 备份恢复 |
 | 小说阅读 | TXT 导入（UTF-8 / GBK / UTF-16 自动探测）、章节解析、三种翻页、书签、书内搜索与阅读统计 |
 | 密码箱 | 敏感字段加密落库、文本 / AI 双通道批量导入、拼音分组、重复与弱密码健康检查、密码生成器 |
 | 记事本 | Markdown 左右分栏实时预览、标题与正文搜索、多篇合并、`- [ ]` 清单项一键转待办 |
@@ -54,7 +54,7 @@ npm run dev
 
 开发模式使用独立的 `-dev` 数据目录（`%APPDATA%\私人百宝箱-dev`），可与安装版同时运行，单实例锁、数据库和配置互不影响。
 
-首次启动后到「设置 → AI 配置」填入供应商、接口地址与 API Key（可留空，只用离线功能）；按 `Ctrl+K` 可以试试全局搜索。
+首次启动后到「设置 → 星轨链路」填入供应商、接口地址与 API Key（可留空，只用离线功能）；按 `Ctrl+K` 可以试试全局搜索。
 
 <details>
 <summary>为什么不直接 <code>npm install</code></summary>
@@ -86,7 +86,7 @@ npm run dev
 ```text
 src/
 ├── main/            Electron 主进程：窗口、托盘、快捷键、IPC 注册
-│   └── services/    chat-store（SQLite）· ai-gateway · agent · coding-agents
+│   └── services/    chat-store（SQLite）· ai-gateway · agent · memory · coding-agents
 │                    knowledge-base · crypto · backup · agent-usage · files …
 ├── preload/         contextBridge 白名单桥
 ├── renderer/        React 界面：routes / components / stores / lib / styles
@@ -101,6 +101,7 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 
 - 数据库：`%APPDATA%\私人百宝箱\toolbox.db`（开发模式为 `-dev` 后缀的同级目录）。
 - 加密：密码箱的账号 / 密码 / 备注、AI 的 API Key 均以 AES-256-GCM 落库；主密钥经 `safeStorage`（DPAPI）封装，绑定当前系统用户，**换机或重装系统后可能无法解密**。
+- 长期记忆：显式保存的偏好 / 约束存本机 SQLite；对话时只有置顶或命中的片段随模型请求外发。自动学习开启时，最近对话与已有记忆标题会交给当前模型提取候选；可在「设置 → AI 记忆」查看、停用或删除。
 - 网络：只有你主动发起的 AI 请求、开源热榜、模型世界、公网 IP 查询，以及技能 / MCP 的在线搜索会联网；其余功能（Token 统计、密码健康检查、重复文件查找、开发者工具）全部在本机完成。
 - 进程边界：渲染进程没有 Node 权限，只能通过 preload 暴露的白名单 IPC 访问数据。
 - 备份：「设置 → 数据与备份」生成的是**本机快照**，用于同机回滚，不是跨设备迁移格式；快照含加密配置与主密钥文件，请勿上传网盘。
@@ -124,6 +125,7 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 | [`docs/claude-providers.md`](docs/claude-providers.md) | Claude Code / Desktop 双入口、历史续接与 CC Switch 排障 |
 | [`docs/chat.md`](docs/chat.md) | 对话工具、内部引用、审批与流式约定 |
 | [`docs/context-management.md`](docs/context-management.md) | 上下文占用、压缩阈值与检查点 |
+| [`docs/assistant-memory.md`](docs/assistant-memory.md) | 助手长期记忆：P0–P3 的实现边界、检索注入、候选审核与导出恢复 |
 | [`docs/knowledge-base.md`](docs/knowledge-base.md) | 知识库分块、检索、降级与外发边界 |
 | [`docs/token-usage.md`](docs/token-usage.md) | 14 类本机来源的统计口径与上限 |
 | [`docs/ai-intel.md`](docs/ai-intel.md) | 开源热榜与 AI 模型世界的数据链路 |

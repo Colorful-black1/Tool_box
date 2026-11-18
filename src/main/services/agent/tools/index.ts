@@ -14,6 +14,7 @@ import { workspaceTools } from './workspace'
 import { resultReferences } from './result-references'
 import { commandTools } from './commands'
 import { knowledgeTools } from './knowledge'
+import { memoryTools } from './memory'
 
 /** 全部工具工厂：新增一个工具域只需把工厂加进这里 */
 const TOOL_FACTORIES: ToolFactory[] = [
@@ -28,7 +29,8 @@ const TOOL_FACTORIES: ToolFactory[] = [
   noteEditTools,
   workspaceTools,
   commandTools,
-  knowledgeTools
+  knowledgeTools,
+  memoryTools
 ]
 
 export function createAgentToolSet(deps: AgentDeps): AgentToolDefinition[] {

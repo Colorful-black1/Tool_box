@@ -1,5 +1,6 @@
 /* global document:readonly, window:readonly, getComputedStyle:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 /** 只操作合成桥接，检查树形分组、原页面导航、键盘及窄栏降级。 */
 module.exports = async function verifySidebarNavigation({ page, app, check, capture }) {
@@ -8,10 +9,11 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   const groups = {
     'AI 情报': ['开源热榜', 'AI 模型世界'],
     开发工作台: ['编程 Agent', 'Token 统计', '命令速查', '工具'],
+    'AI 扩展': ['技能', 'MCP'],
     阅读空间: ['书架', '统计'],
     个人管理: ['密码箱', '记事本', '待办清单'],
     知识库: ['资料库'],
-    系统: ['设置']
+    设置: ['外观与主题', '星轨链路', 'AI 记忆', '数据与备份', '技能路径', '桌面与关于']
   }
   const resize = async (width, height, collapsed = width < 1120) => {
     await app.evaluate(
@@ -29,8 +31,8 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
   await resize(1280, 820)
   await button('对话').waitFor()
 
-  await check('主导航六类树形分组，AI 助手保持首个独立入口', async () => {
-    assert.equal(await nav.locator('.nav-tree > li').count(), 7)
+  await check('主导航七类树形分组，AI 助手保持首个独立入口', async () => {
+    assert.equal(await nav.locator('.nav-tree > li').count(), 8)
     assert.equal(await nav.locator('.nav-tree > li').first().innerText(), '对话')
     assert.equal(await button('对话').getAttribute('aria-current'), 'page')
     for (const [name, children] of Object.entries(groups)) {
@@ -54,7 +56,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     assert.equal(await page.locator('.composer-input').inputValue(), '导航验收草稿')
     await page.keyboard.press('Tab')
     assert.equal(
-      await button('阅读空间').evaluate((element) => element === document.activeElement),
+      await button('AI 扩展').evaluate((element) => element === document.activeElement),
       true
     )
     await group.focus()
@@ -82,29 +84,44 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
       ['AI 模型世界', 'AI 模型世界'],
       ['编程 Agent', '编程 Agent'],
       ['Token 统计', 'Token 统计'],
+      ['技能', '技能'],
+      ['MCP', 'MCP'],
       ['工具', '开发者工具'],
       ['书架', '星轨书架'],
       ['统计', '阅读统计'],
       ['密码箱', '密码宝匣'],
       ['记事本', '星笺手记'],
       ['待办清单', '待办清单'],
-      ['资料库', '本地知识库'],
-      ['设置', '星轨链路']
+      ['资料库', '本地知识库']
     ]) {
       await button(name).click()
-      await page.getByRole('heading', { name: title, exact: true }).waitFor()
+      await page.getByRole('heading', { name: title, exact: true }).first().waitFor()
       assert.equal(await button(name).getAttribute('aria-current'), 'page')
       assert.equal(await nav.locator('[aria-current="page"]').count(), 1)
       assert.equal(await nav.locator('.nav-group-toggle.contains-current').count(), 1)
     }
-    await button('系统').click()
-    assert.equal(await button('设置').count(), 0)
-    assert.equal(await button('系统').getAttribute('aria-expanded'), 'false')
+    for (const [name, title] of [
+      ['外观与主题', '外观与主题'],
+      ['星轨链路', '星轨链路'],
+      ['AI 记忆', 'AI 记忆'],
+      ['数据与备份', '数据与备份'],
+      ['技能路径', '技能路径'],
+      ['桌面与关于', '桌面与关于']
+    ]) {
+      await openSettings(page, name)
+      await page.getByRole('heading', { name: title, exact: true }).first().waitFor()
+      assert.equal(await button(name).getAttribute('aria-current'), 'page')
+      assert.equal(await nav.locator('[aria-current="page"]').count(), 1)
+      assert.equal(await nav.locator('.nav-group-toggle.contains-current').count(), 1)
+    }
+    await button('设置').click()
+    assert.equal(await button('外观与主题').count(), 0)
+    assert.equal(await button('设置').getAttribute('aria-expanded'), 'false')
     assert.equal(
-      await page.getByRole('heading', { name: '星轨链路', exact: true }).isVisible(),
+      await page.getByRole('heading', { name: '桌面与关于', exact: true }).first().isVisible(),
       true
     )
-    await button('系统').click()
+    await button('设置').click()
     await button('对话').click()
     assert.equal(await page.locator('.composer-input').inputValue(), '导航验收草稿')
     await page.locator('.composer-input').fill('')
@@ -140,7 +157,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     await button('个人管理').click()
     await button('收起侧边栏').click()
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 14)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 21)
     await button('工具').click()
     assert.equal(await button('工具').getAttribute('aria-current'), 'page')
     await capture('sidebar-tree-icons')
@@ -151,7 +168,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('窄窗自动显示全部图标，变宽后恢复手动侧栏偏好', async () => {
     await resize(1024, 680)
-    assert.equal(await nav.locator('.nav-item:visible').count(), 14)
+    assert.equal(await nav.locator('.nav-item:visible').count(), 21)
     assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 0)
     // 折叠栏出现纵向滚动条时，scrollWidth 会比 clientWidth 多 1px 边框 / 滚动条取整。
     assert.ok((await nav.evaluate((element) => element.scrollWidth)) <=
@@ -159,7 +176,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     await button('记事本').click()
     await capture('sidebar-tree-narrow')
     await resize(1280, 820)
-    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 6)
+    assert.equal(await nav.locator('.nav-group-toggle:visible').count(), 7)
     await button('收起侧边栏').click()
     await resize(1024, 680, true)
     await resize(1280, 820, true)
@@ -169,9 +186,8 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
 
   await check('矮窗口导航可滚动，底部设置入口可达且无横向溢出', async () => {
     await resize(1280, 560)
-    await button('设置').scrollIntoViewIfNeeded()
-    await button('设置').click()
-    assert.equal(await button('设置').isVisible(), true)
+    await openSettings(page, '桌面与关于')
+    assert.equal(await button('桌面与关于').isVisible(), true)
     assert.equal(await nav.evaluate((element) => element.scrollWidth > element.clientWidth), false)
     await capture('sidebar-tree-short')
     await resize(1280, 820)
@@ -186,7 +202,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
     ['晨光纸白', 'paper']
   ]) {
     await check(`${name}下树形导航层级、选中态和宽度`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await page.getByRole('button', { name, exact: true }).click()
       await page.waitForFunction((id) => document.documentElement.dataset.theme === id, id)
       await button('编程 Agent').click()
@@ -198,7 +214,7 @@ module.exports = async function verifySidebarNavigation({ page, app, check, capt
       await capture(`sidebar-tree-${id}`)
     })
   }
-  await button('设置').click()
+  await openSettings(page, '外观与主题')
   await page.getByRole('button', { name: '星轨深空', exact: true }).click()
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'starry')
   await button('对话').click()

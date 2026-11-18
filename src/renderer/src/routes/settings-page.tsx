@@ -18,6 +18,7 @@ import { confirmDialog } from '../stores/dialog-store'
 import { AppearanceSettings } from '../components/settings/appearance-settings'
 import { BackupSettings } from '../components/settings/backup-settings'
 import { SkillRootsSettings } from '../components/settings/skill-roots-settings'
+import { MemorySettings } from '../components/settings/memory-settings'
 import { Dropdown } from '../components/dropdown'
 
 /** 快捷键的中文说明（accelerator 本身是技术写法，界面上给中文） */
@@ -69,33 +70,51 @@ interface ModelListState {
   contextWindows?: Record<string, number>
 }
 
-export function SettingsPage(): JSX.Element {
+/** 设置子页；左侧导航每个入口只渲染对应的一块，避免所有卡片堆在一页。 */
+export type SettingsSection = 'appearance' | 'model' | 'memory' | 'data' | 'skills' | 'desktop'
+
+interface SettingsPageProps {
+  section: SettingsSection
+}
+
+export function SettingsPage({ section }: SettingsPageProps): JSX.Element {
+  return (
+    <div className="settings-layout settings-stack view-enter">
+      {section === 'appearance' ? <AppearanceSettings /> : null}
+      {section === 'model' ? <ModelSettingsPage /> : null}
+      {section === 'memory' ? <MemorySettings /> : null}
+      {section === 'data' ? <BackupSettings /> : null}
+      {section === 'skills' ? <SkillRootsSettings /> : null}
+      {section === 'desktop' ? <DesktopSettings /> : null}
+    </div>
+  )
+}
+
+/** 模型配置依赖设置加载完成；其它子页各自读取需要的数据。 */
+function ModelSettingsPage(): JSX.Element {
   const settings = useAppStore((state) => state.settings)
 
   if (!settings) {
     return (
-      <div className="settings-layout" aria-busy="true" aria-label="设置加载中">
-        <div className="glass settings-card">
-          <div className="loading-skeleton" />
-          <div className="loading-skeleton" />
-        </div>
+      <div className="glass settings-card" aria-busy="true" aria-label="设置加载中">
+        <div className="loading-skeleton" />
+        <div className="loading-skeleton" />
       </div>
     )
   }
 
-  return <SettingsForm settings={settings} />
+  return <ModelSettings settings={settings} />
 }
 
-interface SettingsFormProps {
+interface ModelSettingsProps {
   settings: AiConfigView
 }
 
-function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
+function ModelSettings({ settings }: ModelSettingsProps): JSX.Element {
   const saveProfile = useAppStore((state) => state.saveProfile)
   const removeProfile = useAppStore((state) => state.removeProfile)
   const activateProfile = useAppStore((state) => state.activateProfile)
   const fetchModels = useAppStore((state) => state.fetchModels)
-  const appInfo = useAppStore((state) => state.appInfo)
 
   // 草稿是表单的唯一真相源：档案列表高亮直接由 draft.id 推导，
   // 避免用 selectedId 另存一份状态后与草稿不同步。
@@ -108,9 +127,6 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
   const [loadingModels, setLoadingModels] = useState(false)
   /** 最近一次拉到的模型（候选清单的一部分） */
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
-  /** 全局快捷键配置（主进程持有，这里只做展示与修改） */
-  const [shortcut, setShortcut] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUT_CONFIG })
-  const [shortcutError, setShortcutError] = useState('')
 
   // 当前编辑的档案被外部删除时关闭草稿；新建草稿（id 为 null）不受影响
   useEffect(() => {
@@ -118,30 +134,6 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
     if (settings.profiles.some((item) => item.id === draft.id)) return
     setDraft(null)
   }, [settings, draft])
-
-  // 读一次全局快捷键配置（主进程持有真正的注册状态）
-  useEffect(() => {
-    if (!window.toolbox) return
-    void window.toolbox.system
-      .getShortcut()
-      .then(setShortcut)
-      .catch(() => {
-        // 读不到就保持默认值，不打扰用户
-      })
-  }, [])
-
-  /** 写快捷键配置：失败（被占用）时保留原状并说明原因 */
-  const applyShortcut = async (next: ShortcutConfig): Promise<void> => {
-    if (!window.toolbox) return
-    setShortcutError('')
-    try {
-      const result = await window.toolbox.system.setShortcut(next)
-      setShortcut(result.config)
-      if (!result.ok) setShortcutError(result.error ?? '设置失败')
-    } catch (error) {
-      setShortcutError(errorText(error, '设置失败'))
-    }
-  }
 
   const activeProfile = useMemo(
     () => settings.profiles.find((item) => item.id === draft?.id) ?? null,
@@ -242,8 +234,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
       const knownIds = new Set(settings.profiles.map((item) => item.id))
       const next = await saveProfile(input)
       // 新建时主进程会把档案追加到末尾，用「新增项」反查真实 id，避免依赖数组位置
-      const savedId =
-        draft.id ?? next.profiles.find((item) => !knownIds.has(item.id))?.id ?? null
+      const savedId = draft.id ?? next.profiles.find((item) => !knownIds.has(item.id))?.id ?? null
       setDraft((current) => (current ? { ...current, id: savedId, apiKey: '' } : current))
       setStatus({ type: 'success', message: '配置已保存' })
     } catch (error) {
@@ -387,330 +378,359 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
             : '默认 128k'
 
   return (
-    <div className="settings-layout settings-layout-wide settings-stack view-enter">
-      <AppearanceSettings />
-      <BackupSettings />
-      <SkillRootsSettings />
-      <section className="glass settings-card" aria-label="AI 设置">
-        <div className="sec-head">
-          <h2 className="sec-title">星轨链路</h2>
+    <section className="glass settings-card" aria-label="AI 设置">
+      <div className="sec-head">
+        <h2 className="sec-title">星轨链路</h2>
+      </div>
+
+      {status.type === 'success' ? (
+        <div className="status-banner success-banner" role="status">
+          {status.message}
         </div>
+      ) : null}
+      {status.type === 'error' ? (
+        <div className="status-banner" role="alert">
+          {status.message}
+        </div>
+      ) : null}
 
-        {status.type === 'success' ? (
-          <div className="status-banner success-banner" role="status">
-            {status.message}
-          </div>
-        ) : null}
-        {status.type === 'error' ? (
-          <div className="status-banner" role="alert">
-            {status.message}
-          </div>
-        ) : null}
-
-        <div className="settings-split">
-          <aside className="profile-rail" aria-label="配置列表">
-            <button type="button" className="btn-ghost" onClick={startNew}>
-              + 新建配置
-            </button>
-            {settings.profiles.length === 0 ? (
-              <p className="profile-rail-empty">还没有配置，点击上方新建。</p>
-            ) : (
-              settings.profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  className={`profile-item${profile.id === draft?.id ? ' active' : ''}`}
-                  onClick={() => openProfile(profile)}
-                >
-                  <span className="profile-item-name" title={profile.name}>
-                    {profile.name}
-                  </span>
-                  <span className="profile-item-meta">
-                    {findAiProvider(profile.provider).name} · {profile.model || '未选模型'}
-                  </span>
-                  {profile.id === settings.activeId ? (
-                    <span className="profile-item-badge">使用中</span>
-                  ) : null}
-                </button>
-              ))
-            )}
-          </aside>
-
-          {draft ? (
-            <form className="settings-grid" onSubmit={(event) => void onSubmit(event)}>
-              <div>
-                <label className="field-label" htmlFor="profile-provider">
-                  供应商 · PROVIDER
-                </label>
-                <Dropdown
-                  id="profile-provider"
-                  triggerClassName="dropdown-field"
-                  value={draft.provider}
-                  ariaLabel="服务商"
-                  options={AI_PROVIDER_PRESETS.map((preset) => ({
-                    value: preset.id,
-                    label: preset.name
-                  }))}
-                  onChange={(value) => pickProvider(value as AiProviderId)}
-                />
-                <p className="field-hint">
-                  选择后自动填入官方接口地址；列表外的服务商请选「自定义」手填。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="profile-name">
-                  配置名称
-                </label>
-                <input
-                  id="profile-name"
-                  className="field-input"
-                  type="text"
-                  value={draft.name}
-                  placeholder="例如：主力对话"
-                  maxLength={24}
-                  autoComplete="off"
-                  onChange={(event) => patchDraft({ name: event.target.value })}
-                />
-                <p className="field-hint">仅用于本地区分多套配置，不影响请求。</p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="base-url">
-                  接口地址 · BASE URL
-                </label>
-                <input
-                  id="base-url"
-                  className="field-input"
-                  type="text"
-                  value={draft.baseUrl}
-                  placeholder="https://api.deepseek.com/v1"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => patchDraft({ baseUrl: event.target.value })}
-                />
-                <p className="field-hint">OpenAI 兼容地址，通常会自动补全 /v1。</p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="api-key">
-                  API Key
-                </label>
-                <input
-                  id="api-key"
-                  className="field-input"
-                  type="password"
-                  value={draft.apiKey}
-                  placeholder={
-                    activeProfile?.hasApiKey ? '已加密保存，留空则不修改' : '请输入 API Key'
-                  }
-                  autoComplete="new-password"
-                  spellCheck={false}
-                  onChange={(event) => patchDraft({ apiKey: event.target.value })}
-                />
-                <p className="field-hint">
-                  选好供应商、填入 API Key 即可保存。下面勾选常用的几个模型，它们才会出现在「对话」页的下拉里。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="profile-model">
-                  当前模型 · MODEL
-                </label>
-                <input
-                  id="profile-model"
-                  className="field-input"
-                  type="text"
-                  value={draft.model}
-                  placeholder="gpt-6-luna"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) =>
-                    patchDraft({ model: event.target.value, contextWindow: '' })
-                  }
-                />
-                <p className="field-hint">
-                  实际发请求用的模型；下面勾选任一模型会自动切到它。自定义供应商可直接手填模型名。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="profile-context-window">
-                  上下文窗口 · CONTEXT WINDOW
-                </label>
-                <input
-                  id="profile-context-window"
-                  className="field-input"
-                  type="number"
-                  min={4000}
-                  max={10000000}
-                  step={1000}
-                  value={draft.contextWindow}
-                  placeholder={detectedTokens ? String(detectedTokens) : '默认 128000'}
-                  autoComplete="off"
-                  onChange={(event) => patchDraft({ contextWindow: event.target.value })}
-                />
-                <p className="field-hint">
-                  {detectedTokens
-                    ? `自动检测：${detectedTokens.toLocaleString('zh-CN')} Token（${detectedSource}）`
-                    : '未检测到窗口，使用默认 128k'}
-                  ；可点下方「获取模型列表」按接口刷新，留空使用自动值，手填会覆盖它。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="embedding-model">
-                  向量模型 · EMBEDDING
-                </label>
-                <input
-                  id="embedding-model"
-                  className="field-input"
-                  type="text"
-                  value={draft.embeddingModel}
-                  placeholder="例如：text-embedding-3-small / bge-m3"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => patchDraft({ embeddingModel: event.target.value })}
-                />
-                <p className="field-hint">
-                  知识库语义检索用，走当前接口地址的 <code>/embeddings</code>。留空则只用关键词检索；
-                  填好后到资料库点「补齐向量」。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="rerank-model">
-                  重排模型 · RERANK
-                </label>
-                <input
-                  id="rerank-model"
-                  className="field-input"
-                  type="text"
-                  value={draft.rerankModel}
-                  placeholder="例如：bge-reranker-v2-m3"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => patchDraft({ rerankModel: event.target.value })}
-                />
-                <p className="field-hint">
-                  可选：检索后按相关性再排一次，走 <code>/rerank</code>。留空或调用失败时保持融合排序。
-                </p>
-              </div>
-
-              <div>
-                <label className="field-label" htmlFor="model-fetch">
-                  模型列表 · MODELS
-                </label>
-                <div className="model-fetch-row">
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={loadingModels}
-                    onClick={() => void onFetchModels()}
-                  >
-                    {loadingModels ? '获取中…' : '获取模型列表'}
-                  </button>
-                  {modelList ? (
-                    <span
-                      className={`field-hint${modelList.source === 'remote' ? '' : ' warn'}`}
-                      role="status"
-                    >
-                      {modelList.source === 'remote'
-                        ? `供应商实时列表 ${modelList.count} 个`
-                        : `未能获取实时列表（${modelList.message ?? '未知原因'}），已列出内置推荐`}
-                    </span>
-                  ) : (
-                    <span className="field-hint">
-                      拉取该供应商当前可用的模型；拉不到时回落到内置推荐并说明原因。
-                    </span>
-                  )}
-                </div>
-
-                <div className="model-pick">
-                  <div className="model-pick-head">
-                    <span className="field-hint">
-                      已选 {draft.selectedModels.length} 个 · 勾选的模型会出现在对话下拉里，勾上即切为当前模型
-                    </span>
-                    <span className="model-pick-ops">
-                      <button
-                        type="button"
-                        className="btn-ghost btn-mini"
-                        onClick={() => patchDraft({ selectedModels: candidates })}
-                      >
-                        全选
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost btn-mini"
-                        onClick={() => patchDraft({ selectedModels: [] })}
-                      >
-                        清空
-                      </button>
-                    </span>
-                  </div>
-                  <div className="model-pick-list">
-                    {candidates.map((name) => {
-                      const checked = draft.selectedModels.includes(name)
-                      return (
-                        <button
-                          key={name}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={checked}
-                          className={`model-pick-item${checked ? ' on' : ''}`}
-                          onClick={() => toggleModel(name)}
-                        >
-                          <span className="model-check" aria-hidden="true">
-                            {checked ? '✓' : ''}
-                          </span>
-                          <span className="model-pick-name">{name}</span>
-                          {name === draft.model ? (
-                            <span className="model-pick-current">当前</span>
-                          ) : null}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="settings-actions">
-                <button type="submit" className="btn-gold" disabled={status.type === 'saving'}>
-                  {status.type === 'saving' ? '保存中' : '保存配置'}
-                </button>
-                {draft.id && draft.id !== settings.activeId ? (
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={status.type === 'saving'}
-                    onClick={() => void onActivate()}
-                  >
-                    设为使用中
-                  </button>
-                ) : null}
-                {draft.id ? (
-                  <button
-                    type="button"
-                    className="btn-ghost btn-danger"
-                    disabled={status.type === 'saving'}
-                    onClick={() => void onDelete()}
-                  >
-                    删除
-                  </button>
-                ) : null}
-              </div>
-            </form>
+      <div className="settings-split">
+        <aside className="profile-rail" aria-label="配置列表">
+          <button type="button" className="btn-ghost" onClick={startNew}>
+            + 新建配置
+          </button>
+          {settings.profiles.length === 0 ? (
+            <p className="profile-rail-empty">还没有配置，点击上方新建。</p>
           ) : (
-            <div className="settings-empty">
-              <p>左侧选择一套配置进行编辑，或新建一套。</p>
+            settings.profiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                className={`profile-item${profile.id === draft?.id ? ' active' : ''}`}
+                onClick={() => openProfile(profile)}
+              >
+                <span className="profile-item-name" title={profile.name}>
+                  {profile.name}
+                </span>
+                <span className="profile-item-meta">
+                  {findAiProvider(profile.provider).name} · {profile.model || '未选模型'}
+                </span>
+                {profile.id === settings.activeId ? (
+                  <span className="profile-item-badge">使用中</span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </aside>
+
+        {draft ? (
+          <form className="settings-grid" onSubmit={(event) => void onSubmit(event)}>
+            <div>
+              <label className="field-label" htmlFor="profile-provider">
+                供应商 · PROVIDER
+              </label>
+              <Dropdown
+                id="profile-provider"
+                triggerClassName="dropdown-field"
+                value={draft.provider}
+                ariaLabel="服务商"
+                options={AI_PROVIDER_PRESETS.map((preset) => ({
+                  value: preset.id,
+                  label: preset.name
+                }))}
+                onChange={(value) => pickProvider(value as AiProviderId)}
+              />
               <p className="field-hint">
-                启用中的配置才会被 AI 对话与密码箱识别功能使用。
+                选择后自动填入官方接口地址；列表外的服务商请选「自定义」手填。
               </p>
             </div>
-          )}
-        </div>
-      </section>
 
+            <div>
+              <label className="field-label" htmlFor="profile-name">
+                配置名称
+              </label>
+              <input
+                id="profile-name"
+                className="field-input"
+                type="text"
+                value={draft.name}
+                placeholder="例如：主力对话"
+                maxLength={24}
+                autoComplete="off"
+                onChange={(event) => patchDraft({ name: event.target.value })}
+              />
+              <p className="field-hint">仅用于本地区分多套配置，不影响请求。</p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="base-url">
+                接口地址 · BASE URL
+              </label>
+              <input
+                id="base-url"
+                className="field-input"
+                type="text"
+                value={draft.baseUrl}
+                placeholder="https://api.deepseek.com/v1"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => patchDraft({ baseUrl: event.target.value })}
+              />
+              <p className="field-hint">OpenAI 兼容地址，通常会自动补全 /v1。</p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="api-key">
+                API Key
+              </label>
+              <input
+                id="api-key"
+                className="field-input"
+                type="password"
+                value={draft.apiKey}
+                placeholder={
+                  activeProfile?.hasApiKey ? '已加密保存，留空则不修改' : '请输入 API Key'
+                }
+                autoComplete="new-password"
+                spellCheck={false}
+                onChange={(event) => patchDraft({ apiKey: event.target.value })}
+              />
+              <p className="field-hint">
+                选好供应商、填入 API Key 即可保存。
+                下面勾选常用模型，它们才会出现在「对话」页的下拉里。
+              </p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="profile-model">
+                当前模型 · MODEL
+              </label>
+              <input
+                id="profile-model"
+                className="field-input"
+                type="text"
+                value={draft.model}
+                placeholder="gpt-6-luna"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => patchDraft({ model: event.target.value, contextWindow: '' })}
+              />
+              <p className="field-hint">
+                实际发请求用的模型；下面勾选任一模型会自动切到它。自定义供应商可直接手填模型名。
+              </p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="profile-context-window">
+                上下文窗口 · CONTEXT WINDOW
+              </label>
+              <input
+                id="profile-context-window"
+                className="field-input"
+                type="number"
+                min={4000}
+                max={10000000}
+                step={1000}
+                value={draft.contextWindow}
+                placeholder={detectedTokens ? String(detectedTokens) : '默认 128000'}
+                autoComplete="off"
+                onChange={(event) => patchDraft({ contextWindow: event.target.value })}
+              />
+              <p className="field-hint">
+                {detectedTokens
+                  ? `自动检测：${detectedTokens.toLocaleString('zh-CN')} Token（${detectedSource}）`
+                  : '未检测到窗口，使用默认 128k'}
+                ；可点下方「获取模型列表」按接口刷新，留空使用自动值，手填会覆盖它。
+              </p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="embedding-model">
+                向量模型 · EMBEDDING
+              </label>
+              <input
+                id="embedding-model"
+                className="field-input"
+                type="text"
+                value={draft.embeddingModel}
+                placeholder="例如：text-embedding-3-small / bge-m3"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => patchDraft({ embeddingModel: event.target.value })}
+              />
+              <p className="field-hint">
+                知识库语义检索用，走当前接口地址的 <code>/embeddings</code>。留空则只用关键词检索；
+                填好后到资料库点「补齐向量」。
+              </p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="rerank-model">
+                重排模型 · RERANK
+              </label>
+              <input
+                id="rerank-model"
+                className="field-input"
+                type="text"
+                value={draft.rerankModel}
+                placeholder="例如：bge-reranker-v2-m3"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => patchDraft({ rerankModel: event.target.value })}
+              />
+              <p className="field-hint">
+                可选：检索后按相关性再排一次，走 <code>/rerank</code>。
+                留空或调用失败时保持融合排序。
+              </p>
+            </div>
+
+            <div>
+              <label className="field-label" htmlFor="model-fetch">
+                模型列表 · MODELS
+              </label>
+              <div className="model-fetch-row">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={loadingModels}
+                  onClick={() => void onFetchModels()}
+                >
+                  {loadingModels ? '获取中…' : '获取模型列表'}
+                </button>
+                {modelList ? (
+                  <span
+                    className={`field-hint${modelList.source === 'remote' ? '' : ' warn'}`}
+                    role="status"
+                  >
+                    {modelList.source === 'remote'
+                      ? `供应商实时列表 ${modelList.count} 个`
+                      : `未能获取实时列表（${modelList.message ?? '未知原因'}），已列出内置推荐`}
+                  </span>
+                ) : (
+                  <span className="field-hint">
+                    拉取该供应商当前可用的模型；拉不到时回落到内置推荐并说明原因。
+                  </span>
+                )}
+              </div>
+
+              <div className="model-pick">
+                <div className="model-pick-head">
+                  <span className="field-hint">
+                    已选 {draft.selectedModels.length} 个 ·
+                    勾选的模型会出现在对话下拉里，勾上即切为当前模型
+                  </span>
+                  <span className="model-pick-ops">
+                    <button
+                      type="button"
+                      className="btn-ghost btn-mini"
+                      onClick={() => patchDraft({ selectedModels: candidates })}
+                    >
+                      全选
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost btn-mini"
+                      onClick={() => patchDraft({ selectedModels: [] })}
+                    >
+                      清空
+                    </button>
+                  </span>
+                </div>
+                <div className="model-pick-list">
+                  {candidates.map((name) => {
+                    const checked = draft.selectedModels.includes(name)
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        className={`model-pick-item${checked ? ' on' : ''}`}
+                        onClick={() => toggleModel(name)}
+                      >
+                        <span className="model-check" aria-hidden="true">
+                          {checked ? '✓' : ''}
+                        </span>
+                        <span className="model-pick-name">{name}</span>
+                        {name === draft.model ? (
+                          <span className="model-pick-current">当前</span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-actions">
+              <button type="submit" className="btn-gold" disabled={status.type === 'saving'}>
+                {status.type === 'saving' ? '保存中' : '保存配置'}
+              </button>
+              {draft.id && draft.id !== settings.activeId ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={status.type === 'saving'}
+                  onClick={() => void onActivate()}
+                >
+                  设为使用中
+                </button>
+              ) : null}
+              {draft.id ? (
+                <button
+                  type="button"
+                  className="btn-ghost btn-danger"
+                  disabled={status.type === 'saving'}
+                  onClick={() => void onDelete()}
+                >
+                  删除
+                </button>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <div className="settings-empty">
+            <p>左侧选择一套配置进行编辑，或新建一套。</p>
+            <p className="field-hint">启用中的配置才会被 AI 对话与密码箱识别功能使用。</p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/** 桌面端快捷键与版本信息；两者同属「桌面与关于」子页。 */
+function DesktopSettings(): JSX.Element {
+  const appInfo = useAppStore((state) => state.appInfo)
+  const [shortcut, setShortcut] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUT_CONFIG })
+  const [shortcutError, setShortcutError] = useState('')
+
+  // 读一次全局快捷键配置（主进程持有真正的注册状态）
+  useEffect(() => {
+    if (!window.toolbox) return
+    void window.toolbox.system
+      .getShortcut()
+      .then(setShortcut)
+      .catch(() => {
+        // 读不到就保持默认值，不打扰用户
+      })
+  }, [])
+
+  /** 写快捷键配置：失败（被占用）时保留原状并说明原因 */
+  const applyShortcut = async (next: ShortcutConfig): Promise<void> => {
+    if (!window.toolbox) return
+    setShortcutError('')
+    try {
+      const result = await window.toolbox.system.setShortcut(next)
+      setShortcut(result.config)
+      if (!result.ok) setShortcutError(result.error ?? '设置失败')
+    } catch (error) {
+      setShortcutError(errorText(error, '设置失败'))
+    }
+  }
+
+  return (
+    <>
       <section className="glass settings-card" aria-label="桌面端设置">
         <div className="sec-head">
           <h2 className="sec-title">桌面端</h2>
@@ -749,9 +769,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
                 {shortcutError}
               </span>
             ) : (
-              <span className="field-hint">
-                关闭窗口后应用会缩到托盘，按这个组合键就能唤回来。
-              </span>
+              <span className="field-hint">关闭窗口后应用会缩到托盘，按这个组合键就能唤回来。</span>
             )}
           </div>
         </div>
@@ -781,7 +799,7 @@ function SettingsForm({ settings }: SettingsFormProps): JSX.Element {
           本地优先：对话配置、密码与笔记都保存在当前用户目录，不上传版本信息。
         </p>
       </section>
-    </div>
+    </>
   )
 }
 

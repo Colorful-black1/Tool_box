@@ -11,7 +11,12 @@ export interface PasswordAiPreview {
 /** 无会话 AI 工具的增量；最终结果仍通过原请求返回并完成校验。 */
 export type AiOutputEvent =
   | { kind: 'prompt-polish'; requestId: string; delta: string }
-  | { kind: 'password-import'; requestId: string; receivedChars: number; entries: PasswordAiPreview[] }
+  | {
+      kind: 'password-import'
+      requestId: string
+      receivedChars: number
+      entries: PasswordAiPreview[]
+    }
 
 /** 本机网卡的只读地址视图，不包含 MAC、网关或公网探测信息。 */
 export interface LocalIpAddressView {
@@ -145,8 +150,7 @@ export interface OpenCodeSessionSummary {
 
 /** 连接状态与会话更新分别推送，避免退出连接后残留运行中状态。 */
 export type OpenCodeEvent =
-  | { kind: 'connection'; connected: boolean }
-  | { kind: 'session'; session: OpenCodeSession }
+  { kind: 'connection'; connected: boolean } | { kind: 'session'; session: OpenCodeSession }
 
 /** 主进程内部使用：含明文 Key，绝不跨 IPC 传输 */
 export interface AiConfig {
@@ -473,6 +477,8 @@ export interface ModelContextLimitInput {
 export interface ChatContextBreakdown {
   /** system prompt */
   system: number
+  /** 上次请求注入的长期记忆（已包含在 system 中，这里单独展示） */
+  memory: number
   /** 当前权限下暴露的工具 schema */
   tools: number
   /** 已生成的检查点摘要 */
@@ -546,6 +552,119 @@ export interface ChatCompactionEvent {
   result?: ChatCompactResult
 }
 
+// ============ 助手长期记忆 ============
+
+/** 记忆类型：偏好 / 画像 / 约束 / 流程 / 有时效的事件 */
+export const MEMORY_KINDS = [
+  'preference',
+  'profile',
+  'constraint',
+  'procedural',
+  'episodic'
+] as const
+
+export type MemoryKind = (typeof MEMORY_KINDS)[number]
+
+export const MEMORY_KIND_LABELS: Record<MemoryKind, string> = {
+  preference: '偏好',
+  profile: '画像',
+  constraint: '约束',
+  procedural: '流程',
+  episodic: '事件'
+}
+
+/** 记忆状态：待确认 / 生效 / 归档 / 拒绝 */
+export const MEMORY_STATUSES = ['pending', 'active', 'archived', 'rejected'] as const
+
+export type MemoryStatus = (typeof MEMORY_STATUSES)[number]
+
+export const MEMORY_STATUS_LABELS: Record<MemoryStatus, string> = {
+  pending: '待确认',
+  active: '生效',
+  archived: '已归档',
+  rejected: '已拒绝'
+}
+
+/** 标题、正文与标签的上限；IPC 与工具层共用，避免两套口径。 */
+export const MEMORY_LIMITS = {
+  title: 80,
+  body: 2000,
+  tags: 8,
+  tag: 24,
+  excerpt: 500,
+  listLimit: 50
+} as const
+
+/** 一条长期记忆的只读视图。 */
+export interface MemoryItemView {
+  id: string
+  kind: MemoryKind
+  title: string
+  body: string
+  tags: string[]
+  scope: string
+  /** 0–1；显式记忆默认 0.9 */
+  confidence: number
+  status: MemoryStatus
+  pinned: boolean
+  sourceConversationId: string | null
+  sourceMessageId: string | null
+  /** 用户原话摘录，最多 500 字符；不保存完整对话 */
+  sourceExcerpt: string | null
+  createdAtMs: number
+  updatedAtMs: number
+  lastUsedAtMs: number | null
+  expiresAtMs: number | null
+}
+
+/** 列表筛选；kind / status 为 all 时不过滤。 */
+export interface MemoryQuery {
+  query?: string
+  kind?: MemoryKind | 'all'
+  status?: MemoryStatus | 'all'
+  offset?: number
+  limit?: number
+}
+
+export interface MemoryListResult {
+  items: MemoryItemView[]
+  total: number
+  /** 生效且置顶的条数，供设置页概览 */
+  pinnedCount: number
+  /** 等待审核的候选数，供设置页提示 */
+  pendingCount: number
+}
+
+/** 设置页新建 / 编辑：来源与置信度由主进程维护，渲染层不可伪造。 */
+export interface MemorySaveInput {
+  id?: string
+  kind: MemoryKind
+  title: string
+  body: string
+  tags: string[]
+  pinned: boolean
+}
+
+/** 状态与置顶的局部更新。 */
+export interface MemoryStateInput {
+  id: string
+  status?: MemoryStatus
+  pinned?: boolean
+}
+
+/** 导出格式：JSON 可恢复，Markdown 只做人工阅读与归档。 */
+export const MEMORY_EXPORT_FORMATS = ['json', 'markdown'] as const
+
+export type MemoryExportFormat = (typeof MEMORY_EXPORT_FORMATS)[number]
+
+/** 导入结果：同标题按导入内容合并，非法项跳过。 */
+export interface MemoryImportResult {
+  total: number
+  imported: number
+  updated: number
+  skipped: number
+}
+
 // ============ AI 助手 Agent（工具接管） ============
 
 /**
@@ -568,9 +687,7 @@ export const AGENT_PERMISSION_LABELS: Record<AgentPermission, string> = {
 }
 
 export function isAgentPermission(value: unknown): value is AgentPermission {
-  return (
-    typeof value === 'string' && (AGENT_PERMISSION_MODES as readonly string[]).includes(value)
-  )
+  return typeof value === 'string' && (AGENT_PERMISSION_MODES as readonly string[]).includes(value)
 }
 
 /** 工具风险级别：决定 confirm 档位下是否需要人工确认 */

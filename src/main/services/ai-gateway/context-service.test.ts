@@ -87,6 +87,19 @@ describe('ContextService', () => {
     expect(view.breakdown.messages).toBeGreaterThan(0)
   })
 
+  it('长期记忆作为系统提示的子分项展示，不重复计入总量', async () => {
+    const { conversationId } = fillConversation(2)
+    const withoutMemory = await service.view(baseInput(conversationId, 128_000))
+    const withMemory = await service.view({
+      ...baseInput(conversationId, 128_000),
+      memoryTokens: 123
+    })
+
+    expect(withoutMemory.breakdown.memory).toBe(0)
+    expect(withMemory.breakdown.memory).toBe(123)
+    expect(withMemory.estimatedTokens).toBe(withoutMemory.estimatedTokens)
+  })
+
   it('接口与手动都没有时按供应商目录兜底窗口', async () => {
     const { conversationId } = fillConversation(2)
     const view = await service.view({

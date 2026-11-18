@@ -34,6 +34,8 @@ export interface AgentTokenUsage {
 
 export interface RunAgentInput {
   conversationId: string
+  /** 本轮用户消息的 ID；工具写入来源时使用 */
+  sourceMessageId?: string
   history: ChatMessage[]
   /** 已生成的上下文检查点；有值时作为 HumanMessage 放在历史最前 */
   summary?: string
@@ -71,6 +73,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
   let approvalQueue: Promise<boolean> = Promise.resolve(false)
   const context: AgentToolContext = {
     conversationId,
+    ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
     signal: input.signal,
     addReferences: (items) => {
       for (const item of items) {

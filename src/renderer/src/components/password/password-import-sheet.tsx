@@ -181,7 +181,7 @@ export function PasswordImportSheet({ onClose, onImported }: Props): JSX.Element
           <div className="format-hint">
             <p className="format-hint-title">AI 智能识别</p>
             <p className="format-hint-note">
-              任意格式的密码记录交给 AI 自动提取（需先在「设置 → AI 配置」中配置
+              任意格式的密码记录交给 AI 自动提取（需先在「设置 → 星轨链路」中配置
               OpenAI 兼容接口）。识别结果逐条勾选后入库。
             </p>
             <p className="format-hint-warn">

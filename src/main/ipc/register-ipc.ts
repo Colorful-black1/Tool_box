@@ -52,6 +52,7 @@ import { registerExtensionsIpc } from './extensions-ipc'
 import type { ExtensionsService } from '../services/extensions/service'
 import { registerAiWorldIpc } from './ai-world-ipc'
 import type { AiWorldService } from '../services/ai-model-world/service'
+import { MemoryService } from '../services/memory/memory-service'
 import { applyWindowTheme } from '../window-theme'
 import {
   assertObject,
@@ -64,6 +65,10 @@ import {
   requireString,
   requireStringArray,
   validateConfigPatch,
+  validateMemoryExportFormat,
+  validateMemoryQuery,
+  validateMemorySaveInput,
+  validateMemoryStateInput,
   validateModelContextLimits
 } from './validation'
 
@@ -81,6 +86,7 @@ export interface IpcDependencies {
   trending?: GithubTrendingService
   aiWorld?: AiWorldService
   extensions?: ExtensionsService
+  memory?: MemoryService
 }
 
 export function registerIpcHandlers(dependencies: IpcDependencies): void {
@@ -248,6 +254,69 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   ipcMain.handle(IPC.chatCompact, (event, id: unknown) => {
     return aiGateway.compact(requireString(id, '会话 ID'), createChatEventSink(event.sender))
+  })
+
+  // ---------- 长期记忆 ----------
+  const memory = dependencies.memory ?? new MemoryService(store)
+
+  ipcMain.handle(IPC.memoryList, (_event, query: unknown) => {
+    return memory.list(validateMemoryQuery(query))
+  })
+
+  ipcMain.handle(IPC.memorySave, (_event, input: unknown) => {
+    return memory.save(validateMemorySaveInput(input))
+  })
+
+  ipcMain.handle(IPC.memoryDelete, (_event, id: unknown) => {
+    memory.remove(requireString(id, '记忆 ID', { maxLength: 64 }))
+  })
+
+  ipcMain.handle(IPC.memorySetStatus, (_event, input: unknown) => {
+    return memory.setState(validateMemoryStateInput(input))
+  })
+
+  ipcMain.handle(IPC.memoryExport, async (event, format: unknown) => {
+    const kind = validateMemoryExportFormat(format)
+    const content = memory.export(kind)
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      title: '导出 AI 记忆',
+      defaultPath: `assistant-memory-${new Date().toISOString().slice(0, 10)}.${kind === 'json' ? 'json' : 'md'}`,
+      filters:
+        kind === 'json'
+          ? [{ name: 'JSON', extensions: ['json'] }]
+          : [{ name: 'Markdown', extensions: ['md'] }]
+    }
+    const result = owner
+      ? await dialog.showSaveDialog(owner, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    try {
+      writeFileSync(result.filePath, content, 'utf8')
+    } catch {
+      throw new Error('写入导出文件失败，请检查目录权限')
+    }
+    return result.filePath
+  })
+
+  ipcMain.handle(IPC.memoryImport, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      title: '导入 AI 记忆',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile' as const]
+    }
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    let text: string
+    try {
+      text = readFileSync(result.filePaths[0], 'utf8')
+    } catch {
+      throw new Error('读取导入文件失败，请检查文件是否可读')
+    }
+    return memory.import(text)
   })
 
   // ---------- AI 助手 Agent ----------

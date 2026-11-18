@@ -1,6 +1,7 @@
 const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 async function choose(page, label, option) {
   await page.getByRole('button', { name: label, exact: true }).click()
@@ -259,7 +260,7 @@ async function verifyDevTools({ page, app, check, capture }) {
     ['晨光纸白', 'paper']
   ]) {
     await check(`${name}下新工具布局与弹层无横向溢出`, async () => {
-      await page.getByRole('button', { name: '设置', exact: true }).click()
+      await openSettings(page, '外观与主题')
       await page.getByRole('button', { name, exact: true }).click()
       await page.waitForFunction((id) => document.documentElement.dataset.theme === id, id)
       for (const label of [

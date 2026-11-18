@@ -1,6 +1,7 @@
 const { withDialog } = require('./dialog.cjs')
 /* global window:readonly, document:readonly, innerWidth:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 async function verifyConvenience({ page, app, check, capture }) {
   const button = (name) => page.getByRole('button', { name, exact: true })
@@ -181,7 +182,7 @@ async function verifyConvenience({ page, app, check, capture }) {
             ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(...size),
             [width, height]
           )
-          await button('设置').click()
+          await openSettings(page, '外观与主题')
           await button(themeName).click()
           await page.waitForFunction((id) => document.documentElement.dataset.theme === id, theme)
           await button('工具').click()

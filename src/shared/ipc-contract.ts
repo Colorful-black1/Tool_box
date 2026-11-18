@@ -96,6 +96,13 @@ export const IPC = {
   chatContext: 'chat:context',
   chatCompact: 'chat:compact',
 
+  memoryList: 'memory:list',
+  memorySave: 'memory:save',
+  memoryDelete: 'memory:delete',
+  memorySetStatus: 'memory:set-status',
+  memoryExport: 'memory:export',
+  memoryImport: 'memory:import',
+
   agentPermissionGet: 'agent:permission:get',
   agentPermissionSet: 'agent:permission:set',
 

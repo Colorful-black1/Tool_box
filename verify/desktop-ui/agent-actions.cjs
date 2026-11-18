@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly, innerWidth:readonly, innerHeight:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 const { withDialog } = require('./dialog.cjs')
 
 /** 合成桥接验收输入、候选、发送引用和降级，不连接真实 Agent。 */
@@ -142,7 +143,7 @@ module.exports = async function verifyAgentActions({ page, app, check, capture }
     ['paper', '晨光纸白']
   ]) {
     await check(`命令候选 ${theme} 主题与 1280×820 布局`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await page.waitForFunction(
         () => document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
       )

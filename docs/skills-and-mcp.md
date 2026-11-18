@@ -33,14 +33,14 @@
 | `~/.config/opencode/skills`（或 `$XDG_CONFIG_HOME`） | OpenCode | 不存在则跳过 |
 | `~/.dsh/skills` | DeepSeek Harness | 本机不存在，按「存在才扫」处理 |
 
-- `~/.cc-switch/skills` **不在默认列表**；需要统计时在「设置 → 技能扫描路径」里添加。
+- `~/.cc-switch/skills` **不在默认列表**；需要统计时在「设置 → 技能路径」里添加。
 - 只认 `<root>/<目录>/SKILL.md` 这一层，不递归；`.system` 在父根里以 `.` 开头被跳过，避免重复计数。
 - frontmatter 至少要有 `name` + `description`，`user-invocable: false` 视为不可见（沿用编程 Agent 的解析器）。
 - 上限：单根 300 个目录、全局 600 条、单个 `SKILL.md` 512 KB、只读前 16 KB 解析头。
 
 ### 2.2 自定义扫描路径
 
-- 位置：设置页「技能扫描路径」；只管理**额外目录**，默认 5 类来源固定且不可删。
+- 位置：「设置 → 技能路径」；只管理**额外目录**，默认 5 类来源固定且不可删。
 - 输入：`~/...` 或绝对路径（Windows 盘符路径原样保存）；统一把 `\` 换成 `/`，保存为 `~/.cc-switch/skills` 这种形式。
 - 校验：路径必须存在且是文件夹、`realpath` 可解析；不能与默认来源重复、不能重复添加，最多 20 条。
 - 存储：`userData/skill-roots.json`（`{ version: 1, roots: [...] }`，tmp + rename 原子写）；不进 `toolbox.db`、不进备份。
@@ -121,7 +121,7 @@
 | 覆盖 Agent | 通用目录、Codex |
 
 - 默认统计 `.agents` 13 个 + Codex `.system` 5 个；`.claude` / `.codex` / `.opencode` 的 38 个链接指向 `.cc-switch`，不在默认范围内（页面不提示，需要时到设置里添加）。
-- 在「设置 → 技能扫描路径」添加 `~/.cc-switch/skills` 后恢复到：**19 个名字 / 33 个副本 / 13 组冲突 / 3 个 Agent**。
+- 在「设置 → 技能路径」添加 `~/.cc-switch/skills` 后恢复到：**19 个名字 / 33 个副本 / 13 组冲突 / 3 个 Agent**。
 
 MCP：
 

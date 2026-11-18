@@ -1,5 +1,6 @@
 /* global window:readonly, document:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 const { withDialog } = require('./dialog.cjs')
 
 /** 项目选择与交接的合成验收，不启动任何原生 Agent 或模型。 */
@@ -64,7 +65,7 @@ module.exports = async function verifyAgentProjects({ page, app, check, capture 
     ['paper', '晨光纸白']
   ]) {
     await check(`项目转用提示 ${theme} 主题布局`, async () => {
-      await button('设置').click()
+      await openSettings(page, '外观与主题')
       await page.waitForFunction(
         () => document.querySelector('.appearance-options')?.getAttribute('aria-busy') === 'false'
       )

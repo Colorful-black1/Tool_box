@@ -450,6 +450,7 @@ module.exports = function createFixture() {
           percent: conversationId === 'c0' ? 42 : 1,
           breakdown: {
             system: 2_100,
+            memory: 0,
             tools: 4_800,
             summary: 0,
             messages: conversationId === 'c0' ? 47_100 : 1_200

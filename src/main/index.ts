@@ -20,6 +20,7 @@ import { createTray, showMainWindow } from './tray'
 import { TodoService } from './services/todo-service'
 import { createAgentUsageService } from './services/agent-usage/create-service'
 import { KnowledgeBaseService } from './services/knowledge-base/kb-service'
+import { MemoryService } from './services/memory/memory-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 import { GithubTrendingService } from './services/github-trending/service'
 import { AiWorldService } from './services/ai-model-world/service'
@@ -116,10 +117,12 @@ function initializeServices(): void {
   const todos = new TodoService(store)
   const usage = createAgentUsageService(userDataDir)
   const knowledge = new KnowledgeBaseService(store, settings)
+  const memory = new MemoryService(store)
   const aiGateway = new AiGateway(settings, store, importService, promptDir, {
     todos,
     usage: { query: async (query) => (await usage).query(query) },
-    knowledge
+    knowledge,
+    memory
   })
   const passwordAi = new PasswordAiService(promptDir, (system, user, options) =>
     aiGateway.complete(system, user, options)
@@ -140,7 +143,22 @@ function initializeServices(): void {
     fetchImpl: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
     rootsFile: join(userDataDir, 'skill-roots.json')
   })
-  registerIpcHandlers({ settings, store, aiGateway, importService, passwordAi, shortcuts, opencode, todos, usage, knowledge, trending, aiWorld, extensions })
+  registerIpcHandlers({
+    settings,
+    store,
+    aiGateway,
+    importService,
+    passwordAi,
+    shortcuts,
+    opencode,
+    todos,
+    usage,
+    knowledge,
+    trending,
+    aiWorld,
+    extensions,
+    memory
+  })
 
   app.on('quit', () => {
     store.close()

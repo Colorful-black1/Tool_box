@@ -6,6 +6,12 @@ import Database from 'better-sqlite3'
 
 import { COVERS_DIR, DEFAULT_CONVERSATION_TITLE } from '../../../shared/constants'
 import { isKbDocumentStatus } from '../../../shared/knowledge-base'
+import {
+  buildMatchExpression,
+  isSingleCjkChar,
+  tokenizeForIndex,
+  tokenizeQuery
+} from '../../../shared/kb-tokenize'
 import type {
   KbChunkPreview,
   KbDocumentStatus,
@@ -23,6 +29,10 @@ import type {
   ChatMessage,
   ChatRole,
   ConversationSummary,
+  MemoryItemView,
+  MemoryKind,
+  MemoryListResult,
+  MemoryStatus,
   NoteSaveInput,
   NoteView,
   PasswordDraft,
@@ -43,7 +53,7 @@ import { dueTodoReminder } from '../../../shared/todo-reminders'
 import type { TodoReminder, TodoReminderCandidate } from '../../../shared/todo-reminders'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 8
 /** 知识库文档摘要列：附带指定模型的已向量化块数，列表与详情共用。 */
 const KB_DOCUMENT_COLUMNS = `id, title, category, source_path, file_size, status, chunk_count,
   (SELECT COUNT(*) FROM kb_chunks c
@@ -111,6 +121,40 @@ interface CheckpointRow {
   created_at_ms: number
 }
 
+interface MemoryRow {
+  id: string
+  kind: MemoryKind
+  title: string
+  body: string
+  tags: string
+  scope: string
+  confidence: number
+  status: MemoryStatus
+  pinned: number
+  source_conversation_id: string | null
+  source_message_id: string | null
+  source_excerpt: string | null
+  created_at_ms: number
+  updated_at_ms: number
+  last_used_at_ms: number | null
+  expires_at_ms: number | null
+}
+
+/** 主进程内部的记忆写入参数；来源与置信度不经渲染层。 */
+export interface MemoryItemInput {
+  kind: MemoryKind
+  title: string
+  body: string
+  tags: string[]
+  pinned: boolean
+  status: MemoryStatus
+  confidence: number
+  sourceConversationId?: string | null
+  sourceMessageId?: string | null
+  sourceExcerpt?: string | null
+  expiresAtMs?: number | null
+}
+
 /** 写入检查点的入参；token 均为本地估算值 */
 export interface ChatCheckpointInput {
   conversationId: string
@@ -130,6 +174,38 @@ function toMessage(row: MessageRow): ChatMessage {
     role: row.role as ChatRole,
     content: row.content,
     createdAtMs: row.created_at_ms
+  }
+}
+
+function parseMemoryTags(raw: string): string[] {
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (!Array.isArray(value)) return []
+    return value.filter((item): item is string => typeof item === 'string')
+  } catch {
+    // 历史或手工损坏的标签按无标签处理，不影响正文读取。
+    return []
+  }
+}
+
+function toMemoryItem(row: MemoryRow): MemoryItemView {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    body: row.body,
+    tags: parseMemoryTags(row.tags),
+    scope: row.scope,
+    confidence: row.confidence,
+    status: row.status,
+    pinned: row.pinned === 1,
+    sourceConversationId: row.source_conversation_id,
+    sourceMessageId: row.source_message_id,
+    sourceExcerpt: row.source_excerpt,
+    createdAtMs: row.created_at_ms,
+    updatedAtMs: row.updated_at_ms,
+    lastUsedAtMs: row.last_used_at_ms,
+    expiresAtMs: row.expires_at_ms
   }
 }
 
@@ -281,6 +357,8 @@ export interface KbVectorIndexRow {
  * - v4 封面路径改为相对文件名（只存 covers/ 下的文件名）
  * - v5 待办清单
  * - v6 本地知识库（文档 / 分块 / FTS5 关键词索引）
+ * - v7 会话检查点
+ * - v8 助手长期记忆
  */
 export class ToolboxStore {
   private readonly db: Database.Database
@@ -298,6 +376,8 @@ export class ToolboxStore {
     this.db.pragma('foreign_keys = ON')
     try {
       this.migrate()
+      // v8 早期库可能只有记忆表：启动时补齐 FTS，已有行自动回填。
+      this.ensureMemorySearch()
     } catch (error) {
       this.db.close()
       throw error
@@ -308,8 +388,7 @@ export class ToolboxStore {
 
   configGet(): Record<string, unknown> | null {
     const row = this.db.prepare(`SELECT value FROM kv WHERE key = 'read_config'`).get() as
-      | { value: string }
-      | undefined
+      { value: string } | undefined
     if (!row) return null
     try {
       return JSON.parse(row.value) as Record<string, unknown>
@@ -332,15 +411,18 @@ export class ToolboxStore {
 
   /** 命令库使用独立记录，不通过阅读／外观配置覆盖。 */
   commandLibraryGet(): string | null {
-    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get('developer_commands_v1') as
-      { value: string } | undefined
+    const row = this.db
+      .prepare('SELECT value FROM kv WHERE key = ?')
+      .get('developer_commands_v1') as { value: string } | undefined
     return row?.value ?? null
   }
 
   commandLibrarySet(value: string): void {
-    this.db.prepare(
-      'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-    ).run('developer_commands_v1', value)
+    this.db
+      .prepare(
+        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+      )
+      .run('developer_commands_v1', value)
   }
 
   /** 独立 kv 记录仅接受密文，不经普通 config 接口返回。 */
@@ -431,11 +513,7 @@ export class ToolboxStore {
     return rows.map(toMessage)
   }
 
-  appendMessage(input: {
-    conversationId: string
-    role: ChatRole
-    content: string
-  }): ChatMessage {
+  appendMessage(input: { conversationId: string; role: ChatRole; content: string }): ChatMessage {
     this.requireConversation(input.conversationId)
     const now = Date.now()
     const id = randomUUID()
@@ -542,6 +620,318 @@ export class ToolboxStore {
     }
   }
 
+  // ==================== 长期记忆 ====================
+
+  /**
+   * 分页查询记忆。筛选条件全部走参数，`LIKE` 的转义由 escapeLike 负责；
+   * 排序固定为置顶优先、最近更新优先，不接受外部字段名。
+   */
+  listMemoryItems(query: {
+    query: string
+    kind: MemoryKind | 'all'
+    status: MemoryStatus | 'all'
+    offset: number
+    limit: number
+  }): MemoryListResult {
+    const keyword = query.query.trim()
+    const like = keyword ? `%${escapeLike(keyword)}%` : ''
+    const where = `WHERE (? = 'all' OR kind = ?)
+         AND (? = 'all' OR status = ?)
+         AND (? = '' OR title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')`
+    const params = [query.kind, query.kind, query.status, query.status, keyword, like, like]
+    const rows = this.db
+      .prepare(
+        `SELECT id, kind, title, body, tags, scope, confidence, status, pinned,
+                source_conversation_id, source_message_id, source_excerpt,
+                created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms
+         FROM memory_items
+         ${where}
+         ORDER BY pinned DESC, updated_at_ms DESC, rowid DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(...params, query.limit, query.offset) as MemoryRow[]
+    const totalRow = this.db
+      .prepare(`SELECT COUNT(*) AS count FROM memory_items ${where}`)
+      .get(...params) as { count: number }
+    const pinnedRow = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM memory_items
+         WHERE status = 'active' AND pinned = 1
+           AND (expires_at_ms IS NULL OR expires_at_ms > ?)`
+      )
+      .get(Date.now()) as { count: number }
+    const pendingRow = this.db
+      .prepare(`SELECT COUNT(*) AS count FROM memory_items WHERE status = 'pending'`)
+      .get() as { count: number }
+    return {
+      items: rows.map(toMemoryItem),
+      total: totalRow.count,
+      pinnedCount: pinnedRow.count,
+      pendingCount: pendingRow.count
+    }
+  }
+
+  getMemoryItem(id: string): MemoryItemView | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, kind, title, body, tags, scope, confidence, status, pinned,
+                source_conversation_id, source_message_id, source_excerpt,
+                created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms
+         FROM memory_items WHERE id = ?`
+      )
+      .get(id) as MemoryRow | undefined
+    return row ? toMemoryItem(row) : null
+  }
+
+  insertMemoryItem(input: MemoryItemInput): MemoryItemView {
+    const id = randomUUID()
+    const now = Date.now()
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO memory_items
+             (id, kind, title, body, tags, scope, confidence, status, pinned,
+              source_conversation_id, source_message_id, source_excerpt,
+              created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms)
+           VALUES (?, ?, ?, ?, ?, 'global', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+        )
+        .run(
+          id,
+          input.kind,
+          input.title,
+          input.body,
+          JSON.stringify(input.tags),
+          input.confidence,
+          input.status,
+          input.pinned ? 1 : 0,
+          input.sourceConversationId ?? null,
+          input.sourceMessageId ?? null,
+          input.sourceExcerpt ?? null,
+          now,
+          now,
+          input.expiresAtMs ?? null
+        )
+      this.indexMemoryItem(id)
+    })()
+    const item = this.getMemoryItem(id)
+    if (!item) throw new Error('记忆创建失败')
+    return item
+  }
+
+  /** 整条更新正文与状态；来源字段由调用方保留，编辑不会清掉溯源信息。 */
+  updateMemoryItem(id: string, input: MemoryItemInput): MemoryItemView {
+    this.db.transaction(() => {
+      const result = this.db
+        .prepare(
+          `UPDATE memory_items
+           SET kind = ?, title = ?, body = ?, tags = ?, confidence = ?, status = ?, pinned = ?,
+               source_conversation_id = ?, source_message_id = ?, source_excerpt = ?,
+               expires_at_ms = ?, updated_at_ms = ?
+           WHERE id = ?`
+        )
+        .run(
+          input.kind,
+          input.title,
+          input.body,
+          JSON.stringify(input.tags),
+          input.confidence,
+          input.status,
+          input.pinned ? 1 : 0,
+          input.sourceConversationId ?? null,
+          input.sourceMessageId ?? null,
+          input.sourceExcerpt ?? null,
+          input.expiresAtMs ?? null,
+          Date.now(),
+          id
+        )
+      if (!result.changes) throw new Error('记忆不存在，请刷新列表')
+      this.indexMemoryItem(id)
+    })()
+    const item = this.getMemoryItem(id)
+    if (!item) throw new Error('记忆读取失败')
+    return item
+  }
+
+  /** 状态 / 置顶的局部更新；未传字段保留原值。 */
+  setMemoryItemState(
+    id: string,
+    patch: { status?: MemoryStatus; pinned?: boolean }
+  ): MemoryItemView {
+    const result = this.db
+      .prepare(
+        `UPDATE memory_items
+         SET status = COALESCE(?, status),
+             pinned = COALESCE(?, pinned),
+             updated_at_ms = ?
+         WHERE id = ?`
+      )
+      .run(
+        patch.status ?? null,
+        patch.pinned === undefined ? null : patch.pinned ? 1 : 0,
+        Date.now(),
+        id
+      )
+    if (!result.changes) throw new Error('记忆不存在，请刷新列表')
+    const item = this.getMemoryItem(id)
+    if (!item) throw new Error('记忆读取失败')
+    return item
+  }
+
+  deleteMemoryItem(id: string): void {
+    this.db.transaction(() => {
+      const result = this.db.prepare('DELETE FROM memory_items WHERE id = ?').run(id)
+      if (!result.changes) throw new Error('记忆不存在，请刷新列表')
+      this.db.prepare('DELETE FROM memory_items_fts WHERE memory_id = ?').run(id)
+    })()
+  }
+
+  /** 常驻注入只读取生效且未过期的置顶偏好 / 约束。 */
+  listPinnedMemoryItems(limit: number): MemoryItemView[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, kind, title, body, tags, scope, confidence, status, pinned,
+                source_conversation_id, source_message_id, source_excerpt,
+                created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms
+         FROM memory_items
+         WHERE status = 'active' AND pinned = 1
+           AND kind IN ('preference', 'constraint')
+           AND (expires_at_ms IS NULL OR expires_at_ms > ?)
+         ORDER BY CASE kind WHEN 'constraint' THEN 0 ELSE 1 END, updated_at_ms DESC
+         LIMIT ?`
+      )
+      .all(Date.now(), limit) as MemoryRow[]
+    return rows.map(toMemoryItem)
+  }
+
+  /** 同类型 + 同标题的最近一条记忆；候选去重与冲突检查用。 */
+  findMemoryByTitle(
+    kind: MemoryKind,
+    title: string,
+    status?: MemoryStatus
+  ): MemoryItemView | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, kind, title, body, tags, scope, confidence, status, pinned,
+                source_conversation_id, source_message_id, source_excerpt,
+                created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms
+         FROM memory_items
+         WHERE kind = ? AND title = ? AND (? = '' OR status = ?)
+         ORDER BY updated_at_ms DESC
+         LIMIT 1`
+      )
+      .get(kind, title, status ?? '', status ?? '') as MemoryRow | undefined
+    return row ? toMemoryItem(row) : null
+  }
+
+  /** 批准新版本时归档同标题的旧生效项；保留来源，不物理删除。 */
+  archiveMemoryConflicts(id: string, kind: MemoryKind, title: string): void {
+    this.db
+      .prepare(
+        `UPDATE memory_items
+         SET status = 'archived', updated_at_ms = ?
+         WHERE id <> ? AND kind = ? AND title = ? AND status = 'active'`
+      )
+      .run(Date.now(), id, kind, title)
+  }
+
+  /** 到期事件自动归档；只改状态，保留正文供用户回看。 */
+  archiveExpiredMemories(now: number): number {
+    const result = this.db
+      .prepare(
+        `UPDATE memory_items
+         SET status = 'archived', updated_at_ms = ?
+         WHERE status = 'active' AND expires_at_ms IS NOT NULL AND expires_at_ms <= ?`
+      )
+      .run(now, now)
+    return result.changes
+  }
+
+  /** 自动候选提取的轮次门槛：统计指定角色的消息条数。 */
+  countMessages(conversationId: string, role: ChatRole): number {
+    this.requireConversation(conversationId)
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ? AND role = ?')
+      .get(conversationId, role) as { count: number }
+    return row.count
+  }
+
+  /** FTS 召回；排序由 bm25 决定，服务层再叠加置信度 / 时效 / 置顶权重。 */
+  searchMemoryItems(input: {
+    query: string
+    kind?: MemoryKind | 'all'
+    tags?: string
+    limit: number
+  }): MemoryItemView[] {
+    const tokens = tokenizeQuery(input.query)
+    if (tokens.length === 0 || isSingleCjkChar(input.query)) return []
+    const kind = input.kind ?? 'all'
+    const tagPattern = input.tags ? `%${escapeLike(`"${input.tags}"`)}%` : ''
+    const rows = this.db
+      .prepare(
+        `SELECT m.id, m.kind, m.title, m.body, m.tags, m.scope, m.confidence, m.status,
+                m.pinned, m.source_conversation_id, m.source_message_id, m.source_excerpt,
+                m.created_at_ms, m.updated_at_ms, m.last_used_at_ms, m.expires_at_ms
+         FROM memory_items_fts
+         JOIN memory_items m ON m.id = memory_items_fts.memory_id
+         WHERE memory_items_fts MATCH ?
+           AND m.status = 'active'
+           AND (m.expires_at_ms IS NULL OR m.expires_at_ms > ?)
+           AND (? = 'all' OR m.kind = ?)
+           AND (? = '' OR m.tags LIKE ? ESCAPE '\\')
+         ORDER BY bm25(memory_items_fts, 0.0, 1.0, 2.0)
+         LIMIT ?`
+      )
+      .all(
+        buildMatchExpression(tokens),
+        Date.now(),
+        kind,
+        kind,
+        tagPattern,
+        tagPattern,
+        input.limit
+      ) as MemoryRow[]
+    return rows.map(toMemoryItem)
+  }
+
+  /** 单个汉字或 FTS 无命中时按子串扫描；结果只用于兜底，不替代 FTS。 */
+  searchMemoryItemsByText(input: {
+    query: string
+    kind?: MemoryKind | 'all'
+    tags?: string
+    limit: number
+  }): MemoryItemView[] {
+    const keyword = input.query.trim()
+    if (!keyword) return []
+    const kind = input.kind ?? 'all'
+    const like = `%${escapeLike(keyword)}%`
+    const tagPattern = input.tags ? `%${escapeLike(`"${input.tags}"`)}%` : ''
+    const rows = this.db
+      .prepare(
+        `SELECT id, kind, title, body, tags, scope, confidence, status, pinned,
+                source_conversation_id, source_message_id, source_excerpt,
+                created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms
+         FROM memory_items
+         WHERE status = 'active'
+           AND (expires_at_ms IS NULL OR expires_at_ms > ?)
+           AND (? = 'all' OR kind = ?)
+           AND (? = '' OR tags LIKE ? ESCAPE '\\')
+           AND (title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')
+         ORDER BY pinned DESC, updated_at_ms DESC
+         LIMIT ?`
+      )
+      .all(
+        Date.now(),
+        kind,
+        kind,
+        tagPattern,
+        tagPattern,
+        like,
+        like,
+        input.limit
+      ) as MemoryRow[]
+    return rows.map(toMemoryItem)
+  }
+
   // ==================== 小说 ====================
 
   listBooks(query = ''): BookSummary[] {
@@ -617,10 +1007,7 @@ export class ToolboxStore {
     return toBookSummary(row, this.coversDir)
   }
 
-  updateBookMeta(
-    id: string,
-    meta: { title?: string; author?: string }
-  ): BookSummary {
+  updateBookMeta(id: string, meta: { title?: string; author?: string }): BookSummary {
     const fields: string[] = []
     const values: unknown[] = []
     if (meta.title !== undefined) {
@@ -644,9 +1031,7 @@ export class ToolboxStore {
   /** 只接受 covers/ 下的文件名（传绝对路径会自动收敛），返回前拼回绝对路径供渲染层使用 */
   setBookCover(id: string, coverPath: string): void {
     const fileName = toCoverFileName(coverPath)
-    const result = this.db
-      .prepare(`UPDATE books SET cover_path = ? WHERE id = ?`)
-      .run(fileName, id)
+    const result = this.db.prepare(`UPDATE books SET cover_path = ? WHERE id = ?`).run(fileName, id)
     if (result.changes === 0) throw new Error('书籍不存在')
   }
 
@@ -678,8 +1063,7 @@ export class ToolboxStore {
          WHERE b.id = ?`
       )
       .get(id) as
-      | (BookRow & { cover_path: string; sort_index: number; group_id: string | null })
-      | undefined
+      (BookRow & { cover_path: string; sort_index: number; group_id: string | null }) | undefined
     if (!row) throw new Error('书籍不存在')
     return toBookSummary(row, this.coversDir)
   }
@@ -1014,9 +1398,10 @@ export class ToolboxStore {
 
   /** 已存在同名同账号的条目集合，用于导入预览标记「已存在」 */
   duplicateKeys(): Set<string> {
-    const rows = this.db
-      .prepare(`SELECT title, secret FROM password_entries`)
-      .all() as Array<{ title: string; secret: string }>
+    const rows = this.db.prepare(`SELECT title, secret FROM password_entries`).all() as Array<{
+      title: string
+      secret: string
+    }>
     const keys = new Set<string>()
     for (const row of rows) {
       try {
@@ -1296,8 +1681,7 @@ export class ToolboxStore {
   /** 重建与删除需要源文件位置；只在主进程内使用，不跨 IPC。 */
   kbDocumentSourcePath(id: string): string | null {
     const row = this.db.prepare('SELECT source_path FROM kb_documents WHERE id = ?').get(id) as
-      | { source_path: string }
-      | undefined
+      { source_path: string } | undefined
     return row?.source_path ?? null
   }
 
@@ -1518,7 +1902,9 @@ export class ToolboxStore {
 
   kbCountVectors(model: string): number {
     const row = this.db
-      .prepare('SELECT COUNT(*) AS count FROM kb_chunks WHERE embedding_model = ? AND embedding IS NOT NULL')
+      .prepare(
+        'SELECT COUNT(*) AS count FROM kb_chunks WHERE embedding_model = ? AND embedding IS NOT NULL'
+      )
       .get(model) as { count: number }
     return row.count
   }
@@ -1555,14 +1941,17 @@ export class ToolboxStore {
     try {
       snapshot.pragma('journal_mode = DELETE')
       return snapshot.pragma('user_version', { simple: true }) as number
-    } finally { snapshot.close() }
+    } finally {
+      snapshot.close()
+    }
   }
 
   /** 恢复前只读检查独立快照，失败不得触碰当前数据库。 */
   static inspectSnapshot(path: string): number {
     const database = new Database(path, { readonly: true, fileMustExist: true })
     try {
-      if (database.pragma('quick_check', { simple: true }) !== 'ok') throw new Error('快照数据库损坏')
+      if (database.pragma('quick_check', { simple: true }) !== 'ok')
+        throw new Error('快照数据库损坏')
       const version = database.pragma('user_version', { simple: true }) as number
       if (version < 1 || version > SCHEMA_VERSION) throw new Error('快照数据库版本不受支持')
       // 固定 SQL 白名单验证该版本业务会读取的核心表与字段，不只相信 user_version。
@@ -1572,25 +1961,49 @@ export class ToolboxStore {
         [2, 'SELECT id, title, created_at_ms, updated_at_ms FROM books LIMIT 0'],
         [2, 'SELECT id, book_id, idx, title, body, word_count FROM chapters LIMIT 0'],
         [2, 'SELECT book_id, chapter_idx, updated_at_ms FROM reading_progress LIMIT 0'],
-        [2, 'SELECT id, title, url, secret, is_favorite, created_at_ms, updated_at_ms FROM password_entries LIMIT 0'],
+        [
+          2,
+          'SELECT id, title, url, secret, is_favorite, created_at_ms, updated_at_ms FROM password_entries LIMIT 0'
+        ],
         [2, 'SELECT id, title, content, created_at_ms, updated_at_ms FROM notes LIMIT 0'],
         [3, 'SELECT author, cover_path, sort_index, group_id FROM books LIMIT 0'],
         [3, 'SELECT percent FROM reading_progress LIMIT 0'],
         [3, 'SELECT first_letter FROM password_entries LIMIT 0'],
         [3, 'SELECT key, value FROM kv LIMIT 0'],
         [3, 'SELECT id, name, sort_index FROM book_groups LIMIT 0'],
-        [3, 'SELECT id, book_id, chapter_idx, page_idx, page_idx_ratio, snippet, created_at_ms FROM bookmarks LIMIT 0'],
+        [
+          3,
+          'SELECT id, book_id, chapter_idx, page_idx, page_idx_ratio, snippet, created_at_ms FROM bookmarks LIMIT 0'
+        ],
         [3, 'SELECT date, duration_ms, char_count FROM reading_stats LIMIT 0'],
-        [5, 'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0'],
-        [6, 'SELECT id, title, category, source_path, file_size, sha256, status, chunk_count, error, created_at_ms, updated_at_ms FROM kb_documents LIMIT 0'],
-        [6, 'SELECT id, document_id, ordinal, heading, content, start_offset, char_count, tokens FROM kb_chunks LIMIT 0'],
-        [7, 'SELECT id, conversation_id, summary, covered_message_id, covered_message_count, omitted_message_count, summary_tokens, source_tokens, model, created_at_ms FROM conversation_checkpoints LIMIT 0']
+        [
+          5,
+          'SELECT id, title, details, priority, start_at_ms, due_at_ms, remind, completed_at_ms, archived_at_ms, start_notified_for_ms, due_notified_for_ms, created_at_ms, updated_at_ms FROM todos LIMIT 0'
+        ],
+        [
+          6,
+          'SELECT id, title, category, source_path, file_size, sha256, status, chunk_count, error, created_at_ms, updated_at_ms FROM kb_documents LIMIT 0'
+        ],
+        [
+          6,
+          'SELECT id, document_id, ordinal, heading, content, start_offset, char_count, tokens FROM kb_chunks LIMIT 0'
+        ],
+        [
+          7,
+          'SELECT id, conversation_id, summary, covered_message_id, covered_message_count, omitted_message_count, summary_tokens, source_tokens, model, created_at_ms FROM conversation_checkpoints LIMIT 0'
+        ],
+        [
+          8,
+          'SELECT id, kind, title, body, tags, scope, confidence, status, pinned, source_conversation_id, source_message_id, source_excerpt, created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms FROM memory_items LIMIT 0'
+        ]
       ]
       for (const [minimum, sql] of checks) {
         if (version >= minimum) database.prepare(sql).all()
       }
       return version
-    } finally { database.close() }
+    } finally {
+      database.close()
+    }
   }
 
   close(): void {
@@ -1611,10 +2024,7 @@ export class ToolboxStore {
         this.db
           .prepare('VACUUM INTO ?')
           .run(
-            join(
-              backupDir,
-              `toolbox-before-v${SCHEMA_VERSION}-${Date.now()}-${randomUUID()}.db`
-            )
+            join(backupDir, `toolbox-before-v${SCHEMA_VERSION}-${Date.now()}-${randomUUID()}.db`)
           )
       } catch {
         throw new Error('升级前数据库备份失败，请检查磁盘空间和数据目录权限')
@@ -1766,9 +2176,7 @@ export class ToolboxStore {
       // 书签的章内比例列（v3 早期版本缺失）
       const bookmarkColumns = this.tableColumns('bookmarks')
       if (!bookmarkColumns.includes('page_idx_ratio')) {
-        this.db.exec(
-          `ALTER TABLE bookmarks ADD COLUMN page_idx_ratio REAL NOT NULL DEFAULT 0`
-        )
+        this.db.exec(`ALTER TABLE bookmarks ADD COLUMN page_idx_ratio REAL NOT NULL DEFAULT 0`)
       }
     }
 
@@ -1876,7 +2284,103 @@ export class ToolboxStore {
       `)
     }
 
+    if (current < 8) {
+      // v7 → v8：助手长期记忆。只新增表与索引，不改动既有表与加密链路。
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_items (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK (kind IN ('preference', 'profile', 'constraint', 'procedural', 'episodic')),
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          tags TEXT NOT NULL DEFAULT '[]',
+          scope TEXT NOT NULL DEFAULT 'global',
+          confidence REAL NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'active', 'archived', 'rejected')),
+          pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+          source_conversation_id TEXT,
+          source_message_id TEXT,
+          source_excerpt TEXT,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          last_used_at_ms INTEGER,
+          expires_at_ms INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_status_kind
+          ON memory_items(status, kind, updated_at_ms DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_scope
+          ON memory_items(scope, status);
+        CREATE INDEX IF NOT EXISTS idx_memory_pinned
+          ON memory_items(pinned, status, updated_at_ms DESC);
+        CREATE VIRTUAL TABLE IF NOT EXISTS memory_items_fts USING fts5(
+          memory_id UNINDEXED,
+          tokens,
+          title,
+          tokenize = 'unicode61 remove_diacritics 2'
+        );
+      `)
+    }
+
     this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
+  }
+
+  /**
+   * 记忆搜索索引的启动自愈：早期 v8 库没有 FTS 表，或行数不一致时整体重建。
+   * 记忆量级远小于知识库，重建比逐条比对更简单可靠。
+   */
+  private ensureMemorySearch(): void {
+    this.db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_items_fts USING fts5(
+        memory_id UNINDEXED,
+        tokens,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      );`)
+    const memoryCount = this.db.prepare('SELECT COUNT(*) AS count FROM memory_items').get() as {
+      count: number
+    }
+    const ftsCount = this.db.prepare('SELECT COUNT(*) AS count FROM memory_items_fts').get() as {
+      count: number
+    }
+    if (memoryCount.count !== ftsCount.count) this.rebuildMemorySearch()
+  }
+
+  private rebuildMemorySearch(): void {
+    const rows = this.db
+      .prepare('SELECT id, title, body, tags FROM memory_items')
+      .all() as Array<{ id: string; title: string; body: string; tags: string }>
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM memory_items_fts').run()
+      for (const row of rows) this.insertMemorySearchRow(row)
+    })()
+  }
+
+  private indexMemoryItem(id: string): void {
+    const row = this.db
+      .prepare('SELECT id, title, body, tags FROM memory_items WHERE id = ?')
+      .get(id) as { id: string; title: string; body: string; tags: string } | undefined
+    if (!row) return
+    this.db.prepare('DELETE FROM memory_items_fts WHERE memory_id = ?').run(id)
+    this.insertMemorySearchRow(row)
+  }
+
+  private insertMemorySearchRow(row: {
+    id: string
+    title: string
+    body: string
+    tags: string
+  }): void {
+    let tags = ''
+    try {
+      const parsed: unknown = JSON.parse(row.tags)
+      if (Array.isArray(parsed))
+        tags = parsed.filter((item): item is string => typeof item === 'string').join(' ')
+    } catch {
+      // 标签损坏不影响标题与正文索引
+    }
+    this.db
+      .prepare('INSERT INTO memory_items_fts (memory_id, tokens, title) VALUES (?, ?, ?)')
+      .run(row.id, tokenizeForIndex(`${row.title}\n${row.body}\n${tags}`), row.title)
   }
 
   private tableColumns(table: string): string[] {

@@ -151,6 +151,12 @@ function ContextMeter({ context }: { context: ChatContextView | null }): JSX.Ele
               <dt>系统提示</dt>
               <dd>{formatCompact(context.breakdown.system)}</dd>
             </div>
+            {context.breakdown.memory > 0 ? (
+              <div>
+                <dt>上次记忆注入</dt>
+                <dd>{formatCompact(context.breakdown.memory)}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>工具定义</dt>
               <dd>{formatCompact(context.breakdown.tools)}</dd>
@@ -331,7 +337,7 @@ function MessageList({
                     : '配置供应商与 API Key 后即可对话；书架、笔记和待办也可交给 AI 管理。'}
                 </p>
                 {configured ? null : (
-                  <button type="button" className="btn-gold" onClick={() => setView('settings')}>
+                  <button type="button" className="btn-gold" onClick={() => setView('settings-model')}>
                     去设置配置 AI
                   </button>
                 )}

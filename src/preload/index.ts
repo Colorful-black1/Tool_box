@@ -19,6 +19,10 @@ import type {
   ChatErrorEvent,
   ChatSendRequest,
   ChatStoppedEvent,
+  MemoryExportFormat,
+  MemoryQuery,
+  MemorySaveInput,
+  MemoryStateInput,
   NoteSaveInput,
   OpenCodeEvent,
   PasswordDraft,
@@ -223,6 +227,14 @@ const bridge: ToolboxBridge = {
     getPermission: () => ipcRenderer.invoke(IPC.agentPermissionGet),
     setPermission: (permission: AgentPermission) =>
       ipcRenderer.invoke(IPC.agentPermissionSet, permission)
+  },
+  memory: {
+    list: (query?: MemoryQuery) => ipcRenderer.invoke(IPC.memoryList, query),
+    save: (input: MemorySaveInput) => ipcRenderer.invoke(IPC.memorySave, input),
+    remove: (id: string) => ipcRenderer.invoke(IPC.memoryDelete, id),
+    setState: (input: MemoryStateInput) => ipcRenderer.invoke(IPC.memorySetStatus, input),
+    export: (format: MemoryExportFormat) => ipcRenderer.invoke(IPC.memoryExport, format),
+    import: () => ipcRenderer.invoke(IPC.memoryImport)
   },
   books: {
     list: () => ipcRenderer.invoke(IPC.booksList),

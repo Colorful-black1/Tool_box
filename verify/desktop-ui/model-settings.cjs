@@ -1,9 +1,10 @@
 /* global window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 /** 设置页的知识库模型字段：可见、可保存、回读一致。 */
 module.exports = async function verifyModelSettings({ page, check, capture }) {
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openSettings(page, '星轨链路')
   await page.getByRole('heading', { name: '星轨链路', exact: true }).waitFor()
 
   const embedding = page.getByLabel('向量模型 · EMBEDDING', { exact: true })
@@ -39,7 +40,7 @@ module.exports = async function verifyModelSettings({ page, check, capture }) {
   })
 
   await check('设置页提供 OpenCode Zen 供应商与免费模型', async () => {
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await openSettings(page, '星轨链路')
     await page.getByRole('heading', { name: '星轨链路', exact: true }).waitFor()
     await page.getByRole('button', { name: '服务商', exact: true }).click()
     await page.getByRole('option', { name: 'OpenCode Zen', exact: true }).click()

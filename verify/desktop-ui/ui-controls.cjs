@@ -1,5 +1,6 @@
 /* global document:readonly, window:readonly */
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 
 /** 隔离用户目录，覆盖公共控件的真实键盘/弹层行为，不调用模型。 */
 module.exports = async function verifyUiControls({ page, app, check, capture }) {
@@ -111,7 +112,7 @@ module.exports = async function verifyUiControls({ page, app, check, capture }) 
     await button('源时区').click()
     const search = page.getByRole('combobox', { name: '源时区 过滤', exact: true })
     await search.fill('no-such-zone')
-    await page.getByText('暂无可选项', { exact: true }).waitFor()
+    await page.getByText('没有匹配项，试试其他关键词', { exact: true }).waitFor()
     await search.fill('America/New_York')
     assert.equal(await page.getByRole('option').count(), 1)
     await fits()
@@ -189,7 +190,11 @@ module.exports = async function verifyUiControls({ page, app, check, capture }) 
     ['paper', '晨光纸白']
   ]) {
     await check(`${label}：双尺寸日历、下拉、确认框与复选框`, async () => {
-      await button('设置').click()
+      // 上一轮结束在 1024 宽，侧栏自动收起；设置分组入口只在展开态渲染。
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setContentSize(1280, 820)
+      )
+      await openSettings(page, '外观与主题')
       await button(label).click()
       await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme)
       assert.equal(await page.locator('select').count(), 0)

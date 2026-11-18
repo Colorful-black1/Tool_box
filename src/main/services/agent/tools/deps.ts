@@ -4,6 +4,7 @@ import type { AgentToolDefinition } from '../tool-registry'
 import type { AgentUsageService } from '../../agent-usage/usage-service'
 import type { TodoService } from '../../todo-service'
 import type { KnowledgeBaseService } from '../../knowledge-base/kb-service'
+import type { MemoryService } from '../../memory/memory-service'
 
 /** Agent 工具可依赖的主进程服务（与 IPC handler 共用同一批 store 能力） */
 export interface AgentDeps {
@@ -12,6 +13,7 @@ export interface AgentDeps {
   todos?: TodoService
   usage?: Pick<AgentUsageService, 'query'>
   knowledge?: KnowledgeBaseService
+  memory?: MemoryService
 }
 
 export type ToolFactory = (deps: AgentDeps) => AgentToolDefinition[]

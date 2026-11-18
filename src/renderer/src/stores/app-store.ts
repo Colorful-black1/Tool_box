@@ -52,7 +52,12 @@ export type AppView =
   | 'todos'
   | 'kb'
   | 'tools'
-  | 'settings'
+  | 'settings-appearance'
+  | 'settings-model'
+  | 'settings-memory'
+  | 'settings-data'
+  | 'settings-skills'
+  | 'settings-desktop'
 
 /** 全局搜索的一次性定位请求，仅用于渲染层导航，不落盘。 */
 export interface SearchTarget {

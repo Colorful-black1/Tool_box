@@ -122,7 +122,7 @@ CJK 字符（含中文标点）      × 1.0
 - 摘要调用空返回或被 `maxTokens` 截断时重试一次（`maxTokens` 提到 4,000）；网络 / 鉴权错误不重试，避免重复计费。
 - 失败与停止都不写检查点；手动压缩被停止时广播 `compaction.failed`（已停止），不广播 `chat:stopped`。
 
-## 9. 数据模型（schema v7）
+## 9. 数据模型（schema v7 引入；当前 v8 未改动本表）
 
 ```sql
 CREATE TABLE IF NOT EXISTS conversation_checkpoints (
@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_conversation_checkpoints_conversation
 
 | 类型 | 关键字段 |
 | --- | --- |
-| `ChatContextBreakdown` | `system` / `tools` / `summary` / `messages` |
+| `ChatContextBreakdown` | `system` / `memory`（system 的子集）/ `tools` / `summary` / `messages` |
 | `ChatContextUsage` | `inputTokens` / `outputTokens` / `totalTokens` / `model` / `measuredAtMs` |
 | `ChatCheckpointView` | `id` / `coveredMessageId` / `coveredMessageCount` / `omittedMessageCount` / `summary` / `tokens` / `sourceTokens` / `model` / `createdAtMs` |
 | `ChatContextView` | `windowTokens` / `windowSource`（五值）/ `thresholdTokens` / `estimatedTokens` / `percent` / `breakdown` / `lastUsage` / `checkpoint` / `autoCompact` / `compacting` / `messageCount` |

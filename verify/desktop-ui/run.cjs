@@ -3,6 +3,7 @@ const { withDialog } = require('./dialog.cjs')
 /* global document:readonly, window:readonly, Event:readonly, innerWidth:readonly, innerHeight:readonly */
 // 上述浏览器全局只在 Playwright 的页面回调中使用，不在 Node 侧读取。
 const assert = require('node:assert/strict')
+const openSettings = require('./settings-nav.cjs')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
@@ -17,6 +18,7 @@ const verifyExtensions = require('./extensions.cjs')
 const verifySidebarNavigation = require('./sidebar-navigation.cjs')
 const verifyKnowledge = require('./knowledge.cjs')
 const verifyModelSettings = require('./model-settings.cjs')
+const verifyMemory = require('./memory.cjs')
 const verifyContext = require('./context.cjs')
 const verifyTrending = require('./trending.cjs')
 const verifyAiWorld = require('./ai-world.cjs')
@@ -250,6 +252,13 @@ async function main() {
       await verifyModelSettings({ page, check, capture })
       assert.deepEqual(errors, [])
       process.stdout.write(`知识库模型设置验收通过 ${passed.length} 项，页面异常 0 项\n`)
+      return
+    }
+
+    if (process.argv.includes('--memory-only')) {
+      await verifyMemory({ page, check, capture })
+      assert.deepEqual(errors, [])
+      process.stdout.write(`AI 记忆验收通过 ${passed.length} 项，页面异常 0 项\n`)
       return
     }
 
@@ -601,7 +610,7 @@ async function main() {
       app = await _electron.launch({ args: [path.join(__dirname, 'main.cjs')], env })
       const restarted = await app.firstWindow()
       restarted.on('pageerror', (error) => errors.push(error.message))
-      await restarted.getByRole('button', { name: '设置', exact: true }).click()
+      await openSettings(restarted, '外观与主题')
       await restarted.waitForFunction(
         () =>
           document.documentElement.dataset.theme === 'paper' &&

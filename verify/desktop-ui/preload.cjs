@@ -73,6 +73,12 @@ fixture.toolbox.todos = {
 }
 fixture.controls.openTodo = (id) => ipcRenderer.invoke('verify:todo:open', id)
 
+{
+  const memory = require('./memory-fixture.cjs')()
+  fixture.toolbox.memory = memory.bridge
+  Object.assign(fixture.controls, memory.controls)
+}
+
 if (process.env.TOOLBOX_CHAT_TOOLS_VERIFY === '1')
   require('./chat-tools-preload.cjs')(fixture, ipcRenderer)
 

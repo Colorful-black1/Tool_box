@@ -51,7 +51,7 @@ const VIEW_COMMANDS: Array<{ view: AppView; title: string }> = [
   { view: 'notes', title: '切换到记事本' },
   { view: 'todos', title: '切换到待办清单' },
   { view: 'tools', title: '切换到工具' },
-  { view: 'settings', title: '切换到设置' }
+  { view: 'settings-appearance', title: '打开设置' }
 ]
 
 function formatDate(ms: number): string {
@@ -225,7 +225,7 @@ export function CommandPalette(): JSX.Element | null {
         id: 'active-profile',
         title: '查看当前 AI 配置',
         subtitle: settings.profiles.find((item) => item.id === settings.activeId)?.name ?? '',
-        action: { type: 'view', view: 'settings' }
+        action: { type: 'view', view: 'settings-model' }
       })
     }
     return list

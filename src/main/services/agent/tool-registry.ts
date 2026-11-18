@@ -16,6 +16,8 @@ const ARGS_PREVIEW_CHARS = 400
  */
 export interface AgentToolContext {
   conversationId: string
+  /** 触发本轮回复的用户消息 ID，写入记忆来源用 */
+  sourceMessageId?: string
   signal?: AbortSignal
   addReferences?(references: AppReference[]): void
   notifyToolCall(event: { callId: string; name: string; args: string }): void

@@ -41,6 +41,13 @@ import type {
   ConversationSummary,
   ImportResult,
   LocalIpAddressView,
+  MemoryExportFormat,
+  MemoryImportResult,
+  MemoryItemView,
+  MemoryListResult,
+  MemoryQuery,
+  MemorySaveInput,
+  MemoryStateInput,
   PublicIpView,
   PortSnapshot,
   PortProcessStopResult,
@@ -301,6 +308,17 @@ export interface ToolboxBridge {
     getPermission(): Promise<AgentPermission>
     setPermission(permission: AgentPermission): Promise<AgentPermission>
   }
+  /** 长期记忆：只管理本机 SQLite，不触发模型请求。 */
+  memory: {
+    list(query?: MemoryQuery): Promise<MemoryListResult>
+    save(input: MemorySaveInput): Promise<MemoryItemView>
+    remove(id: string): Promise<void>
+    setState(input: MemoryStateInput): Promise<MemoryItemView>
+    /** 导出全部状态；返回写入的路径，取消时为 null */
+    export(format: MemoryExportFormat): Promise<string | null>
+    /** 选择 JSON 文件并合并；取消时为 null */
+    import(): Promise<MemoryImportResult | null>
+  }
   books: {
     list(): Promise<BookSummary[]>
     search(query: string): Promise<BookSummary[]>
@@ -311,10 +329,7 @@ export interface ToolboxBridge {
     progressSave(input: ReadingProgressInput): Promise<void>
     delete(bookId: string): Promise<void>
     reorder(orderedIds: string[]): Promise<void>
-    updateMeta(
-      id: string,
-      meta: { title?: string; author?: string }
-    ): Promise<BookSummary>
+    updateMeta(id: string, meta: { title?: string; author?: string }): Promise<BookSummary>
     /** 主进程弹出图片选择框并复制到受管目录；取消时静默返回 */
     setCover(id: string): Promise<void>
     setGroup(ids: string[], groupId: string | null): Promise<void>

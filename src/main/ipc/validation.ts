@@ -15,7 +15,21 @@ import {
   parseDeveloperCommandInput,
   parseDeveloperCommandToggle
 } from '../../shared/developer-command-validation'
-import type { ModelContextLimitInput, TodoInput, TodoQuery } from '../../shared/types'
+import {
+  MEMORY_EXPORT_FORMATS,
+  MEMORY_KINDS,
+  MEMORY_LIMITS,
+  MEMORY_STATUSES
+} from '../../shared/types'
+import type {
+  MemoryExportFormat,
+  MemoryQuery,
+  MemorySaveInput,
+  MemoryStateInput,
+  ModelContextLimitInput,
+  TodoInput,
+  TodoQuery
+} from '../../shared/types'
 import { isValidContextWindow } from '../../shared/context-budget'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
@@ -39,10 +53,7 @@ import { USAGE_CLIENTS, USAGE_SORT_KEYS } from '../../shared/agent-usage'
 import { parseAgentDraftDocument } from '../../shared/agent-drafts'
 import type { AgentDraftDocument, AgentDraftSaveInput } from '../../shared/agent-drafts'
 import type { UsageClient, UsageQuery, UsageSortKey } from '../../shared/agent-usage'
-import {
-  TRENDING_LANGUAGE_VALUES,
-  TRENDING_PERIOD_VALUES
-} from '../../shared/github-trending'
+import { TRENDING_LANGUAGE_VALUES, TRENDING_PERIOD_VALUES } from '../../shared/github-trending'
 import type { TrendingQuery } from '../../shared/github-trending'
 import { EXTENSION_SEARCH_MAX_LIMIT, SKILL_SEARCH_MAX_CHARS } from '../../shared/extensions'
 import type { McpSearchInput, SkillSearchInput } from '../../shared/extensions'
@@ -83,8 +94,7 @@ export const validateDeveloperCommandToggle = parseDeveloperCommandToggle
 export function validateKbCategory(value: unknown, name = '资料类别'): string | undefined {
   const category = optionalString(value, name, { maxLength: 20 })
   if (category === undefined) return undefined
-  if (!KB_CATEGORY_PATTERN.test(category))
-    throw new Error('资料类别只能包含小写字母、数字和连字符')
+  if (!KB_CATEGORY_PATTERN.test(category)) throw new Error('资料类别只能包含小写字母、数字和连字符')
   return category
 }
 
@@ -243,7 +253,11 @@ export function validateAgentDraftDocument(value: unknown): AgentDraftDocument {
 
 export function validateAgentDraftSave(value: unknown): AgentDraftSaveInput {
   const input = assertObject(value, '保存草稿')
-  if (typeof input.revision !== 'number' || !Number.isSafeInteger(input.revision) || input.revision < 0)
+  if (
+    typeof input.revision !== 'number' ||
+    !Number.isSafeInteger(input.revision) ||
+    input.revision < 0
+  )
     throw new Error('草稿修订号无效')
   return { revision: input.revision, document: validateAgentDraftDocument(input.document) }
 }
@@ -444,7 +458,8 @@ export function validateCodingAgentQuestion(
 
 /** 停止引用只能来自端口快照，禁止任意 PID、脚本或命令进入执行服务。 */
 export function validatePortStopToken(value: unknown): string {
-  if (typeof value !== 'string' || value.length !== 36) throw new Error('进程引用无效，请重新查询端口')
+  if (typeof value !== 'string' || value.length !== 36)
+    throw new Error('进程引用无效，请重新查询端口')
   const token = requireString(value, '进程引用', { maxLength: 36 })
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token))
     throw new Error('进程引用无效，请重新查询端口')
@@ -580,8 +595,7 @@ export function validateTrendingQuery(value: unknown): TrendingQuery {
     result.language = requireEnum(body.language, '榜单语言', TRENDING_LANGUAGE_VALUES)
   }
   if (body.force !== undefined) result.force = requireBoolean(body.force, '刷新标记')
-  if (body.allowStale !== undefined)
-    result.allowStale = requireBoolean(body.allowStale, '缓存标记')
+  if (body.allowStale !== undefined) result.allowStale = requireBoolean(body.allowStale, '缓存标记')
   return result
 }
 
@@ -640,6 +654,12 @@ export function validateConfigPatch(value: unknown): Record<string, unknown> {
   const validated = { ...patch }
   if (Object.hasOwn(patch, 'contextAutoCompact')) {
     validated.contextAutoCompact = requireBoolean(patch.contextAutoCompact, '自动压缩开关')
+  }
+  if (Object.hasOwn(patch, 'memoryEnabled')) {
+    validated.memoryEnabled = requireBoolean(patch.memoryEnabled, '长期记忆开关')
+  }
+  if (Object.hasOwn(patch, 'memoryAutoLearn')) {
+    validated.memoryAutoLearn = requireBoolean(patch.memoryAutoLearn, '自动学习开关')
   }
   if (Object.hasOwn(patch, 'appearance')) {
     const appearance = assertObject(patch.appearance, '外观配置')
@@ -776,6 +796,67 @@ export function validateTodoQuery(value: unknown): TodoQuery {
     offset,
     limit
   }
+}
+
+/** 记忆筛选：关键词、类型、状态与分页都有硬上限。 */
+export function validateMemoryQuery(value: unknown): MemoryQuery {
+  if (value === undefined || value === null) return {}
+  const body = assertObject(value, '记忆筛选')
+  const result: MemoryQuery = {}
+  const query = optionalString(body.query, '记忆关键词', { maxLength: 120 })
+  if (query) result.query = query
+  if (body.kind !== undefined && body.kind !== null && body.kind !== 'all')
+    result.kind = requireEnum(body.kind, '记忆类型', MEMORY_KINDS)
+  if (body.status !== undefined && body.status !== null && body.status !== 'all')
+    result.status = requireEnum(body.status, '记忆状态', MEMORY_STATUSES)
+  if (body.offset !== undefined) {
+    const offset = requireNonNegativeInt(body.offset, '分页位置')
+    if (offset > 1_000_000) throw new Error('分页位置超出范围')
+    result.offset = offset
+  }
+  if (body.limit !== undefined) {
+    const limit = requireNonNegativeInt(body.limit, '分页数量')
+    if (limit < 1 || limit > MEMORY_LIMITS.listLimit) throw new Error('分页数量超出范围')
+    result.limit = limit
+  }
+  return result
+}
+
+/** 设置页写入：来源与置信度不在入参里，由主进程维护。 */
+export function validateMemorySaveInput(value: unknown): MemorySaveInput {
+  const body = assertObject(value, '记忆内容')
+  const tags =
+    optionalStringArray(body.tags, '记忆标签', {
+      maxItems: MEMORY_LIMITS.tags,
+      maxLength: MEMORY_LIMITS.tag
+    }) ?? []
+  return {
+    id: optionalString(body.id, '记忆 ID', { maxLength: 64 }),
+    kind: requireEnum(body.kind, '记忆类型', MEMORY_KINDS),
+    title: requireString(body.title, '记忆标题', { maxLength: MEMORY_LIMITS.title }),
+    body: requireString(body.body, '记忆正文', { maxLength: MEMORY_LIMITS.body }),
+    tags,
+    pinned: body.pinned === undefined ? false : requireBoolean(body.pinned, '置顶状态')
+  }
+}
+
+/** 记忆状态 / 置顶的局部更新；至少带一个字段。 */
+export function validateMemoryStateInput(value: unknown): MemoryStateInput {
+  const body = assertObject(value, '记忆状态')
+  const status =
+    body.status === undefined ? undefined : requireEnum(body.status, '记忆状态', MEMORY_STATUSES)
+  const pinned = body.pinned === undefined ? undefined : requireBoolean(body.pinned, '置顶状态')
+  if (status === undefined && pinned === undefined) throw new Error('没有需要更新的记忆状态')
+  return {
+    id: requireString(body.id, '记忆 ID', { maxLength: 64 }),
+    ...(status !== undefined ? { status } : {}),
+    ...(pinned !== undefined ? { pinned } : {})
+  }
+}
+
+/** 记忆导出只接受 json / markdown，导入没有可伪造的入参。 */
+export function validateMemoryExportFormat(value: unknown): MemoryExportFormat {
+  return requireEnum(value, '导出格式', MEMORY_EXPORT_FORMATS)
 }
 
 /** 技能与 MCP 只有两种入参：刷新开关、检索关键词。 */

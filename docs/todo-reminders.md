@@ -4,7 +4,7 @@
 
 ## 数据与字段
 
-- 待办表在 schema v5 引入；当前 schema v7，后续迁移未改该表。
+- 待办表在 schema v5 引入；当前 schema v8（v8 只新增记忆表），后续迁移未改该表。
 - 字段：`id`、`title`、`details`、`priority`、`start_at_ms`、`due_at_ms`、`remind`、`completed_at_ms`、`archived_at_ms`、`start_notified_for_ms`、`due_notified_for_ms`、`created_at_ms`、`updated_at_ms`。
 - 标题 1–120 字符，备注最多 4000 字符，ID 最多 64 字符；优先级为低 / 普通 / 高。
 - 开始与截止均可为空；两者都有时必须开始不晚于截止。日期时间按本机时区输入 `YYYY-MM-DD HH:mm[:ss]`，存储为毫秒时刻。
