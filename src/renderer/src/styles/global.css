@@ -9354,6 +9354,28 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   margin-top: 5px;
 }
 
+.ai-agent-focus {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ai-agent-focus span {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border: 1px solid var(--gold-line);
+  border-radius: 99px;
+  color: var(--gold-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
 .ai-agent-summary-meta {
   display: flex;
   flex-direction: column;

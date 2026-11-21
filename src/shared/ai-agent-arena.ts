@@ -94,24 +94,32 @@ export const AI_AGENT_ARENA_SOURCES: ReadonlyArray<{
   label: string
   url: string
   note: string
+  /** 榜单实际考察的能力，供页面在榜单说明里直接展示。 */
+  focus: string
 }> = [
   {
     id: 'codeagentbench',
     label: 'CodeAgentBench',
     url: 'https://suyoumo.github.io/code-agent-bench/',
-    note: 'SWE-Bench-Pro Agent × 模型；官方 Final Score'
+    note: 'SWE-Bench-Pro Agent × 模型；官方 Final Score',
+    focus:
+      '真实仓库 Issue 修复：定位代码、跨文件修改并跑通测试；Final Score 综合三次尝试的稳定性、覆盖能力与单次表现。'
   },
   {
     id: 'terminal-bench',
     label: 'Terminal-Bench',
     url: 'https://www.tbench.ai/',
-    note: '终端任务 Agent × 模型；官方 Resolution Rate'
+    note: '终端任务 Agent × 模型；官方 Resolution Rate',
+    focus:
+      '终端任务执行：在真实 shell 中完成多步命令、环境配置、文件操作与排错；Resolution Rate 是完整通过任务的比例。'
   },
   {
     id: 'frontierharness',
     label: 'FrontierHarness',
     url: 'https://frontierharness.org/efficiency/',
-    note: 'Agent harness 效率榜；官方 Cost per pass'
+    note: 'Agent harness 效率榜；官方 Cost per pass',
+    focus:
+      '不是能力榜，而是效率横评：同一模型换不同 Agent harness，完成并通过一个任务平均要花多少美元、多少时间。'
   }
 ]
 

@@ -14,6 +14,12 @@
 
 EasyAI 当前没有数据，且数据源为 Artificial Analysis；与现有「不使用 Artificial Analysis 数据」的策略冲突，暂不接入。
 
+三个榜单考察的重点不同，页面「测试重点」一栏会随来源切换：
+
+- CodeAgentBench：真实仓库 Issue 修复，重点看代码定位、跨文件修改与测试通过，以及三次尝试的稳定性。
+- Terminal-Bench：真实 shell 中的多步任务执行，重点看命令编排、环境配置、文件操作与排错。
+- FrontierHarness：不测模型能力，测同一模型换不同 Agent harness 的成本效率，即每个通过任务花多少美元、多少时间。
+
 ### CodeAgentBench
 
 直接使用页面 `data-rank` 和 `data-final-score`。官方公式：

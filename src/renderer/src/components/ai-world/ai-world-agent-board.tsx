@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { JSX } from 'react'
 
-import { AI_AGENT_ARENA_CHECK_INTERVAL_MS } from '@shared/ai-agent-arena'
+import { AI_AGENT_ARENA_CHECK_INTERVAL_MS, AI_AGENT_ARENA_SOURCES } from '@shared/ai-agent-arena'
 import type {
   AiAgentArenaBoard,
   AiAgentArenaEntry,
@@ -74,6 +74,9 @@ export function AiWorldAgentBoard({ onOpenSource }: AiWorldAgentBoardProps): JSX
   const board: AiAgentArenaBoard | null =
     boards.find((item) => item.id === selectedId) ?? boards[0] ?? null
   const sourceState = board && result ? result.snapshot.sources[board.id] : null
+  const sourceMeta = board
+    ? (AI_AGENT_ARENA_SOURCES.find((source) => source.id === board.id) ?? null)
+    : null
 
   useEffect(() => {
     setPage(0)
@@ -239,6 +242,12 @@ export function AiWorldAgentBoard({ onOpenSource }: AiWorldAgentBoardProps): JSX
                     ) : null}
                   </div>
                   <p className="field-hint">{board.description}</p>
+                  {sourceMeta ? (
+                    <p className="ai-agent-focus">
+                      <span>测试重点</span>
+                      {sourceMeta.focus}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="ai-agent-summary-meta">
                   <span>官方数据：{formatAgentDateTime(board.capturedAt)}</span>
