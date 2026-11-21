@@ -19,6 +19,7 @@ import {
   formatPrice,
   formatRankPercentile
 } from '../../lib/ai-world-format'
+import { AiWorldAgentBoard } from './ai-world-agent-board'
 import { AiWorldDetail } from './ai-world-detail'
 import { AiWorldFrontier } from './ai-world-frontier'
 import { AiWorldSources } from './ai-world-sources'
@@ -29,6 +30,7 @@ type RegionFilter = 'all' | 'east' | 'west'
 type KindFilter = 'all' | keyof typeof AI_WORLD_KIND_LABELS
 type SortKey = 'eci' | 'code' | 'context' | 'price' | 'release'
 type ViewMode = 'list' | 'frontier'
+type WorldMode = 'models' | 'agents'
 
 const REGION_OPTIONS = [
   { value: 'all', label: '全部地区' },
@@ -184,6 +186,7 @@ export function AiWorldPage(): JSX.Element {
   const [pageDraft, setPageDraft] = useState('1')
   const [selected, setSelected] = useState<AiWorldModel | null>(null)
   const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [mode, setMode] = useState<WorldMode>('models')
 
   useEffect(() => {
     void load()
@@ -269,6 +272,34 @@ export function AiWorldPage(): JSX.Element {
 
   return (
     <div className="ai-world-page view-enter">
+      <div className="ai-world-mode-bar">
+        <div className="ai-world-view-switch" role="group" aria-label="AI 榜单类型">
+          <button
+            type="button"
+            aria-pressed={mode === 'models'}
+            onClick={() => setMode('models')}
+          >
+            模型榜
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'agents'}
+            onClick={() => setMode('agents')}
+          >
+            Agent 榜
+          </button>
+        </div>
+        <span className="field-hint">
+          {mode === 'models'
+            ? '模型本身的智力、价格与上下文'
+            : 'Agent × 模型组合；同一模型换 Agent 成绩会变'}
+        </span>
+      </div>
+
+      {mode === 'agents' ? (
+        <AiWorldAgentBoard onOpenSource={(url) => void openSource(url)} />
+      ) : (
+        <>
       {error ? (
         <div className="status-banner" role="alert">
           <span>{error}</span>
@@ -564,6 +595,8 @@ export function AiWorldPage(): JSX.Element {
           onOpenSource={(url) => void openSource(url)}
         />
       ) : null}
+        </>
+      )}
     </div>
   )
 }

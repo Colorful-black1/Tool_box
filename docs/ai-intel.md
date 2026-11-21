@@ -118,7 +118,7 @@ Epoch AI benchmark_data.zip         → ECI、核心评测、编程赛制、Live
 
 - 新增两个纯 JS 依赖：`fflate`（解压）与 `csv-parse`（解析 CSV），在 `package.json` 的 dependencies 中。
 - 不改 schema、不需要 API Key、不写 `toolbox.db`。
-- 缓存文件：`userData/github-trending-cache.json`、`userData/ai-model-world-cache.json`。
+- 缓存文件：`userData/github-trending-cache.json`、`userData/ai-model-world-cache.json`、`userData/ai-agent-arena-cache.json`。
 
 ## 10. 验证状态与已知限制
 
@@ -128,3 +128,14 @@ Epoch AI benchmark_data.zip         → ECI、核心评测、编程赛制、Live
 - 能力-价格前沿由共享纯函数计算并有单测；真实快照曾生成 109 个有效点 / 9 个前沿点，UI 用合成数据覆盖宽窄窗口与详情入口。
 - 首次联网采集约需数秒；解压后的 CSV 在主进程异步处理，不阻塞渲染。
 - 未做：GitHub 登录 / Star / Issue / README 详情 / 收藏 / 推送，以及模型对比、全量排行榜、时间线与像素角色。
+
+## 11. Agent 排行（AI 模型世界内）
+
+- 入口：AI 模型世界顶部「模型榜 / Agent 榜」切换；不新增左侧导航。
+- 来源：CodeAgentBench（SWE-Bench-Pro）、Terminal-Bench、FrontierHarness；EasyAI 当前无数据且来源为 Artificial Analysis，不接入。
+- 数据按 Agent × 模型组合展示；不同来源分榜，不跨榜合并综合分。
+- FrontierHarness 读取公开 live feed，在主进程按官方 Cost per pass 口径聚合；其余两个来源使用官方排名/指标。
+- 独立缓存 `userData/ai-agent-arena-cache.json`；各来源独立 TTL：Frontier 15 分钟、Terminal-Bench 60 分钟、CodeAgentBench 12 小时。
+- 只读 IPC：`ai-agent-arena:get`，入参 `{ force?: boolean; allowStale?: boolean }`；来源链接复用 `ai-world:open-source` 白名单。
+- 页面打开先显示缓存，过期后后台刷新；Agent 榜可见时每 5 分钟检查一次；单来源失败保留旧数据并提示。
+- 详细公式、字段与解析边界见 [`docs/ai-agent-arena.md`](ai-agent-arena.md)。

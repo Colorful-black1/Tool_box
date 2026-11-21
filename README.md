@@ -27,7 +27,7 @@
 | 开发者工具 | JSON、差异比较、数据脱敏、Java 日志、MyBatis SQL 还原、Cron、JWT / 证书、时区、编码哈希等成套本机工具，外加命令速查 |
 | 编程 Agent | OpenCode / Codex / Claude Code / Claude Desktop / DeepSeek Harness 统一工作台：会话切换、审批、停止、消息转用、加密草稿 |
 | Token 统计 | 直接读取 14 类本机 Agent 的用量记录，按周期 / 项目 / 模型筛选并导出 CSV，无需连接 Agent |
-| AI 情报 | GitHub 开源热榜（含搜索兜底）与 AI 模型世界（models.dev + Epoch AI，含可筛选的 ECI × 价格前沿） |
+| AI 情报 | GitHub 开源热榜（含搜索兜底）与 AI 模型世界（models.dev + Epoch AI，含 ECI × 价格前沿；Agent 榜按来源展示 Agent × 模型排行） |
 | 技能与 MCP | 只读盘点本机技能（默认 5 类来源，可配置额外路径）与各 Agent 的 MCP 配置，在线搜索 skills.sh 与官方 MCP Registry，给出可复制的安装命令 |
 | 全局搜索 | `Ctrl+K` 命令面板：跨模块搜数据、直接执行命令、跳转页面 |
 
@@ -102,7 +102,7 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 - 数据库：`%APPDATA%\私人百宝箱\toolbox.db`（开发模式为 `-dev` 后缀的同级目录）。
 - 加密：密码箱的账号 / 密码 / 备注、AI 的 API Key 均以 AES-256-GCM 落库；主密钥经 `safeStorage`（DPAPI）封装，绑定当前系统用户，**换机或重装系统后可能无法解密**。
 - 长期记忆：显式保存的偏好 / 约束存本机 SQLite；对话时只有置顶或命中的片段随模型请求外发。自动学习开启时，最近对话与已有记忆标题会交给当前模型提取候选；可在「设置 → AI 记忆」查看、停用或删除。
-- 网络：只有你主动发起的 AI 请求、开源热榜、模型世界、公网 IP 查询，以及技能 / MCP 的在线搜索会联网；其余功能（Token 统计、密码健康检查、重复文件查找、开发者工具）全部在本机完成。
+- 网络：只有你主动发起的 AI 请求、开源热榜、模型世界与 Agent 排行、公网 IP 查询，以及技能 / MCP 的在线搜索会联网；其余功能（Token 统计、密码健康检查、重复文件查找、开发者工具）全部在本机完成。
 - 进程边界：渲染进程没有 Node 权限，只能通过 preload 暴露的白名单 IPC 访问数据。
 - 备份：「设置 → 数据与备份」生成的是**本机快照**，用于同机回滚，不是跨设备迁移格式；快照含加密配置与主密钥文件，请勿上传网盘。
 
@@ -114,6 +114,7 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 - 安装包未做代码签名，首次安装可能触发 SmartScreen「未知发布者」提示。
 - 局域网同步、老板键 / 伪装皮肤、启动锁尚未实现（`shared/constants.ts` 里对应的 `SYNC_*` 常量是遗留占位）。
 - 编程 Agent 依赖本机已安装的对应程序（OpenCode / Codex / Claude / DeepSeek Harness），部分入口的能力受原生版本限制。
+- Agent 排行的 CodeAgentBench / Terminal-Bench 依赖第三方页面结构，页面改版时可能暂时显示上次缓存；FrontierHarness 按官方公开公式在本地聚合。
 
 ## 文档
 
@@ -129,6 +130,7 @@ mobile/              已冻结的 React Native 手机端（历史资料）
 | [`docs/knowledge-base.md`](docs/knowledge-base.md) | 知识库分块、检索、降级与外发边界 |
 | [`docs/token-usage.md`](docs/token-usage.md) | 14 类本机来源的统计口径与上限 |
 | [`docs/ai-intel.md`](docs/ai-intel.md) | 开源热榜与 AI 模型世界的数据链路 |
+| [`docs/ai-agent-arena.md`](docs/ai-agent-arena.md) | Agent 榜来源、官方评分口径、缓存与刷新边界 |
 | [`docs/skills-and-mcp.md`](docs/skills-and-mcp.md) | 技能与 MCP 的本机扫描、在线来源与只读边界 |
 | [`docs/developer-utilities.md`](docs/developer-utilities.md) | 开发者工具边界与输入上限 |
 | [`docs/developer-command-library.md`](docs/developer-command-library.md) | 命令速查的内置库与编辑规则 |

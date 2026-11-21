@@ -48,7 +48,7 @@ const PAGE_META: Record<AppView, { title: string; subtitle: string }> = {
   commands: { title: '命令速查', subtitle: 'COMMANDS · 开发常用命令' },
   'agent-usage': { title: 'Token 统计', subtitle: 'USAGE · 本机 Agent 用量' },
   trending: { title: '开源热榜', subtitle: 'GITHUB TRENDING · 最近走红的项目' },
-  'ai-world': { title: 'AI 模型世界', subtitle: 'AI MODEL WORLD · 模型、评测与价格' },
+  'ai-world': { title: 'AI 模型世界', subtitle: 'AI MODEL WORLD · 模型与 Agent 排行' },
   skills: { title: '技能', subtitle: 'SKILLS · 本机技能与在线发现' },
   mcp: { title: 'MCP', subtitle: 'MCP · 本机服务与在线目录' },
   opencode: { title: '编程 Agent', subtitle: 'AGENTS · 原生会话与消息转用' },

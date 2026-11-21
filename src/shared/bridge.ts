@@ -114,6 +114,7 @@ import type {
   DeveloperCommandSnapshot,
   DeveloperCommandToggle
 } from './developer-commands'
+import type { AiAgentArenaQuery, AiAgentArenaResult } from './ai-agent-arena'
 
 export interface ToolboxBridge {
   backup: {
@@ -185,6 +186,10 @@ export interface ToolboxBridge {
     get(query?: AiWorldQuery): Promise<AiWorldResult>
     /** 只允许打开当前快照中出现过的来源链接。 */
     openSource(url: string): Promise<void>
+  }
+  aiAgentArena: {
+    /** 读取 Agent 排行；allowStale 只读本地缓存，force 跳过各来源 TTL。 */
+    get(query?: AiAgentArenaQuery): Promise<AiAgentArenaResult>
   }
   knowledge: {
     /** 资料列表只回摘要，不含正文与绝对路径。 */

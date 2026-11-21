@@ -38,6 +38,7 @@ import type { CodingAgentEvent } from '../shared/coding-agents'
 import type { KbProgressEvent } from '../shared/knowledge-base'
 import type { TrendingQuery } from '../shared/github-trending'
 import type { AiWorldQuery } from '../shared/ai-model-world'
+import type { AiAgentArenaQuery } from '../shared/ai-agent-arena'
 import type { McpSearchInput, SkillSearchInput } from '../shared/extensions'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -114,6 +115,9 @@ const bridge: ToolboxBridge = {
   aiWorld: {
     get: (query?: AiWorldQuery) => ipcRenderer.invoke(IPC.aiWorldGet, query),
     openSource: (url: string) => ipcRenderer.invoke(IPC.aiWorldOpenSource, url)
+  },
+  aiAgentArena: {
+    get: (query?: AiAgentArenaQuery) => ipcRenderer.invoke(IPC.aiAgentArenaGet, query)
   },
   knowledge: {
     list: (input) => ipcRenderer.invoke(IPC.kbList, input),

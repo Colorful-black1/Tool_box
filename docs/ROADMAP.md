@@ -104,6 +104,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| 2026-11-18 | AI 模型世界新增 Agent 排行：CodeAgentBench / Terminal-Bench / FrontierHarness 分榜，Agent × 模型筛选、官方 Cost per pass 口径、按来源 TTL 自动更新与独立缓存 |
 | 2026-11-17 | 助手长期记忆 P0–P3：显式记忆、置顶与相关注入、FTS 检索、自动候选审核、JSON 导出恢复、设置页管理与工具审批（schema v8） |
 | 2026-11-12 | 新增「AI 情报」分类，含 GitHub 开源热榜与 AI 模型世界（models.dev + Epoch 原生采集，新增 `fflate` / `csv-parse`；含 ECI × 价格前沿视图） |
 | 2026-11-11 | GitHub 开源热榜（Trending 解析 + Search 兜底）；对话上下文占用可视化与自动压缩（schema v7） |

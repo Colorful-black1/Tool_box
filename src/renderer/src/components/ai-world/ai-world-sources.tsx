@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { JSX } from 'react'
 
+import { AI_AGENT_ARENA_SOURCES } from '@shared/ai-agent-arena'
 import { useModalFocus } from '../../lib/use-modal-focus'
 import { useOverlayEscape } from '../../lib/use-overlay-dismiss'
 
@@ -24,7 +25,12 @@ const SOURCES = [
     label: 'LiveBench',
     url: 'https://livebench.ai',
     note: '编程分项，Apache-2.0；当前通过 Epoch 收录的同源 CSV 接入'
-  }
+  },
+  ...AI_AGENT_ARENA_SOURCES.map((source) => ({
+    label: source.label,
+    url: source.url,
+    note: source.note
+  }))
 ]
 
 /** 数据来源与许可说明；只打开主进程白名单中的固定来源。 */
@@ -59,9 +65,9 @@ export function AiWorldSources({ onClose, onOpenSource }: AiWorldSourcesProps): 
         </header>
 
         <p className="field-hint">
-          ToolBox 主进程直接抓取 models.dev 与 Epoch AI，在本机归一化、校验并缓存，不读取
-          ai-model-world 的运行时快照；该项目仅作为字段规则和交互参考。快照按 12 小时 TTL
-          更新，页面显示本次生成时间。
+          ToolBox 主进程直接抓取 models.dev、Epoch AI 与 Agent 榜三个来源，在本机归一化、校验并缓存，
+          不读取 ai-model-world 的运行时快照；该项目仅作为字段规则和交互参考。模型快照按 12 小时
+          TTL 更新，Agent 榜按来源分别设置 15 分钟 / 1 小时 / 12 小时，页面显示各自的数据时间。
         </p>
 
         <div className="ai-world-source-list">
@@ -85,7 +91,8 @@ export function AiWorldSources({ onClose, onOpenSource }: AiWorldSourcesProps): 
         <div className="status-banner" role="note">
           <span>
             Epoch 数据为 CC-BY 4.0，需保留署名；不使用 Artificial Analysis
-            数据。不同赛制的分数不混合计算， 缺少成绩时显示「未参赛」而不是 0。
+            数据。不同赛制的分数不混合计算，缺少成绩时显示「未参赛」而不是 0。Agent
+            榜的 CodeAgentBench、Terminal-Bench、FrontierHarness 均为第三方公开榜单，只做分榜展示。
           </span>
         </div>
       </section>

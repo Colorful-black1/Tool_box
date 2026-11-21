@@ -34,6 +34,7 @@ export const IPC = {
   trendingOpen: 'trending:open',
   aiWorldGet: 'ai-world:get',
   aiWorldOpenSource: 'ai-world:open-source',
+  aiAgentArenaGet: 'ai-agent-arena:get',
 
   appInfo: 'app:info',
   toolsPromptPolish: 'tools:prompt:polish',

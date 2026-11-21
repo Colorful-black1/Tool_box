@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 
 import { AI_WORLD_CACHE_TTL_MS } from '../../../shared/ai-model-world'
 import type { AiWorldQuery, AiWorldResult, AiWorldSnapshot } from '../../../shared/ai-model-world'
+import { AI_AGENT_ARENA_SOURCES } from '../../../shared/ai-agent-arena'
 import type { FetchLike } from '../github-trending/fetch'
 import { collectNativeSnapshot } from './native'
 import { NativeSourceError } from './native/http'
@@ -21,7 +22,8 @@ const FIXED_SOURCE_URLS = [
   'https://models.dev',
   'https://epoch.ai/benchmarks',
   'https://livebench.ai',
-  'https://huggingface.co'
+  'https://huggingface.co',
+  ...AI_AGENT_ARENA_SOURCES.map((source) => source.url)
 ]
 
 export type AiWorldCollector = (fetchImpl: FetchLike, now: Date) => Promise<AiWorldSnapshot>

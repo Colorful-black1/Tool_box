@@ -2,7 +2,12 @@ import { join } from 'node:path'
 
 import { BrowserWindow, Menu, Tray, app, nativeTheme, safeStorage, dialog, net } from 'electron'
 
-import { DB_FILE_NAME, AI_WORLD_CACHE_FILE_NAME, TRENDING_CACHE_FILE_NAME } from '../shared/constants'
+import {
+  DB_FILE_NAME,
+  AI_AGENT_ARENA_CACHE_FILE_NAME,
+  AI_WORLD_CACHE_FILE_NAME,
+  TRENDING_CACHE_FILE_NAME
+} from '../shared/constants'
 import { readAppAppearance } from '../shared/appearance'
 import type { SafeStorageAdapter } from '../shared/safe-storage'
 import { registerIpcHandlers } from './ipc/register-ipc'
@@ -24,6 +29,7 @@ import { MemoryService } from './services/memory/memory-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 import { GithubTrendingService } from './services/github-trending/service'
 import { AiWorldService } from './services/ai-model-world/service'
+import { AiAgentArenaService } from './services/ai-agent-arena/service'
 import { ExtensionsService } from './services/extensions/service'
 import { applyWindowTheme, windowThemeOptions } from './window-theme'
 
@@ -139,6 +145,10 @@ function initializeServices(): void {
     fetchImpl: (input, init) => net.fetch(input, init),
     cacheFile: join(userDataDir, AI_WORLD_CACHE_FILE_NAME)
   })
+  const aiAgentArena = new AiAgentArenaService({
+    fetchImpl: (input, init) => net.fetch(input, init),
+    cacheFile: join(userDataDir, AI_AGENT_ARENA_CACHE_FILE_NAME)
+  })
   const extensions = new ExtensionsService({
     fetchImpl: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
     rootsFile: join(userDataDir, 'skill-roots.json')
@@ -156,6 +166,7 @@ function initializeServices(): void {
     knowledge,
     trending,
     aiWorld,
+    aiAgentArena,
     extensions,
     memory
   })
