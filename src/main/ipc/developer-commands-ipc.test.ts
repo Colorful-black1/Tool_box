@@ -47,6 +47,12 @@ describe('命令库 IPC 边界', () => {
         expectedRevision: 0
       })
     ).toThrow()
+    expect(() =>
+      mock.handlers.get(IPC.developerCommandsDelete)!(event, {
+        id: 'builtin:docker-logs',
+        expectedRevision: 0
+      })
+    ).toThrow()
     expect(store.commandLibraryGet).not.toHaveBeenCalled()
   })
 })

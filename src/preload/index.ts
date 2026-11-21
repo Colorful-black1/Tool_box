@@ -74,7 +74,8 @@ const bridge: ToolboxBridge = {
     read: () => ipcRenderer.invoke(IPC.developerCommandsRead),
     save: (input) => ipcRenderer.invoke(IPC.developerCommandsSave, input),
     setFavorite: (input) => ipcRenderer.invoke(IPC.developerCommandsFavorite, input),
-    setArchived: (input) => ipcRenderer.invoke(IPC.developerCommandsArchive, input)
+    setArchived: (input) => ipcRenderer.invoke(IPC.developerCommandsArchive, input),
+    remove: (input) => ipcRenderer.invoke(IPC.developerCommandsDelete, input)
   },
   todos: {
     list: (query) => ipcRenderer.invoke(IPC.todosList, query),

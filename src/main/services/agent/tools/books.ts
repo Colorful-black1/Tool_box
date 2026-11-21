@@ -173,19 +173,5 @@ export const bookTools: ToolFactory = ({ store, importService }) => [
       store.setBooksGroup([book.id], group.id)
       return { book: book.title, group: group.name }
     }
-  },
-  {
-    name: 'books_delete',
-    description: '删除一本小说及其全部章节、书签与阅读进度。此操作不可撤销。',
-    schema: z.object({
-      book: z.string().max(120).describe('书名或书籍 ID')
-    }),
-    risk: 'destructive',
-    summarize: (_input, result) => `已删除《${(result as { deleted: string }).deleted}》`,
-    handler: async (input) => {
-      const book = resolveBook(store, String(input.book ?? ''))
-      store.deleteBook(book.id)
-      return { deleted: book.title }
-    }
   }
 ]

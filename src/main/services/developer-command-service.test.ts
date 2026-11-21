@@ -65,6 +65,17 @@ describe('命令库独立 kv 服务', () => {
       service.setArchived({ id: 'builtin:docker-logs', value: true, expectedRevision: 4 })
     ).toThrow('个人')
   })
+  it('彻底删除个人命令并清理收藏，不能删除内置命令', () => {
+    const { service } = fixture()
+    const id = service.save(input).entries[0].id
+    service.setFavorite({ id, value: true, expectedRevision: 1 })
+    const deleted = service.remove({ id, expectedRevision: 2 })
+    expect(deleted.entries).toEqual([])
+    expect(deleted.favoriteIds).toEqual([])
+    expect(() =>
+      service.remove({ id: 'builtin:docker-logs', expectedRevision: 3 })
+    ).toThrow('个人')
+  })
   it('损坏文档保留原样且阻止继续写入', () => {
     const f = fixture()
     f.corrupt('{broken')

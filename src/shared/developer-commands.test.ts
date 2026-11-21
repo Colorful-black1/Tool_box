@@ -3,6 +3,7 @@ import { DEVELOPER_COMMAND_PRESETS } from './developer-command-presets'
 import { EMPTY_COMMAND_LIBRARY, searchDeveloperCommands } from './developer-commands'
 import type { CommandFilters } from './developer-commands'
 import {
+  parseDeveloperCommandDelete,
   parseDeveloperCommandInput,
   parseDeveloperCommandSnapshot
 } from './developer-command-validation'
@@ -82,6 +83,17 @@ describe('命令速查目录与校验', () => {
     { title: 'a'.repeat(81) }
   ])('拒绝非法输入 %j', (patch) => {
     expect(() => parseDeveloperCommandInput({ ...commandInput, ...patch })).toThrow()
+  })
+  it('删除输入只接受个人命令 ID 和有效 revision', () => {
+    const id = 'user:00000000-0000-0000-0000-000000000000'
+    expect(parseDeveloperCommandDelete({ id, expectedRevision: 2 })).toEqual({
+      id,
+      expectedRevision: 2
+    })
+    expect(() =>
+      parseDeveloperCommandDelete({ id: 'builtin:docker-logs', expectedRevision: 2 })
+    ).toThrow('无效')
+    expect(() => parseDeveloperCommandDelete({ id, expectedRevision: -1 })).toThrow('版本')
   })
   it('拒绝未知文档版本、重复 ID 与悬空收藏', () => {
     expect(() => parseDeveloperCommandSnapshot({ ...EMPTY_COMMAND_LIBRARY, version: 2 })).toThrow()

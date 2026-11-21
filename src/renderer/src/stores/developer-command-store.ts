@@ -19,6 +19,7 @@ interface DeveloperCommandState {
   save(input: DeveloperCommandInput): Promise<boolean>
   favorite(id: string, value: boolean): Promise<boolean>
   archive(id: string, value: boolean): Promise<boolean>
+  remove(id: string): Promise<boolean>
 }
 const errorText = (error: unknown): string =>
   error instanceof Error
@@ -76,6 +77,13 @@ export const useDeveloperCommandStore = create<DeveloperCommandState>((set, get)
         window.toolbox.developerCommands.setArchived({
           id,
           value,
+          expectedRevision: get().snapshot.revision
+        })
+      ),
+    remove: (id) =>
+      write(() =>
+        window.toolbox.developerCommands.remove({
+          id,
           expectedRevision: get().snapshot.revision
         })
       )

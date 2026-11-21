@@ -1,5 +1,6 @@
 import { COMMAND_RISKS, COMMAND_SHELLS } from './developer-commands'
 import type {
+  DeveloperCommandDelete,
   DeveloperCommandFields,
   DeveloperCommandInput,
   DeveloperCommandSnapshot,
@@ -65,6 +66,13 @@ export function parseDeveloperCommandToggle(value: unknown): DeveloperCommandTog
   return {
     id: commandId(input.id),
     value: input.value,
+    expectedRevision: revision(input.expectedRevision)
+  }
+}
+export function parseDeveloperCommandDelete(value: unknown): DeveloperCommandDelete {
+  const input = object(value)
+  return {
+    id: commandId(input.id, true),
     expectedRevision: revision(input.expectedRevision)
   }
 }

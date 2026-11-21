@@ -27,8 +27,10 @@ const input = {
   title: '自定义多行',
   command: '  echo "中文"\n\tprintf \'\\n\'  \n',
   category: 'Linux',
-  shell: 'bash',
-  risk: 'read'
+  description: '',
+  tags: [],
+  shell: 'bash' as const,
+  risk: 'read' as const
 }
 
 describe('AI 对话命令速查工具', () => {
@@ -121,6 +123,89 @@ describe('AI 对话命令速查工具', () => {
       create.prepare!({ ...input, id: 'builtin:docker-containers' }, context)
     ).rejects.toThrow()
     expect(store.commandLibrarySet).not.toHaveBeenCalled()
+  })
+  it('搜索结果区分内置与我的命令，并返回标签', async () => {
+    const { tools, context, service } = fixture()
+    service.save({ ...input, expectedRevision: 0 })
+    const search = tools.find((tool) => tool.name === 'commands_search')!
+    const result = (await search.handler({ query: '自定义多行' }, context)) as {
+      items: Array<{ origin: string; tags: string[] }>
+    }
+    expect(result.items[0]).toMatchObject({ origin: 'mine', tags: [] })
+  })
+  it('编辑只作用于我的命令，审批预览展示字段变化且不执行命令', async () => {
+    const { tools, context, service } = fixture()
+    const saved = service.save({ ...input, expectedRevision: 0 }).entries[0]
+    const approve = vi.fn(async (event: { args: string }) => {
+      expect(event.args).toContain('标题：自定义多行 → 新标题')
+      expect(event.args).toContain('命令原文：')
+      expect(event.args).toContain('仅保存，不执行命令')
+      return true
+    })
+    const update = buildLangChainTools(tools, 'confirm', {
+      ...context,
+      requestApproval: approve
+    }).find((item) => item.name === 'commands_update')!
+    const result = await update.invoke({
+      id: saved.id,
+      title: '新标题',
+      command: '  echo updated\n',
+      tags: ['更新']
+    })
+    expect(result).toContain('"updated":true')
+    expect(approve).toHaveBeenCalledOnce()
+    expect(service.read().entries[0]).toMatchObject({
+      title: '新标题',
+      command: '  echo updated\n',
+      tags: ['更新']
+    })
+  })
+  it('编辑拒绝内置命令、归档命令、空修改和重复命令', async () => {
+    const { tools, context, service } = fixture()
+    const update = tools.find((tool) => tool.name === 'commands_update')!
+    await expect(
+      update.prepare!({ id: 'builtin:docker-logs', title: '不能改' }, context)
+    ).rejects.toThrow('我的命令')
+    const first = service.save({ ...input, expectedRevision: 0 }).entries[0]
+    await expect(update.prepare!({ id: first.id }, context)).rejects.toThrow('没有需要修改的字段')
+    service.save({
+      title: '第二条',
+      command: 'pwd',
+      category: '其他',
+      description: '',
+      tags: [],
+      shell: 'bash',
+      risk: 'read',
+      expectedRevision: 1
+    })
+    await expect(
+      update.prepare!({ id: first.id, command: 'pwd' }, context)
+    ).rejects.toThrow('已存在')
+    service.setArchived({ id: first.id, value: true, expectedRevision: 2 })
+    await expect(update.prepare!({ id: first.id, title: '归档后' }, context)).rejects.toThrow(
+      '先恢复'
+    )
+    expect(service.read().entries.find((entry) => entry.id === first.id)?.title).toBe(
+      '自定义多行'
+    )
+  })
+  it('删除我的命令需审批，内置命令拒绝删除', async () => {
+    const { tools, context, service } = fixture()
+    const saved = service.save({ ...input, expectedRevision: 0 }).entries[0]
+    const approve = vi.fn(async (event: { args: string }) => {
+      expect(event.args).toContain('彻底删除命令「自定义多行」')
+      expect(event.args).toContain('删除后无法恢复')
+      return true
+    })
+    const remove = buildLangChainTools(tools, 'confirm', {
+      ...context,
+      requestApproval: approve
+    }).find((item) => item.name === 'commands_delete')!
+    expect(await remove.invoke({ id: saved.id })).toContain('"deleted":"自定义多行"')
+    expect(approve).toHaveBeenCalledOnce()
+    expect(service.read().entries).toEqual([])
+    const native = tools.find((tool) => tool.name === 'commands_delete')!
+    await expect(native.prepare!({ id: 'builtin:docker-logs' }, context)).rejects.toThrow('我的命令')
   })
   it('搜索输出有界并明确标注长命令被截断，不能视为完整原文', async () => {
     const { tools, context, service } = fixture()

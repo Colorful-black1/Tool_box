@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { EMPTY_COMMAND_LIBRARY } from '../../shared/developer-commands'
 import type {
+  DeveloperCommandDelete,
   DeveloperCommandInput,
   DeveloperCommandSnapshot,
   DeveloperCommandToggle
@@ -56,6 +57,15 @@ export class DeveloperCommandService {
       const entry = document.entries.find((item) => item.id === input.id)
       if (!entry) throw new Error('只能归档或恢复个人命令')
       entry.archivedAtMs = input.value ? (entry.archivedAtMs ?? Date.now()) : null
+    })
+  }
+  /** 彻底删除个人命令；内置命令不在个人文档中，无法通过此入口删除。 */
+  remove(input: DeveloperCommandDelete): DeveloperCommandSnapshot {
+    return this.mutate(input.expectedRevision, (document) => {
+      const index = document.entries.findIndex((item) => item.id === input.id)
+      if (index < 0) throw new Error('只能删除个人命令')
+      document.entries.splice(index, 1)
+      document.favoriteIds = document.favoriteIds.filter((id) => id !== input.id)
     })
   }
   private mutate(

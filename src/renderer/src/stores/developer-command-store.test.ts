@@ -37,6 +37,23 @@ describe('命令库写入状态', () => {
     await useDeveloperCommandStore.getState().load()
     expect(useDeveloperCommandStore.getState().ready).toBe(false)
   })
+  it('彻底删除通过桥接提交并更新快照', async () => {
+    const next = { ...EMPTY_COMMAND_LIBRARY, revision: 1 }
+    const remove = vi.fn().mockResolvedValue(next)
+    vi.stubGlobal('window', {
+      toolbox: {
+        developerCommands: {
+          read: vi.fn().mockResolvedValue(EMPTY_COMMAND_LIBRARY),
+          remove
+        }
+      }
+    })
+    await useDeveloperCommandStore.getState().load()
+    const id = 'user:00000000-0000-0000-0000-000000000000'
+    expect(await useDeveloperCommandStore.getState().remove(id)).toBe(true)
+    expect(remove).toHaveBeenCalledWith({ id, expectedRevision: 0 })
+    expect(useDeveloperCommandStore.getState().snapshot.revision).toBe(1)
+  })
   it('并发写入被拒绝，读取不能用旧响应覆盖正在保存的快照', async () => {
     let finish!: (value: typeof EMPTY_COMMAND_LIBRARY) => void
     const save = vi.fn(

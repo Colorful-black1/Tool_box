@@ -3,6 +3,7 @@ export const IPC = {
   developerCommandsSave: 'developer-commands:save',
   developerCommandsFavorite: 'developer-commands:favorite:set',
   developerCommandsArchive: 'developer-commands:archive:set',
+  developerCommandsDelete: 'developer-commands:delete',
   todosList: 'todos:list',
   todosSave: 'todos:save',
   todosComplete: 'todos:complete',

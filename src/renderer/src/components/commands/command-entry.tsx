@@ -21,6 +21,7 @@ export function CommandEntry({
 }): JSX.Element {
   const setFavorite = useDeveloperCommandStore((state) => state.favorite)
   const archive = useDeveloperCommandStore((state) => state.archive)
+  const remove = useDeveloperCommandStore((state) => state.remove)
   const [copied, setCopied] = useState(false)
   const [copying, setCopying] = useState(false)
   const [error, setError] = useState('')
@@ -34,6 +35,11 @@ export function CommandEntry({
   }, [entry.command])
   const personal = entry.id.startsWith('user:')
   const archived = entry.archivedAtMs !== null
+  const removePermanently = async (): Promise<void> => {
+    if (disabled) return
+    const ok = await confirmDialog(`彻底删除「${entry.title}」？删除后无法恢复。`)
+    if (ok) await remove(entry.id)
+  }
   const copy = async (): Promise<void> => {
     if (copying) return
     setCopying(true)
@@ -88,14 +94,25 @@ export function CommandEntry({
             {copied ? '已复制' : '复制'}
           </button>
           {archived ? (
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={disabled}
-              onClick={() => void archive(entry.id, false)}
-            >
-              恢复
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={disabled}
+                onClick={() => void archive(entry.id, false)}
+              >
+                恢复
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                aria-label={`彻底删除：${entry.title}`}
+                disabled={disabled}
+                onClick={() => void removePermanently()}
+              >
+                删除
+              </button>
+            </>
           ) : (
             <Dropdown
               ariaLabel={`更多：${entry.title}`}
@@ -106,12 +123,14 @@ export function CommandEntry({
                 personal
                   ? [
                       { value: 'edit', label: '编辑' },
-                      { value: 'archive', label: '归档' }
+                      { value: 'archive', label: '归档' },
+                      { value: 'delete', label: '彻底删除' }
                     ]
                   : [{ value: 'edit', label: '另存为我的命令' }]
               }
               onChange={(action) => {
                 if (action === 'edit') onEdit(entry)
+                else if (action === 'delete') void removePermanently()
                 else
                   void confirmDialog(`归档「${entry.title}」？之后可在归档中恢复。`).then((ok) => {
                     if (ok) void archive(entry.id, true)

@@ -46,6 +46,11 @@ export interface DeveloperCommandToggle {
   value: boolean
   expectedRevision: number
 }
+/** 物理删除个人命令；内置命令不在个人文档中，不能删除。 */
+export interface DeveloperCommandDelete {
+  id: string
+  expectedRevision: number
+}
 export type CommandLibraryView = 'all' | 'favorites' | 'mine' | 'archived'
 export interface CommandFilters {
   query: string

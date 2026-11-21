@@ -109,6 +109,7 @@ import type {
   KbSearchResult
 } from './knowledge-base'
 import type {
+  DeveloperCommandDelete,
   DeveloperCommandInput,
   DeveloperCommandSnapshot,
   DeveloperCommandToggle
@@ -139,6 +140,7 @@ export interface ToolboxBridge {
     save(input: DeveloperCommandInput): Promise<DeveloperCommandSnapshot>
     setFavorite(input: DeveloperCommandToggle): Promise<DeveloperCommandSnapshot>
     setArchived(input: DeveloperCommandToggle): Promise<DeveloperCommandSnapshot>
+    remove(input: DeveloperCommandDelete): Promise<DeveloperCommandSnapshot>
   }
   todos: {
     list(query: TodoQuery): Promise<TodoSnapshot>

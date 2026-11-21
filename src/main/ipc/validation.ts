@@ -12,6 +12,7 @@ import {
 import type { KbListInput, KbSearchInput } from '../../shared/knowledge-base'
 
 import {
+  parseDeveloperCommandDelete,
   parseDeveloperCommandInput,
   parseDeveloperCommandToggle
 } from '../../shared/developer-command-validation'
@@ -89,6 +90,7 @@ export function validateClipboardPin(value: unknown): { id: string; pinned: bool
 /** 专用 IPC 校验入口，正文不能经 requireString 去除首尾空白。 */
 export const validateDeveloperCommandInput = parseDeveloperCommandInput
 export const validateDeveloperCommandToggle = parseDeveloperCommandToggle
+export const validateDeveloperCommandDelete = parseDeveloperCommandDelete
 
 /** 知识库类别：未传 / 空串表示「全部」，其余只接受小写字母、数字与连字符。 */
 export function validateKbCategory(value: unknown, name = '资料类别'): string | undefined {

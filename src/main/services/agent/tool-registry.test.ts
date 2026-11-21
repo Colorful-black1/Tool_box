@@ -20,7 +20,7 @@ function def(name: string, risk: AgentToolDefinition['risk']): AgentToolDefiniti
 
 const tools: AgentToolDefinition[] = [
   def('books_list', 'read'),
-  def('books_delete', 'destructive'),
+  def('notes_delete', 'destructive'),
   def('notes_save', 'write')
 ]
 
