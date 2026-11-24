@@ -190,6 +190,35 @@ describe('AI 模型世界派生逻辑', () => {
     ]
     const index = createAiWorldIndex(snapshot(models))
     expect(index.recentReleases.map((item) => item.id)).toEqual(['today', 'six-days', 'boundary'])
+    expect(index.latestReleases.map((item) => item.id)).toEqual([
+      'today',
+      'six-days',
+      'boundary',
+      'older'
+    ])
+  })
+
+  it('最新 10 个不受 7 天窗口限制，按日期取前 10 个在役模型', () => {
+    const models = Array.from({ length: 12 }, (_, index) =>
+      model(`m${index}`, {
+        releaseDate: `2026-05-${String(24 - index).padStart(2, '0')}`
+      })
+    )
+    models.push(
+      model('month', { releaseDate: '2026-05-30', releaseDatePrecision: 'month' }),
+      model('retired', { releaseDate: '2026-05-30', retiredAt: '2026-06-01' }),
+      model('future', { releaseDate: '2026-06-02' }),
+      model('no-data', {
+        releaseDate: '2026-05-30',
+        contextWindow: null,
+        pricing: { inputPerMTok: null, outputPerMTok: null, cachedInputPerMTok: null }
+      })
+    )
+    const index = createAiWorldIndex(snapshot(models))
+    expect(index.recentReleases).toEqual([])
+    expect(index.latestReleases).toHaveLength(10)
+    expect(index.latestReleases[0].id).toBe('m0')
+    expect(index.latestReleases.at(-1)?.id).toBe('m9')
   })
 
   it('模型类型只看模态，编程共识只取第三方赛制', () => {

@@ -128,23 +128,45 @@ function ChampionCard({
   )
 }
 
+type RecentScope = 'week' | 'latest'
+
 function RecentReleasesCard({
   models,
+  latest,
   onOpen
 }: {
   models: AiWorldModel[]
+  latest: AiWorldModel[]
   onOpen: (model: AiWorldModel) => void
 }): JSX.Element {
+  // 7 天窗口为空时直接落到「最新 10 个」，避免卡片看起来没有内容。
+  const [scope, setScope] = useState<RecentScope>(models.length ? 'week' : 'latest')
+  const visible = scope === 'week' ? models : latest
   return (
-    <section className="ai-world-champion ai-world-recent" aria-label="最近一周发布">
+    <section className="ai-world-champion ai-world-recent" aria-label="最新发布">
       <span className="ai-world-champion-label">最新发布</span>
       <div className="ai-world-recent-head">
-        <span className="ai-world-recent-window">近 7 天</span>
-        <span className="ai-world-recent-count">{models.length} 个模型</span>
+        <div className="ai-world-recent-tabs" role="group" aria-label="最新发布范围">
+          <button
+            type="button"
+            aria-pressed={scope === 'week'}
+            onClick={() => setScope('week')}
+          >
+            近 7 天
+          </button>
+          <button
+            type="button"
+            aria-pressed={scope === 'latest'}
+            onClick={() => setScope('latest')}
+          >
+            最新 10 个
+          </button>
+        </div>
+        <span className="ai-world-recent-count">{visible.length} 个模型</span>
       </div>
-      {models.length ? (
+      {visible.length ? (
         <ul className="ai-world-recent-list">
-          {models.map((model) => (
+          {visible.map((model) => (
             <li key={model.id}>
               <button
                 type="button"
@@ -159,7 +181,11 @@ function RecentReleasesCard({
           ))}
         </ul>
       ) : (
-        <span className="ai-world-recent-empty">近 7 天没有新发布</span>
+        <span className="ai-world-recent-empty">
+          {scope === 'week'
+            ? '近 7 天没有新发布，可切到「最新 10 个」'
+            : '暂无发布日期精确到日的模型'}
+        </span>
       )}
     </section>
   )
@@ -374,6 +400,7 @@ export function AiWorldPage(): JSX.Element {
                   <RecentReleasesCard
                     key={champion.key}
                     models={index.recentReleases}
+                    latest={index.latestReleases}
                     onOpen={setSelected}
                   />
                 ) : (

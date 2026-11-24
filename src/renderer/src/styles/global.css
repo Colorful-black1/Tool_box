@@ -10058,9 +10058,34 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   margin-top: 4px;
 }
 
-.ai-world-recent-window {
+.ai-world-recent-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.ai-world-recent-tabs button {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.ai-world-recent-tabs button:hover {
+  color: var(--text-hi);
+}
+
+.ai-world-recent-tabs button:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.ai-world-recent-tabs button[aria-pressed='true'] {
+  border-color: var(--gold-line);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--gold);
 }
 
 .ai-world-recent-count {

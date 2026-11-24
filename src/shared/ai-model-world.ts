@@ -152,6 +152,9 @@ export const AI_WORLD_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 /** 「最新发布」展示最近一周内发布的模型。 */
 export const AI_WORLD_RECENT_RELEASE_DAYS = 7
 
+/** 「最新发布」的第二个视图：不受 7 天窗口限制，最多展示 10 个日期最新的模型。 */
+export const AI_WORLD_LATEST_RELEASE_LIMIT = 10
+
 export type AiWorldKind = 'text' | 'vision' | 'omni' | 'image' | 'video' | 'audio'
 
 export const AI_WORLD_KIND_LABELS: Record<AiWorldKind, string> = {
@@ -197,6 +200,8 @@ export interface AiWorldIndex {
   champions: AiWorldChampion[]
   /** 最近一周（按快照生成日倒推）内发布、且发布日期精确到日的在役模型，按发布日期倒序。 */
   recentReleases: AiWorldModel[]
+  /** 日期精确到日的最新 10 个在役模型，不受 7 天窗口限制。 */
+  latestReleases: AiWorldModel[]
   metricsOf(model: AiWorldModel): AiWorldMetrics
   scoresOf(model: AiWorldModel): AiWorldBenchmarkScore[]
 }
@@ -488,18 +493,21 @@ export function createAiWorldIndex(snapshot: AiWorldSnapshot): AiWorldIndex {
   const now = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt
   const trusted = alive.filter(hasCoreData)
   const recentWindow = recentReleaseWindow(now, AI_WORLD_RECENT_RELEASE_DAYS)
-  const recentReleases = trusted
+  const datedReleases = trusted
     .filter(
       (model) =>
         model.releaseDatePrecision === 'day' &&
         model.releaseDate != null &&
-        model.releaseDate >= recentWindow.from &&
         model.releaseDate <= recentWindow.to
     )
     .sort(
       (a, b) =>
         (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '') || a.name.localeCompare(b.name)
     )
+  const recentReleases = datedReleases.filter(
+    (model) => (model.releaseDate ?? '') >= recentWindow.from
+  )
+  const latestReleases = datedReleases.slice(0, AI_WORLD_LATEST_RELEASE_LIMIT)
   const scored = alive.filter((model) => model.benchmarks.eci != null)
   const champions: AiWorldChampion[] = []
   const push = (key: AiWorldChampionKey, hit: { model: AiWorldModel } | null): void => {
@@ -548,5 +556,15 @@ export function createAiWorldIndex(snapshot: AiWorldSnapshot): AiWorldIndex {
     )
   )
 
-  return { snapshot, vendors, alive, ranks, champions, recentReleases, metricsOf, scoresOf }
+  return {
+    snapshot,
+    vendors,
+    alive,
+    ranks,
+    champions,
+    recentReleases,
+    latestReleases,
+    metricsOf,
+    scoresOf
+  }
 }
