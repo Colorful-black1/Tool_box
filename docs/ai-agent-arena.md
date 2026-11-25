@@ -12,7 +12,7 @@
 | Terminal-Bench | 当前页面显示 4.1 | Resolution Rate | 官方 rank / accuracy / Pass@k / 成本 / Token |
 | FrontierHarness | live feed | Cost per pass | 官方效率榜；按 Cost per pass 升序，相同则通过率高者优先 |
 
-EasyAI 当前没有数据，且数据源为 Artificial Analysis；与现有「不使用 Artificial Analysis 数据」的策略冲突，暂不接入。
+EasyAI 当前没有数据，Agent 维度暂不接入；Artificial Analysis 现作为模型榜的独立数据源，不与 Agent 榜混合。
 
 三个榜单考察的重点不同，页面「测试重点」一栏会随来源切换：
 

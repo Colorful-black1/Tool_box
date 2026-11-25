@@ -115,6 +115,12 @@ import type {
   DeveloperCommandToggle
 } from './developer-commands'
 import type { AiAgentArenaQuery, AiAgentArenaResult } from './ai-agent-arena'
+import type {
+  AiWorldAaKeyInput,
+  AiWorldAaKeyStatus,
+  AiWorldAaQuery,
+  AiWorldAaResult
+} from './ai-world-aa'
 
 export interface ToolboxBridge {
   backup: {
@@ -186,6 +192,14 @@ export interface ToolboxBridge {
     get(query?: AiWorldQuery): Promise<AiWorldResult>
     /** 只允许打开当前快照中出现过的来源链接。 */
     openSource(url: string): Promise<void>
+  }
+  aiWorldAa: {
+    /** 读取 Artificial Analysis 模型榜；未配置 Key 时返回 configured=false。 */
+    get(query?: AiWorldAaQuery): Promise<AiWorldAaResult>
+    /** 只返回是否已配置，不返回 Key 明文。 */
+    keyStatus(): Promise<AiWorldAaKeyStatus>
+    saveKey(input: AiWorldAaKeyInput): Promise<AiWorldAaKeyStatus>
+    clearKey(): Promise<AiWorldAaKeyStatus>
   }
   aiAgentArena: {
     /** 读取 Agent 排行；allowStale 只读本地缓存，force 跳过各来源 TTL。 */

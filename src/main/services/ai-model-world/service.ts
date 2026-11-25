@@ -4,6 +4,11 @@ import { dirname } from 'node:path'
 import { AI_WORLD_CACHE_TTL_MS } from '../../../shared/ai-model-world'
 import type { AiWorldQuery, AiWorldResult, AiWorldSnapshot } from '../../../shared/ai-model-world'
 import { AI_AGENT_ARENA_SOURCES } from '../../../shared/ai-agent-arena'
+import {
+  AI_WORLD_AA_KEY_URL,
+  AI_WORLD_AA_MODELS_URL,
+  AI_WORLD_AA_SOURCE_URL
+} from '../../../shared/ai-world-aa'
 import type { FetchLike } from '../github-trending/fetch'
 import { collectNativeSnapshot } from './native'
 import { NativeSourceError } from './native/http'
@@ -23,6 +28,9 @@ const FIXED_SOURCE_URLS = [
   'https://epoch.ai/benchmarks',
   'https://livebench.ai',
   'https://huggingface.co',
+  AI_WORLD_AA_SOURCE_URL,
+  AI_WORLD_AA_MODELS_URL,
+  AI_WORLD_AA_KEY_URL,
   ...AI_AGENT_ARENA_SOURCES.map((source) => source.url)
 ]
 

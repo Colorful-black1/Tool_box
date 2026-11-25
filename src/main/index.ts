@@ -5,6 +5,7 @@ import { BrowserWindow, Menu, Tray, app, nativeTheme, safeStorage, dialog, net }
 import {
   DB_FILE_NAME,
   AI_AGENT_ARENA_CACHE_FILE_NAME,
+  AI_WORLD_AA_CACHE_FILE_NAME,
   AI_WORLD_CACHE_FILE_NAME,
   TRENDING_CACHE_FILE_NAME
 } from '../shared/constants'
@@ -29,6 +30,8 @@ import { MemoryService } from './services/memory/memory-service'
 import { recoverInterruptedRestore } from './services/backup/backup-service'
 import { GithubTrendingService } from './services/github-trending/service'
 import { AiWorldService } from './services/ai-model-world/service'
+import { AiWorldAaService } from './services/ai-world-aa/service'
+import { AiWorldAaKeyService } from './services/ai-world-aa/key-service'
 import { AiAgentArenaService } from './services/ai-agent-arena/service'
 import { ExtensionsService } from './services/extensions/service'
 import { applyWindowTheme, windowThemeOptions } from './window-theme'
@@ -145,6 +148,18 @@ function initializeServices(): void {
     fetchImpl: (input, init) => net.fetch(input, init),
     cacheFile: join(userDataDir, AI_WORLD_CACHE_FILE_NAME)
   })
+  const aiWorldAaKeys = new AiWorldAaKeyService(
+    {
+      getCipher: () => store.aiWorldAaKeyCipherGet(),
+      setCipher: (value) => store.aiWorldAaKeyCipherSet(value)
+    },
+    safeStorageAdapter
+  )
+  const aiWorldAa = new AiWorldAaService({
+    fetchImpl: (input, init) => net.fetch(input, init),
+    cacheFile: join(userDataDir, AI_WORLD_AA_CACHE_FILE_NAME),
+    getApiKey: () => aiWorldAaKeys.getKey()
+  })
   const aiAgentArena = new AiAgentArenaService({
     fetchImpl: (input, init) => net.fetch(input, init),
     cacheFile: join(userDataDir, AI_AGENT_ARENA_CACHE_FILE_NAME)
@@ -166,6 +181,8 @@ function initializeServices(): void {
     knowledge,
     trending,
     aiWorld,
+    aiWorldAa,
+    aiWorldAaKeys,
     aiAgentArena,
     extensions,
     memory

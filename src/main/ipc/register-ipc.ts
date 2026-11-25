@@ -52,6 +52,9 @@ import { registerExtensionsIpc } from './extensions-ipc'
 import type { ExtensionsService } from '../services/extensions/service'
 import { registerAiWorldIpc } from './ai-world-ipc'
 import type { AiWorldService } from '../services/ai-model-world/service'
+import { registerAiWorldAaIpc } from './ai-world-aa-ipc'
+import type { AiWorldAaService } from '../services/ai-world-aa/service'
+import type { AiWorldAaKeyService } from '../services/ai-world-aa/key-service'
 import type { AiAgentArenaService } from '../services/ai-agent-arena/service'
 import { registerAiAgentArenaIpc } from './ai-agent-arena-ipc'
 import { MemoryService } from '../services/memory/memory-service'
@@ -87,6 +90,8 @@ export interface IpcDependencies {
   knowledge?: KnowledgeBaseService
   trending?: GithubTrendingService
   aiWorld?: AiWorldService
+  aiWorldAa?: AiWorldAaService
+  aiWorldAaKeys?: AiWorldAaKeyService
   aiAgentArena?: AiAgentArenaService
   extensions?: ExtensionsService
   memory?: MemoryService
@@ -100,6 +105,7 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   registerAgentUsageIpc(dependencies.usage)
   registerTrendingIpc(dependencies.trending)
   registerAiWorldIpc(dependencies.aiWorld)
+  registerAiWorldAaIpc(dependencies.aiWorldAa, dependencies.aiWorldAaKeys)
   registerAiAgentArenaIpc(dependencies.aiAgentArena)
   registerExtensionsIpc(dependencies.extensions)
   if (dependencies.knowledge) registerKnowledgeIpc(dependencies.knowledge)

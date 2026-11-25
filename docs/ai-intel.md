@@ -78,13 +78,14 @@ Epoch AI benchmark_data.zip         → ECI、核心评测、编程赛制、Live
 
 - 两个来源并行抓取：models.dev 失败则本次失败；Epoch 失败则保留 models.dev 的模型列表并在页面提示。
 - 没有内置上游快照：首次运行需要联网，之后优先用缓存；网络失败且无缓存时明确报错，不伪造数据。
-- 不使用 Artificial Analysis 数据。
+- Artificial Analysis 作为独立模型榜接入，走官方 Data API 免费档，需要用户配置 API Key；AA 数据不合并进 ECI 快照。
 - 快照结构异常时拒绝本次采集并回退旧缓存；没有旧缓存时明确报错。
-- 页面显示本次生成时间；数据来源弹层列出 models.dev、Epoch AI 与经 Epoch 收录的 LiveBench 同源 CSV。
+- 页面显示本次生成时间；数据来源弹层列出 models.dev、Epoch AI、Artificial Analysis 与经 Epoch 收录的 LiveBench 同源 CSV。
+- AA 模型榜是独立链路：官方 Data API 免费档 → 主进程解析与校验 → `userData/ai-world-aa-cache.json`（12 小时 TTL）→ `ai-world:aa:get`；不进入 ECI 快照。
 
 ### 能力-价格前沿
 
-- 模型列表与「能力-价格前沿」两个视图切换；前沿图用快照内 ECI 与输出价格绘制，不引入 Artificial Analysis。
+- 模型列表与「能力-价格前沿」两个视图切换；前沿图用快照内 ECI 与输出价格绘制，不使用 AA 指标。
 - 横轴为输出价格（USD / 1M tokens，对数），纵轴为 ECI；金线连接受价格升序刷新最高 ECI 的点，即同价位能力上限。
 - 仅纳入「文本输出 + 有正输出价格 + 有 ECI」的未退役模型；没有有效点时显示空状态，不补 0。
 - 点、图例、悬浮详情与前沿卡片都可打开模型详情；悬浮显示 ECI、输出价、上下文与开源状态。
@@ -107,18 +108,22 @@ Epoch AI benchmark_data.zip         → ECI、核心评测、编程赛制、Live
 
 | 通道 | 入参 | 返回 | 约束 |
 | --- | --- | --- | --- |
-| `ai-world:get` | `{ force?: boolean }` | `AiWorldView` | 无缓存且采集失败时报可读错误 |
+| `ai-world:get` | `{ allowStale?: boolean; force?: boolean }` | `AiWorldView` | 无缓存且采集失败时报可读错误 |
 | `ai-world:open-source` | `{ url: string }` | `void` | 只允许当前快照与固定来源中的 HTTPS 地址 |
+| `ai-world:aa:get` | `{ allowStale?: boolean; force?: boolean }` | `AiWorldAaResult` | 未配置 Key 时返回 `configured=false` |
+| `ai-world:aa:key:status` | 无 | `{ configured: boolean }` | 不返回 Key 明文 |
+| `ai-world:aa:key:save` | `{ apiKey: string }` | `{ configured: boolean }` | 最长 256 字符；主进程加密后落库 |
+| `ai-world:aa:key:clear` | 无 | `{ configured: boolean }` | 删除本机保存的 Key |
 
 - 两个通道都做窗口与主 frame 校验。
 - 来源链接白名单：当前快照里出现的来源 URL 与固定来源列表，其它地址一律拒绝。
-- 缓存文件与快照都在应用数据目录，不写数据库、不进备份。
+- 缓存文件与快照都在应用数据目录；AA Key 加密保存在本机 SQLite `kv` 表，不写日志、不返回渲染层。
 
 ## 9. 依赖与数据落点
 
 - 新增两个纯 JS 依赖：`fflate`（解压）与 `csv-parse`（解析 CSV），在 `package.json` 的 dependencies 中。
-- 不改 schema、不需要 API Key、不写 `toolbox.db`。
-- 缓存文件：`userData/github-trending-cache.json`、`userData/ai-model-world-cache.json`、`userData/ai-agent-arena-cache.json`。
+- 不改 schema、不写 `toolbox.db` 业务表；AA Key 使用现有 `kv` 表保存密文。
+- 缓存文件：`userData/github-trending-cache.json`、`userData/ai-model-world-cache.json`、`userData/ai-world-aa-cache.json`、`userData/ai-agent-arena-cache.json`。
 
 ## 10. 验证状态与已知限制
 
@@ -132,10 +137,23 @@ Epoch AI benchmark_data.zip         → ECI、核心评测、编程赛制、Live
 ## 11. Agent 排行（AI 模型世界内）
 
 - 入口：AI 模型世界顶部「模型榜 / Agent 榜」切换；不新增左侧导航。
-- 来源：CodeAgentBench（SWE-Bench-Pro）、Terminal-Bench、FrontierHarness；EasyAI 当前无数据且来源为 Artificial Analysis，不接入。
+- 来源：CodeAgentBench（SWE-Bench-Pro）、Terminal-Bench、FrontierHarness；EasyAI 当前无数据，Agent 维度暂不接入。
 - 数据按 Agent × 模型组合展示；不同来源分榜，不跨榜合并综合分。
 - FrontierHarness 读取公开 live feed，在主进程按官方 Cost per pass 口径聚合；其余两个来源使用官方排名/指标。
 - 独立缓存 `userData/ai-agent-arena-cache.json`；各来源独立 TTL：Frontier 15 分钟、Terminal-Bench 60 分钟、CodeAgentBench 12 小时。
 - 只读 IPC：`ai-agent-arena:get`，入参 `{ force?: boolean; allowStale?: boolean }`；来源链接复用 `ai-world:open-source` 白名单。
 - 页面打开先显示缓存，过期后后台刷新；Agent 榜可见时每 5 分钟检查一次；单来源失败保留旧数据并提示。
 - 详细公式、字段与解析边界见 [`docs/ai-agent-arena.md`](ai-agent-arena.md)。
+
+## 12. Artificial Analysis 模型榜（AI 模型世界内）
+
+- 入口：模型榜内的数据源切换「ToolBox 综合 / Artificial Analysis」；不新增左侧导航，也不合并进 ECI 表。
+- 接口：官方 Data API 免费档 `GET https://artificialanalysis.ai/api/v2/language/models/free`，`x-api-key` 认证，服务端分页。
+- Key：在「AI 模型世界 → 数据来源与许可」里配置，不在设置页新增入口；主进程经系统安全存储加密后写入 SQLite `kv`，渲染层只能读 `configured`。
+- 缓存：`userData/ai-world-aa-cache.json`，12 小时 TTL；免费档 100 次 / 24 小时，手动刷新有 5 分钟冷却。
+- 展示字段：Intelligence Index（带版本）、六项行业能力指数、每任务成本、输出速度、首字延迟、输入 / 输出价格、发布日期与厂商。
+- 榜单内可切换「列表 / 智能 × 成本前沿」；横轴可选每任务成本或输出价格（对数），纵轴为 Intelligence Index，金线连接同成本下的智能上限。
+- 不使用已停更的 Coding / Agentic Index；性能字段只读 `performance_v3`。
+- AA 指数与 ECI 是两套独立评测，不互相换算；缺少指标显示「—」而不是 0。
+- 失败处理：未配置 Key、401、403、429 分别给出可读提示；有缓存时保留上次成功数据，不影响 models.dev / Epoch 快照。
+- 授权：免费档要求署名；页面与数据来源弹层保留 Artificial Analysis 链接。公开发布前需确认其数据分发授权。

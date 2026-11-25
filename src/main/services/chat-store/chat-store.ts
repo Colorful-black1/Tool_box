@@ -440,6 +440,26 @@ export class ToolboxStore {
       .run('agent_drafts_v1', cipherText)
   }
 
+  /** Artificial Analysis API Key 同样只保存密文；null 表示清除。 */
+  aiWorldAaKeyCipherGet(): string | null {
+    const row = this.db
+      .prepare('SELECT value FROM kv WHERE key = ?')
+      .get('ai_world_aa_key_cipher') as { value: string } | undefined
+    return row?.value || null
+  }
+
+  aiWorldAaKeyCipherSet(cipherText: string | null): void {
+    if (!cipherText) {
+      this.db.prepare('DELETE FROM kv WHERE key = ?').run('ai_world_aa_key_cipher')
+      return
+    }
+    this.db
+      .prepare(
+        'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+      )
+      .run('ai_world_aa_key_cipher', cipherText)
+  }
+
   // ==================== AI 会话 ====================
 
   listConversations(): ConversationSummary[] {

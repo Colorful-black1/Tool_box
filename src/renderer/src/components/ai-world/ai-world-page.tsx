@@ -20,6 +20,7 @@ import {
   formatRankPercentile
 } from '../../lib/ai-world-format'
 import { AiWorldAgentBoard } from './ai-world-agent-board'
+import { AiWorldAaBoard } from './ai-world-aa-board'
 import { AiWorldDetail } from './ai-world-detail'
 import { AiWorldFrontier } from './ai-world-frontier'
 import { AiWorldSources } from './ai-world-sources'
@@ -212,6 +213,8 @@ export function AiWorldPage(): JSX.Element {
   const [pageDraft, setPageDraft] = useState('1')
   const [selected, setSelected] = useState<AiWorldModel | null>(null)
   const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [sourcesFocus, setSourcesFocus] = useState<'aa'>()
+  const [source, setSource] = useState<'toolbox' | 'aa'>('toolbox')
   const [mode, setMode] = useState<WorldMode>('models')
 
   useEffect(() => {
@@ -296,6 +299,11 @@ export function AiWorldPage(): JSX.Element {
   const selectedMetrics = selected && index ? index.metricsOf(selected) : null
   const selectedScores = selected && index ? index.scoresOf(selected) : []
 
+  const openSourcesModal = (focus?: 'aa'): void => {
+    setSourcesFocus(focus)
+    setSourcesOpen(true)
+  }
+
   return (
     <div className="ai-world-page view-enter">
       <div className="ai-world-mode-bar">
@@ -317,7 +325,9 @@ export function AiWorldPage(): JSX.Element {
         </div>
         <span className="field-hint">
           {mode === 'models'
-            ? '模型本身的智力、价格与上下文'
+            ? source === 'aa'
+              ? 'Artificial Analysis 独立评测；与 ECI 不直接比较'
+              : '模型本身的智力、价格与上下文'
             : 'Agent × 模型组合；同一模型换 Agent 成绩会变'}
         </span>
       </div>
@@ -326,6 +336,40 @@ export function AiWorldPage(): JSX.Element {
         <AiWorldAgentBoard onOpenSource={(url) => void openSource(url)} />
       ) : (
         <>
+          <div className="ai-world-source-bar">
+            <div className="ai-world-view-switch" role="group" aria-label="模型数据源">
+              <button
+                type="button"
+                aria-pressed={source === 'toolbox'}
+                onClick={() => setSource('toolbox')}
+              >
+                ToolBox 综合
+              </button>
+              <button
+                type="button"
+                aria-pressed={source === 'aa'}
+                onClick={() => {
+                  setSource('aa')
+                  setSelected(null)
+                }}
+              >
+                Artificial Analysis
+              </button>
+            </div>
+            <span className="field-hint">
+              {source === 'toolbox'
+                ? 'models.dev + Epoch AI · ECI 与 ToolBox 自己的前沿视图'
+                : '官方 Data API 免费档 · 需配置 API Key · 与 ECI 不直接比较'}
+            </span>
+          </div>
+
+          {source === 'aa' ? (
+            <AiWorldAaBoard
+              onOpenSource={(url) => void openSource(url)}
+              onOpenSources={(focus) => openSourcesModal(focus)}
+            />
+          ) : (
+            <>
       {error ? (
         <div className="status-banner" role="alert">
           <span>{error}</span>
@@ -377,7 +421,7 @@ export function AiWorldPage(): JSX.Element {
                 <RefreshIcon />
                 {refreshing ? '刷新中…' : '刷新'}
               </button>
-              <button type="button" className="btn-ghost" onClick={() => setSourcesOpen(true)}>
+              <button type="button" className="btn-ghost" onClick={() => openSourcesModal()}>
                 数据来源
               </button>
             </div>
@@ -604,8 +648,10 @@ export function AiWorldPage(): JSX.Element {
           </section>
         </>
       ) : null}
+            </>
+          )}
 
-      {selected && selectedMetrics ? (
+      {source === 'toolbox' && selected && selectedMetrics ? (
         <AiWorldDetail
           model={selected}
           vendor={selectedVendor}
@@ -618,8 +664,12 @@ export function AiWorldPage(): JSX.Element {
 
       {sourcesOpen ? (
         <AiWorldSources
-          onClose={() => setSourcesOpen(false)}
+          onClose={() => {
+            setSourcesOpen(false)
+            setSourcesFocus(undefined)
+          }}
           onOpenSource={(url) => void openSource(url)}
+          initialSection={sourcesFocus}
         />
       ) : null}
         </>

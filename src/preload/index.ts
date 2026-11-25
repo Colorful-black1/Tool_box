@@ -38,6 +38,7 @@ import type { CodingAgentEvent } from '../shared/coding-agents'
 import type { KbProgressEvent } from '../shared/knowledge-base'
 import type { TrendingQuery } from '../shared/github-trending'
 import type { AiWorldQuery } from '../shared/ai-model-world'
+import type { AiWorldAaKeyInput, AiWorldAaQuery } from '../shared/ai-world-aa'
 import type { AiAgentArenaQuery } from '../shared/ai-agent-arena'
 import type { McpSearchInput, SkillSearchInput } from '../shared/extensions'
 
@@ -115,6 +116,12 @@ const bridge: ToolboxBridge = {
   aiWorld: {
     get: (query?: AiWorldQuery) => ipcRenderer.invoke(IPC.aiWorldGet, query),
     openSource: (url: string) => ipcRenderer.invoke(IPC.aiWorldOpenSource, url)
+  },
+  aiWorldAa: {
+    get: (query?: AiWorldAaQuery) => ipcRenderer.invoke(IPC.aiWorldAaGet, query),
+    keyStatus: () => ipcRenderer.invoke(IPC.aiWorldAaKeyStatus),
+    saveKey: (input: AiWorldAaKeyInput) => ipcRenderer.invoke(IPC.aiWorldAaKeySave, input),
+    clearKey: () => ipcRenderer.invoke(IPC.aiWorldAaKeyClear)
   },
   aiAgentArena: {
     get: (query?: AiAgentArenaQuery) => ipcRenderer.invoke(IPC.aiAgentArenaGet, query)
