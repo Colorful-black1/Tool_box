@@ -9649,6 +9649,10 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
   font-size: 10.5px;
 }
 
+.ai-world-frontier-located > span {
+  white-space: nowrap;
+}
+
 .ai-world-frontier-legend {
   display: flex;
   flex-wrap: wrap;
@@ -9834,6 +9838,14 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
 
 .ai-world-frontier-tooltip.is-right {
   transform: translate(-100%, -110%);
+}
+
+.ai-world-frontier-tooltip.is-below {
+  transform: translate(-50%, 12px);
+}
+
+.ai-world-frontier-tooltip.is-below.is-right {
+  transform: translate(-100%, 12px);
 }
 
 .ai-world-frontier-tooltip strong {
@@ -10685,6 +10697,14 @@ input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
 
 .ai-aa-view-switch {
   margin-left: auto;
+}
+
+.ai-aa-frontier-card .ai-world-frontier-actions {
+  width: min(280px, 100%);
+}
+
+.ai-aa-frontier-card .ai-world-frontier-tooltip {
+  width: 232px;
 }
 
 .ai-aa-table th:first-child,
