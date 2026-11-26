@@ -38,6 +38,8 @@ export function Popover({
     left: 0,
     maxHeight: 320,
     minWidth: 0,
+    originX: '0%',
+    originY: '0%',
     ready: false
   })
   useOverlayEscape(() => {
@@ -54,10 +56,12 @@ export function Popover({
         element = panel.current
       if (!trigger || !element) return
       const rect = trigger.getBoundingClientRect()
-      const box = element.getBoundingClientRect()
+      // 入场 scale 会影响 getBoundingClientRect；布局尺寸需保持未变换，避免定位抖动。
+      const boxWidth = element.offsetWidth
+      const boxHeight = element.offsetHeight
       const below = innerHeight - rect.bottom - 14,
         above = rect.top - 14
-      const flip = placement === 'top' || (below < box.height && above > below)
+      const flip = placement === 'top' || (below < boxHeight && above > below)
       const available = flip ? above : below
       const maxHeight =
         placement === 'top'
@@ -65,16 +69,21 @@ export function Popover({
           : Math.max(80, Math.min(maxPanelHeight, available))
       const left = Math.max(
         8,
-        Math.min(align === 'right' ? rect.right - box.width : rect.left, innerWidth - box.width - 8)
+        Math.min(
+          align === 'right' ? rect.right - boxWidth : rect.left,
+          innerWidth - boxWidth - 8
+        )
       )
       const top = flip
-        ? Math.max(8, rect.top - Math.min(box.height, maxHeight) - 6)
+        ? Math.max(8, rect.top - Math.min(boxHeight, maxHeight) - 6)
         : rect.bottom + 6
       setPosition({
         top,
         left,
         maxHeight,
         minWidth: matchAnchorWidth ? Math.min(rect.width, innerWidth - 16) : 0,
+        originX: align === 'right' ? '100%' : '0%',
+        originY: flip ? '100%' : '0%',
         ready: true
       })
     }
@@ -114,13 +123,15 @@ export function Popover({
     <div
       ref={panel}
       className={`ui-popover ${className}`}
+      data-ready={position.ready ? 'true' : 'false'}
       data-overlay-owner={owner ?? undefined}
       style={{
         top: position.top,
         left: position.left,
         maxHeight: position.maxHeight,
         minWidth: position.minWidth,
-        visibility: position.ready ? 'visible' : 'hidden'
+        visibility: position.ready ? 'visible' : 'hidden',
+        transformOrigin: `${position.originX} ${position.originY}`
       }}
     >
       {children}
