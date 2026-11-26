@@ -70,6 +70,7 @@ export function AgentUsagePage(): JSX.Element {
   const queued = useRef(false)
   const queuedRefresh = useRef(false)
   const configuring = useRef(false)
+  const hasReport = useRef(false)
   const queryRef = useRef(query)
   const loadRef = useRef<(refresh: boolean) => Promise<void>>(async () => undefined)
 
@@ -98,6 +99,7 @@ export function AgentUsagePage(): JSX.Element {
       const next = await bridge.query({ ...queryRef.current, refresh })
       if (ticket === generation.current) {
         setReport(next)
+        hasReport.current = true
         setError('')
       }
     } catch {
@@ -147,7 +149,8 @@ export function AgentUsagePage(): JSX.Element {
   useEffect(() => {
     queryRef.current = query
     generation.current++
-    void load(false)
+    // 首次进入页面必须绕过 60 秒缓存；缓存来自上次会话时可能缺少新记录。
+    void load(!hasReport.current)
   }, [query, load])
 
   // 仅在启用且页面可见时自动刷新；扫描中跳过，不积压定时任务。

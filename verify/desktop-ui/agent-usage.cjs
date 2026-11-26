@@ -14,8 +14,16 @@ module.exports = async function verifyAgentUsage({ page, app, check, capture }) 
     await idle()
   }
   await page.evaluate(() => localStorage.removeItem('toolbox.agent-usage.prefs.v1'))
+  const beforeFirstEntry = await page.evaluate(() => window.uiVerification.usageCalls().length)
   await open()
   await page.locator('.agent-usage-ledger tbody tr').first().waitFor()
+  await check('首次进入强制增量刷新，不直接复用上次会话缓存', async () => {
+    const calls = await page.evaluate(
+      (count) => window.uiVerification.usageCalls().slice(count),
+      beforeFirstEntry
+    )
+    assert.equal(calls[0]?.refresh, true)
+  })
   await check('独立用量入口无需 Agent 连接，显示分类、花费与未知字段', async () => {
     assert.equal(await page.locator('.agent-usage-metric').count(), 7)
     assert.equal(
@@ -40,14 +48,18 @@ module.exports = async function verifyAgentUsage({ page, app, check, capture }) 
     const total = page.getByRole('button', { name: '总 Token', exact: true })
     await total.click()
     assert.equal(
-      await page.locator('.agent-usage-ledger th', { hasText: '总 Token' }).getAttribute('aria-sort'),
+      await page
+        .locator('.agent-usage-ledger th', { hasText: '总 Token' })
+        .getAttribute('aria-sort'),
       'descending'
     )
     await idle()
     await total.click()
     await idle()
     assert.equal(
-      await page.locator('.agent-usage-ledger th', { hasText: '总 Token' }).getAttribute('aria-sort'),
+      await page
+        .locator('.agent-usage-ledger th', { hasText: '总 Token' })
+        .getAttribute('aria-sort'),
       'ascending'
     )
   })
