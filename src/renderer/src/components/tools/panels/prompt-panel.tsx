@@ -39,7 +39,7 @@ export function PromptPanel(): JSX.Element {
     : Boolean(draft.title.trim()) || draft.body !== NEW_TEMPLATE_BODY
 
   useEffect(() => {
-    void load()
+    void load(true)
   }, [load])
   useEffect(() => {
     if (selected) {

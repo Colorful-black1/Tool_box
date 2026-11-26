@@ -24,7 +24,7 @@ export function PromptPolishPanel(): JSX.Element {
   const pending = useToolTransferStore((state) => state.pending)
   const transfer = useToolTransferStore((state) => state.send)
   useEffect(() => {
-    void load()
+    void load(true)
   }, [load])
   useEffect(() => {
     if (pending?.target !== 'prompt-polish') return

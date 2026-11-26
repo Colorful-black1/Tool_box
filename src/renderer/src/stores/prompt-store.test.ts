@@ -56,4 +56,51 @@ describe('模板库持久化', () => {
     expect(usePromptStore.getState().templates.length).toBe(5)
     expect(usePromptStore.getState().error).toContain('桥接')
   })
+  it('强制刷新会读取 AI 刚写入的模板', async () => {
+    await usePromptStore.getState().load()
+    get.mockResolvedValueOnce({
+      promptTemplates: [
+        ...defaultPromptTemplates(),
+        {
+          id: 'agent-ai',
+          title: 'AI 模板',
+          body: '请总结 {{context}}',
+          updatedAtMs: 1,
+          versions: []
+        }
+      ]
+    })
+    await usePromptStore.getState().load(true)
+    expect(usePromptStore.getState().templates).toHaveLength(6)
+    expect(usePromptStore.getState().templates.at(-1)?.title).toBe('AI 模板')
+  })
+  it('保存前合并最新配置，不覆盖 AI 新增模板', async () => {
+    await usePromptStore.getState().load()
+    const base = usePromptStore.getState().templates
+    get.mockResolvedValueOnce({
+      promptTemplates: [
+        ...base,
+        {
+          id: 'agent-ai',
+          title: 'AI 模板',
+          body: '请总结 {{context}}',
+          updatedAtMs: 1,
+          versions: []
+        }
+      ]
+    })
+    expect(await usePromptStore.getState().save({ ...base[0], body: 'changed' })).not.toBeNull()
+    const templates = usePromptStore.getState().templates
+    expect(templates.some((item) => item.id === 'agent-ai')).toBe(true)
+    expect(templates.find((item) => item.id === base[0].id)?.body).toBe('changed')
+  })
+  it('保存时发现最新配置损坏则拒绝覆盖', async () => {
+    await usePromptStore.getState().load()
+    get.mockResolvedValueOnce({ promptTemplates: 'bad' })
+    expect(
+      await usePromptStore.getState().save({ ...defaultPromptTemplates()[0], body: 'changed' })
+    ).toBeNull()
+    expect(save).not.toHaveBeenCalled()
+    expect(usePromptStore.getState().error).toContain('无效')
+  })
 })

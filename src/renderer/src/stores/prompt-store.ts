@@ -13,7 +13,7 @@ interface PromptState {
   loading: boolean
   saving: boolean
   error: string
-  load(): Promise<void>
+  load(force?: boolean): Promise<void>
   save(draft: Pick<PromptTemplate, 'id' | 'title' | 'body'>): Promise<PromptTemplate | null>
 }
 
@@ -23,8 +23,8 @@ export const usePromptStore = create<PromptState>((set, get) => ({
   loading: false,
   saving: false,
   error: '',
-  load: async () => {
-    if (get().loaded || get().loading) return
+  load: async (force = false) => {
+    if (get().loading || (get().loaded && !force)) return
     if (!window.toolbox) {
       set({ error: '桌面桥接尚未就绪，可使用内置模板，暂时无法保存。' })
       return
@@ -45,21 +45,41 @@ export const usePromptStore = create<PromptState>((set, get) => ({
   },
   save: async (draft) => {
     if (!get().loaded || get().saving) return null
-    if (!window.toolbox) {
+    if (get().loading) {
+      set({ error: '模板库正在刷新，请稍后重试。' })
+      return null
+    }
+    const bridge = window.toolbox
+    if (!bridge) {
       set({ error: '桌面桥接尚未就绪，模板尚未保存。' })
       return null
     }
     set({ saving: true, error: '' })
     try {
-      const previous = get().templates.find((item) => item.id === draft.id)
+      // 保存前取最新配置：AI 工具可能刚写入模板，不能用页面缓存覆盖。
+      let raw: unknown
+      try {
+        raw = (await bridge.config.get())?.promptTemplates
+      } catch {
+        set({ error: '模板库读取失败，未保存；请重试。' })
+        return null
+      }
+      let latest: PromptTemplate[]
+      try {
+        latest = raw === undefined ? defaultPromptTemplates() : validatePromptLibrary(raw)
+      } catch {
+        set({ error: '模板库数据无效，未保存；请到工具页检查或恢复备份。' })
+        return null
+      }
+      const previous = latest.find((item) => item.id === draft.id)
       const template = savePromptRevision(previous, draft, Date.now())
       const templates = validatePromptLibrary(
         previous
-          ? get().templates.map((item) => (item.id === draft.id ? template : item))
-          : [...get().templates, template]
+          ? latest.map((item) => (item.id === draft.id ? template : item))
+          : [...latest, template]
       )
       try {
-        await window.toolbox.config.set({ promptTemplates: templates })
+        await bridge.config.set({ promptTemplates: templates })
       } catch {
         set({ error: '模板保存失败，已保留上次版本与当前草稿，请重试。' })
         return null
