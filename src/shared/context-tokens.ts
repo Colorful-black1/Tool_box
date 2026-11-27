@@ -15,8 +15,21 @@ export const MESSAGE_OVERHEAD_TOKENS = 8
 /** 每个工具定义除 JSON 正文外的结构开销 */
 const TOOL_OVERHEAD_TOKENS = 8
 
+/** 每个附件除正文外的文件名、分隔符等结构开销 */
+const ATTACHMENT_OVERHEAD_TOKENS = 8
+
 /** 非中文文本的字符 / token 比：英文约 4，取 3.5 留一点余量 */
 const NON_CJK_CHARS_PER_TOKEN = 3.5
+
+/** 聊天消息附件的估算输入；图片按尺寸分块保守估算。 */
+export interface MessageAttachmentTokenInput {
+  kind: 'text' | 'image'
+  text?: string
+  textChars?: number
+  textTokens?: number
+  width?: number
+  height?: number
+}
 
 /** 估算一段文本的 token 数（空文本为 0） */
 export function estimateTextTokens(text: string): number {
@@ -32,16 +45,54 @@ export function estimateTextTokens(text: string): number {
   return Math.ceil(cjk + other / NON_CJK_CHARS_PER_TOKEN)
 }
 
-/** 一条聊天消息的估算，包含固定的消息结构开销 */
-export function estimateMessageTokens(message: { content: string }): number {
-  return estimateTextTokens(message.content) + MESSAGE_OVERHEAD_TOKENS
+/** 一条聊天消息的估算，包含固定的消息结构开销与附件。 */
+export function estimateMessageTokens(message: {
+  content: string
+  attachments?: ReadonlyArray<MessageAttachmentTokenInput>
+}): number {
+  let total = estimateTextTokens(message.content) + MESSAGE_OVERHEAD_TOKENS
+  for (const attachment of message.attachments ?? []) {
+    total += ATTACHMENT_OVERHEAD_TOKENS
+    total +=
+      attachment.kind === 'image'
+        ? estimateImageTokens(attachment.width, attachment.height)
+        : (attachment.textTokens ??
+          (attachment.text !== undefined
+            ? estimateTextTokens(attachment.text)
+            : (attachment.textChars ?? 0)))
+  }
+  return Math.ceil(total)
 }
 
 /** 一组聊天消息的估算 */
-export function estimateMessagesTokens(messages: ReadonlyArray<{ content: string }>): number {
+export function estimateMessagesTokens(
+  messages: ReadonlyArray<{
+    content: string
+    attachments?: ReadonlyArray<MessageAttachmentTokenInput>
+  }>
+): number {
   let total = 0
   for (const message of messages) total += estimateMessageTokens(message)
   return total
+}
+
+/**
+ * 图片输入的保守估算：OpenAI 视觉按 512px 分块计费。
+ * 具体供应商可能更低；未知尺寸按低细节图 85 token 计。
+ */
+export function estimateImageTokens(width?: number, height?: number): number {
+  if (
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return 85
+  }
+  const tiles = Math.ceil(width / 512) * Math.ceil(height / 512)
+  return 85 + 170 * Math.min(24, Math.max(1, tiles))
 }
 
 /**

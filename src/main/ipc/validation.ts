@@ -23,6 +23,7 @@ import {
   MEMORY_STATUSES
 } from '../../shared/types'
 import type {
+  ChatAttachmentInput,
   MemoryExportFormat,
   MemoryQuery,
   MemorySaveInput,
@@ -31,6 +32,10 @@ import type {
   TodoInput,
   TodoQuery
 } from '../../shared/types'
+import {
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_ATTACHMENT_PATH_CHARS
+} from '../../shared/chat-attachments'
 import { isValidContextWindow } from '../../shared/context-budget'
 
 import { MAX_PROMPT_BODY, validatePromptLibrary } from '../../shared/prompt-tools'
@@ -72,6 +77,24 @@ export function validateClipboardConfig(value: unknown): ClipboardHistoryConfig 
 function validateClipboardRules(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 50) throw new Error('忽略规则最多 50 条')
   return value.map((item) => requireString(item, '忽略规则', { maxLength: 200 }))
+}
+
+/** 附件入参只做路径结构校验；存在性、类型、大小由主进程附件服务复核。 */
+export function validateChatAttachments(value: unknown): ChatAttachmentInput[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new Error('附件必须是数组')
+  if (value.length > MAX_CHAT_ATTACHMENTS) {
+    throw new Error(`每条消息最多 ${MAX_CHAT_ATTACHMENTS} 个附件`)
+  }
+  return value.map((item, index) => {
+    const label = `附件 ${index + 1}`
+    const body = assertObject(item, label)
+    return {
+      path: requireString(body.path, `${label} 路径`, {
+        maxLength: MAX_CHAT_ATTACHMENT_PATH_CHARS
+      })
+    }
+  })
 }
 
 export function requireBoolean(value: unknown, label: string): boolean {

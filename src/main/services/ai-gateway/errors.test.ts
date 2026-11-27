@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   describeAiError,
   isContextOverflowError,
+  isVisionUnsupportedError,
   normalizeOpenAiBaseUrl,
   parseContextLimit,
   validateChatInput
@@ -46,6 +47,10 @@ describe('validateChatInput', () => {
   it('rejects empty content', () => {
     expect(() => validateChatInput('   ')).toThrow('消息内容不能为空')
   })
+
+  it('有附件时允许空正文', () => {
+    expect(validateChatInput('   ', true)).toBe('')
+  })
 })
 
 describe('上下文超长识别', () => {
@@ -71,6 +76,15 @@ describe('上下文超长识别', () => {
     ).toBe(1_048_576)
     expect(parseContextLimit(new Error('context window of 200000'))).toBe(200_000)
     expect(parseContextLimit(new Error('context_length_exceeded: 32768'))).toBe(32_768)
+  })
+
+  it('识别图片输入不支持', () => {
+    expect(isVisionUnsupportedError(new Error('This model does not support image input'))).toBe(true)
+    expect(isVisionUnsupportedError(new Error('invalid image_url content'))).toBe(true)
+    expect(isVisionUnsupportedError(new Error('429 rate limit'))).toBe(false)
+    expect(describeAiError(new Error('model does not support image input'))).toContain(
+      '不支持图片输入'
+    )
   })
 
   it('忽略非数字、越界和普通错误', () => {

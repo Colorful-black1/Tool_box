@@ -136,10 +136,54 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
 
 function toAgentMessages(messages: ChatMessage[], summary?: string): BaseMessage[] {
   const converted = messages.map((message) =>
-    message.role === 'user' ? new HumanMessage(message.content) : new AIMessage(message.content)
+    message.role === 'user'
+      ? new HumanMessage({ content: userContent(message.content, message.attachments) })
+      : new AIMessage(message.content)
   )
   if (!summary) return converted
   return [new HumanMessage(checkpointContent(summary)), ...converted]
+}
+
+type UserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+/**
+ * 文本附件直接并入正文；图片仅在主进程补齐 imageDataUrl 后随请求发送。
+ * 未补齐的图片保留占位文字，模型不会误以为看到了图片。
+ */
+function userContent(
+  content: string,
+  attachments: ChatMessage['attachments']
+): string | UserContentPart[] {
+  const textBlocks: string[] = []
+  const imageParts: UserContentPart[] = []
+  const imageLabels: string[] = []
+
+  if (content.trim()) textBlocks.push(content.trim())
+  for (const attachment of attachments ?? []) {
+    if (attachment.kind === 'text') {
+      if (attachment.missing || attachment.text === undefined) {
+        textBlocks.push(`[附件：${attachment.name}（源文件不可用）]`)
+        continue
+      }
+      const label = attachment.truncated
+        ? `[附件：${attachment.name}（已截断）]`
+        : `[附件：${attachment.name}]`
+      textBlocks.push(`${label}\n${attachment.text}\n[附件结束：${attachment.name}]`)
+      continue
+    }
+    if (attachment.missing || !attachment.imageDataUrl) {
+      textBlocks.push(`[图片附件：${attachment.name}（源文件不可用）]`)
+      continue
+    }
+    imageLabels.push(`[图片附件：${attachment.name}]`)
+    imageParts.push({ type: 'image_url', image_url: { url: attachment.imageDataUrl } })
+  }
+  if (imageLabels.length > 0) textBlocks.push(imageLabels.join('\n'))
+  const text = textBlocks.join('\n\n')
+  if (imageParts.length === 0) return text
+  return [...(text ? [{ type: 'text' as const, text }] : []), ...imageParts]
 }
 
 function readUsage(value: unknown): AgentTokenUsage | null {

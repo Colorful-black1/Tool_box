@@ -122,7 +122,7 @@ CJK 字符（含中文标点）      × 1.0
 - 摘要调用空返回或被 `maxTokens` 截断时重试一次（`maxTokens` 提到 4,000）；网络 / 鉴权错误不重试，避免重复计费。
 - 失败与停止都不写检查点；手动压缩被停止时广播 `compaction.failed`（已停止），不广播 `chat:stopped`。
 
-## 9. 数据模型（schema v7 引入；当前 v8 未改动本表）
+## 9. 数据模型（schema v7 引入；当前 v9 未改动本表）
 
 ```sql
 CREATE TABLE IF NOT EXISTS conversation_checkpoints (

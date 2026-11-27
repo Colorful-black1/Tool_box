@@ -1,5 +1,5 @@
-import { BrowserWindow, dialog, ipcMain, app, net } from 'electron'
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { BrowserWindow, dialog, ipcMain, app, net, shell } from 'electron'
+import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
 import { BACKGROUNDS_DIR, COVERS_DIR } from '../../shared/constants'
@@ -69,6 +69,7 @@ import {
   requireRatio,
   requireString,
   requireStringArray,
+  validateChatAttachments,
   validateConfigPatch,
   validateMemoryExportFormat,
   validateMemoryQuery,
@@ -250,8 +251,14 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
   ipcMain.handle(IPC.chatSend, (event, request: ChatSendRequest) => {
     const body = assertObject(request, '请求内容') as unknown as ChatSendRequest
     const conversationId = requireString(body.conversationId, '会话 ID')
-    const content = requireString(body.content, '消息内容')
-    return aiGateway.send({ conversationId, content }, createChatEventSink(event.sender))
+    const attachments = validateChatAttachments(body.attachments)
+    const content = requireString(body.content, '消息内容', {
+      allowEmpty: attachments.length > 0
+    })
+    return aiGateway.send(
+      { conversationId, content, ...(attachments.length > 0 ? { attachments } : {}) },
+      createChatEventSink(event.sender)
+    )
   })
 
   ipcMain.handle(IPC.chatStop, (_event, id: unknown) => {
@@ -264,6 +271,22 @@ export function registerIpcHandlers(dependencies: IpcDependencies): void {
 
   ipcMain.handle(IPC.chatCompact, (event, id: unknown) => {
     return aiGateway.compact(requireString(id, '会话 ID'), createChatEventSink(event.sender))
+  })
+
+  ipcMain.handle(IPC.chatAttachmentOpen, async (_event, id: unknown) => {
+    const attachment = store.getAttachmentFile(requireString(id, '附件 ID', { maxLength: 64 }))
+    let stat
+    try {
+      stat = statSync(attachment.filePath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`找不到源文件“${attachment.name}”，可能已被移动或删除`, { cause: error })
+      }
+      throw new Error(`无法访问源文件“${attachment.name}”，请检查文件权限`, { cause: error })
+    }
+    if (!stat.isFile()) throw new Error(`源文件“${attachment.name}”不是文件`)
+    const error = await shell.openPath(attachment.filePath)
+    if (error) throw new Error(`无法打开源文件“${attachment.name}”，请检查文件关联或权限`)
   })
 
   // ---------- 长期记忆 ----------

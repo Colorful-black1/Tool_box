@@ -10,7 +10,7 @@
 | --- | --- |
 | 版本 | 桌面 0.3.0 |
 | 平台 | Windows 10/11 x64（当前唯一验证平台） |
-| 数据库 | SQLite schema v8；升级前自动生成 `backups/toolbox-before-v8-*.db` |
+| 数据库 | SQLite schema v9；升级前自动生成 `backups/toolbox-before-v9-*.db` |
 | 密钥 | 主密钥经 Windows DPAPI 封装，绑定当前系统用户 |
 | 导航 | 对话 · 开发工作台（编程 Agent / Token 统计 / 命令速查 / 工具）· 阅读空间（书架 / 统计）· 个人管理（密码箱 / 记事本 / 待办）· 知识库 · AI 情报 · 系统 |
 | 编程 Agent | OpenCode / Codex / Claude Code / Claude Desktop / DeepSeek Harness；Kimi 只保留枚举 |
@@ -20,7 +20,7 @@
 
 **只有合成数据验证**：AI 对话与工具调用、密码 AI 识别、向量 / 重排检索、流式输出、绝大多数 UI 交互（隔离 Electron + 合成桥接）。
 
-**未实机验证**：真实模型任务下的 Claude / DSH / Codex 权限与停止、MCP 表单、开源热榜的页面结构变化与代理环境、模型世界的数据源变更、Artificial Analysis 免费档的真实 Key 分页与授权、打包安装后的完整退出。
+**未实机验证**：真实模型任务下的 Claude / DSH / Codex 权限与停止、MCP 表单、开源热榜的页面结构变化与代理环境、模型世界的数据源变更、Artificial Analysis 免费档的真实 Key 分页与授权、真实视觉模型的图片输入与不支持降级、打包安装后的完整退出。
 
 ## 2. 待办与待验收
 
@@ -105,6 +105,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| 2026-11-27 | AI 对话支持附件：图片 / 文本文件选择与拖拽，文本按 2 MB / 20,000 字截断，图片发送前缩放重编码并去掉元数据；数据库只保存源文件路径与元数据（schema v9），点击附件打开本机源文件，缺失时提示；图片不支持时自动无图重试并提示 |
 | 2026-11-25 | AI 模型世界的模型榜新增 Artificial Analysis 数据源：官方免费 Data API、独立 12 小时缓存、数据来源弹层内配置加密 API Key、智能指数 / 行业能力 / 每任务成本 / 速度榜单与智能 × 成本前沿图 |
 | 2026-11-18 | AI 模型世界新增 Agent 排行：CodeAgentBench / Terminal-Bench / FrontierHarness 分榜，Agent × 模型筛选、官方 Cost per pass 口径、按来源 TTL 自动更新与独立缓存 |
 | 2026-11-17 | 助手长期记忆 P0–P3：显式记忆、置顶与相关注入、FTS 检索、自动候选审核、JSON 导出恢复、设置页管理与工具审批（schema v8） |

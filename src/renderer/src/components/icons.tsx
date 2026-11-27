@@ -168,6 +168,44 @@ export function NoteIcon(): JSX.Element {
   )
 }
 
+/** 文本附件：不带正文线的文档。 */
+export function FileIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path
+        d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M14 3v6h6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** 图片附件：相框与太阳。 */
+export function ImageIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 15-4.5-4.5L9 18" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** 添加附件：回形针。 */
+export function PaperclipIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+      <path
+        d="m21.44 11.05-8.49 8.49a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export function CloseIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

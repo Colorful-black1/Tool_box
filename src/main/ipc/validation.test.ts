@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_APP_APPEARANCE, readAppAppearance, resolveAppTheme } from '../../shared/appearance'
-import { validateConfigPatch, validateModelContextLimits } from './validation'
+import { validateChatAttachments, validateConfigPatch, validateModelContextLimits } from './validation'
 import { defaultPromptTemplates } from '../../shared/prompt-tools'
+
+describe('对话附件校验', () => {
+  it('接受本机路径并拒绝畸形结构', () => {
+    expect(validateChatAttachments(undefined)).toEqual([])
+    expect(validateChatAttachments([{ path: 'C:\\tmp\\notes.md' }])).toEqual([
+      { path: 'C:\\tmp\\notes.md' }
+    ])
+    expect(() => validateChatAttachments([{ path: '' }])).toThrow()
+    expect(() => validateChatAttachments([{ path: 1 }])).toThrow()
+    expect(() => validateChatAttachments([{ name: 'notes.md' }])).toThrow()
+    expect(() =>
+      validateChatAttachments([{ path: 'a' }, { path: 'b' }, { path: 'c' }, { path: 'd' }])
+    ).toThrow('最多 3 个')
+  })
+})
 
 describe('模型上下文窗口校验', () => {
   it('接受 manual / api 与 null，并拒绝越界值', () => {

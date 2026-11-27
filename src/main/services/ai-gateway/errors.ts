@@ -33,9 +33,9 @@ export function normalizeOpenAiBaseUrl(input: string): string {
   }
 }
 
-export function validateChatInput(content: string): string {
+export function validateChatInput(content: string, allowEmpty = false): string {
   const trimmed = content.trim()
-  if (!trimmed) {
+  if (!trimmed && !allowEmpty) {
     throw new AiGatewayError('消息内容不能为空')
   }
   if (trimmed.length > MAX_INPUT_CHARS) {
@@ -60,6 +60,20 @@ export function isContextOverflowError(error: unknown): boolean {
     /prompt is too long/i.test(message) ||
     /input is too long/i.test(message) ||
     /reduce the length of the messages/i.test(message)
+  )
+}
+
+/** 供应商明确拒绝图片输入；用于一次无图降级，而不是伪造视觉能力。 */
+export function isVisionUnsupportedError(error: unknown): boolean {
+  const message = errorText(error)
+  return (
+    /does not support image/i.test(message) ||
+    /image input.*(not supported|unsupported|invalid)/i.test(message) ||
+    /(not supported|unsupported).*image input/i.test(message) ||
+    /invalid.*image_url/i.test(message) ||
+    /image_url.*(not supported|unsupported|invalid)/i.test(message) ||
+    /multimodal.*(not supported|unsupported)/i.test(message) ||
+    /vision.*(not supported|unsupported)/i.test(message)
   )
 }
 
@@ -94,6 +108,9 @@ export function describeAiError(error: unknown, secret = ''): string {
 
   if (isContextOverflowError(error)) {
     return '上下文超出模型窗口。可在对话标题栏的「上下文」面板里压缩，或调大窗口 / 新建对话。'
+  }
+  if (isVisionUnsupportedError(error)) {
+    return '当前模型或接口不支持图片输入，请更换支持视觉的模型，或移除图片附件后重试。'
   }
   if (/401|unauthorized|invalid[_ ]api[_ ]key|invalid[_ ]token/i.test(message)) {
     return 'API Key 无效或没有访问权限'

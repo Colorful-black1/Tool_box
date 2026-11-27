@@ -377,6 +377,7 @@ module.exports = function createFixture() {
         onProgress: subscribe('kb-progress')
       },
       system: {
+        pathForFile: (file) => `C:\\verify\\${file.name}`,
         portProcesses: async () => {
           if (failPorts) { failPorts = false; throw new Error('合成端口查询失败') }
           return { capturedAt: new Date().toISOString(), total: 3, processNamesAvailable: true, entries: [
@@ -431,13 +432,30 @@ module.exports = function createFixture() {
             content: `消息 ${index}\n` + '用于验证历史消息滚动的位置。'.repeat(24),
             createdAtMs: index
           })),
-        send: async ({ conversationId, content }) => {
+        send: async ({ conversationId, content, attachments }) => {
           chatSendCount++
           streamingId = conversationId
           return {
             conversation: copy(conversations.find((item) => item.id === conversationId)),
-            userMessage: { id: 'sent', conversationId, role: 'user', content, createdAtMs: 100 }
+            userMessage: {
+              id: 'sent',
+              conversationId,
+              role: 'user',
+              content,
+              createdAtMs: 100,
+              attachments: (attachments ?? []).map((item, index) => ({
+                id: `sent-attachment-${index}`,
+                kind: item.path.toLowerCase().endsWith('.png') ? 'image' : 'text',
+                name: item.path.split(/[\\/]/).pop() ?? `attachment-${index}`,
+                mime: 'text/plain',
+                sizeBytes: 1,
+                truncated: false
+              }))
+            }
           }
+        },
+        openAttachment: async () => {
+          throw new Error('验证夹具未提供源文件')
         },
         stop: async () => emit('stopped', { conversationId: streamingId }),
         context: async (conversationId) => ({

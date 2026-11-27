@@ -25,6 +25,8 @@ import type {
   Bookmark,
   ChapterContent,
   ChapterMeta,
+  ChatAttachmentView,
+  ChatAttachmentKind,
   ChatCheckpointView,
   ChatMessage,
   ChatRole,
@@ -53,7 +55,7 @@ import { dueTodoReminder } from '../../../shared/todo-reminders'
 import type { TodoReminder, TodoReminderCandidate } from '../../../shared/todo-reminders'
 
 const MAX_TITLE_CHARS = 60
-const SCHEMA_VERSION = 8
+const SCHEMA_VERSION = 9
 /** 知识库文档摘要列：附带指定模型的已向量化块数，列表与详情共用。 */
 const KB_DOCUMENT_COLUMNS = `id, title, category, source_path, file_size, status, chunk_count,
   (SELECT COUNT(*) FROM kb_chunks c
@@ -106,6 +108,36 @@ interface MessageRow {
   role: string
   content: string
   created_at_ms: number
+}
+
+interface ChatAttachmentRow {
+  id: string
+  message_id: string
+  kind: string
+  name: string
+  mime: string
+  size_bytes: number
+  file_path: string
+  text_chars: number
+  text_tokens: number
+  truncated: number
+  image_width: number | null
+  image_height: number | null
+  created_at_ms: number
+}
+
+/** 主进程写入附件时使用；只保存路径和元数据，不保存文件内容。 */
+export interface ChatAttachmentWriteInput {
+  kind: ChatAttachmentKind
+  name: string
+  mime: string
+  sizeBytes: number
+  filePath: string
+  textChars?: number
+  textTokens?: number
+  width?: number
+  height?: number
+  truncated: boolean
 }
 
 interface CheckpointRow {
@@ -167,13 +199,29 @@ export interface ChatCheckpointInput {
   model: string
 }
 
-function toMessage(row: MessageRow): ChatMessage {
+function toMessage(row: MessageRow, attachments: ChatAttachmentView[] = []): ChatMessage {
   return {
     id: row.id,
     conversationId: row.conversation_id,
     role: row.role as ChatRole,
     content: row.content,
-    createdAtMs: row.created_at_ms
+    createdAtMs: row.created_at_ms,
+    ...(attachments.length > 0 ? { attachments } : {})
+  }
+}
+
+function toAttachmentView(row: ChatAttachmentRow): ChatAttachmentView {
+  return {
+    id: row.id,
+    kind: row.kind as ChatAttachmentKind,
+    name: row.name,
+    mime: row.mime,
+    sizeBytes: row.size_bytes,
+    truncated: row.truncated === 1,
+    ...(row.text_chars > 0 ? { textChars: row.text_chars } : {}),
+    ...(row.text_tokens > 0 ? { textTokens: row.text_tokens } : {}),
+    ...(row.image_width !== null ? { width: row.image_width } : {}),
+    ...(row.image_height !== null ? { height: row.image_height } : {})
   }
 }
 
@@ -359,6 +407,7 @@ export interface KbVectorIndexRow {
  * - v6 本地知识库（文档 / 分块 / FTS5 关键词索引）
  * - v7 会话检查点
  * - v8 助手长期记忆
+ * - v9 AI 对话附件：只保存本机源文件路径与元数据
  */
 export class ToolboxStore {
   private readonly db: Database.Database
@@ -530,13 +579,79 @@ export class ToolboxStore {
          ORDER BY created_at_ms ASC, rowid ASC`
       )
       .all(conversationId) as MessageRow[]
-    return rows.map(toMessage)
+    const attachments = this.attachmentsByConversation(conversationId)
+    return rows.map((row) => toMessage(row, attachments.get(row.id)))
+  }
+
+  /** 打开 / 读取源文件用；只返回路径与展示名，不读文件内容。 */
+  getAttachmentFile(id: string): { filePath: string; name: string; kind: ChatAttachmentKind } {
+    const row = this.db
+      .prepare('SELECT id, name, kind, file_path FROM chat_attachments WHERE id = ?')
+      .get(id) as { id: string; name: string; kind: string; file_path: string } | undefined
+    if (!row) throw new Error('附件不存在')
+    return { filePath: row.file_path, name: row.name, kind: row.kind as ChatAttachmentKind }
+  }
+
+  /** 模型请求前按 id 取源文件路径；找不到对应记录时跳过。 */
+  attachmentFiles(ids: string[]): Map<string, { filePath: string; name: string }> {
+    const unique = [...new Set(ids.filter((id) => id.length > 0))].slice(0, 500)
+    if (unique.length === 0) return new Map()
+    const placeholders = unique.map(() => '?').join(',')
+    const rows = this.db
+      .prepare(`SELECT id, name, file_path FROM chat_attachments WHERE id IN (${placeholders})`)
+      .all(...unique) as Array<{ id: string; name: string; file_path: string }>
+    return new Map(rows.map((row) => [row.id, { filePath: row.file_path, name: row.name }]))
+  }
+
+  hasImageAttachments(conversationId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS found
+         FROM chat_attachments a
+         JOIN messages m ON m.id = a.message_id
+         WHERE m.conversation_id = ? AND a.kind = 'image'
+         LIMIT 1`
+      )
+      .get(conversationId) as { found: number } | undefined
+    return row !== undefined
+  }
+
+  private attachmentsByConversation(conversationId: string): Map<string, ChatAttachmentView[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT a.id, a.message_id, a.kind, a.name, a.mime, a.size_bytes, a.file_path,
+                a.text_chars, a.text_tokens, a.truncated, a.image_width, a.image_height,
+                a.created_at_ms
+         FROM chat_attachments a
+         JOIN messages m ON m.id = a.message_id
+         WHERE m.conversation_id = ?
+         ORDER BY a.created_at_ms ASC, a.rowid ASC`
+      )
+      .all(conversationId) as ChatAttachmentRow[]
+    const grouped = new Map<string, ChatAttachmentView[]>()
+    for (const row of rows) {
+      const list = grouped.get(row.message_id) ?? []
+      list.push(toAttachmentView(row))
+      grouped.set(row.message_id, list)
+    }
+    return grouped
   }
 
   appendMessage(input: { conversationId: string; role: ChatRole; content: string }): ChatMessage {
+    return this.appendMessageWithAttachments({ ...input, attachments: [] })
+  }
+
+  /** 用户消息与附件必须在同一事务里落库；失败不会留下半条消息。 */
+  appendMessageWithAttachments(input: {
+    conversationId: string
+    role: ChatRole
+    content: string
+    attachments: ChatAttachmentWriteInput[]
+  }): ChatMessage {
     this.requireConversation(input.conversationId)
     const now = Date.now()
     const id = randomUUID()
+    const attachments: ChatAttachmentView[] = []
 
     this.db.transaction(() => {
       this.db
@@ -545,6 +660,44 @@ export class ToolboxStore {
            VALUES (?, ?, ?, ?, ?)`
         )
         .run(id, input.conversationId, input.role, input.content, now)
+
+      const insert = this.db.prepare(
+        `INSERT INTO chat_attachments
+           (id, message_id, kind, name, mime, size_bytes, file_path, text_chars, text_tokens,
+            image_width, image_height, truncated, created_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      for (const attachment of input.attachments) {
+        const attachmentId = randomUUID()
+        insert.run(
+          attachmentId,
+          id,
+          attachment.kind,
+          attachment.name,
+          attachment.mime,
+          attachment.sizeBytes,
+          attachment.filePath,
+          attachment.textChars ?? 0,
+          attachment.textTokens ?? 0,
+          attachment.width ?? null,
+          attachment.height ?? null,
+          attachment.truncated ? 1 : 0,
+          now
+        )
+        attachments.push({
+          id: attachmentId,
+          kind: attachment.kind,
+          name: attachment.name,
+          mime: attachment.mime,
+          sizeBytes: attachment.sizeBytes,
+          truncated: attachment.truncated,
+          ...(attachment.textChars ? { textChars: attachment.textChars } : {}),
+          ...(attachment.textTokens ? { textTokens: attachment.textTokens } : {}),
+          ...(attachment.width !== undefined ? { width: attachment.width } : {}),
+          ...(attachment.height !== undefined ? { height: attachment.height } : {})
+        })
+      }
+
       this.db
         .prepare(`UPDATE conversations SET updated_at_ms = ? WHERE id = ?`)
         .run(now, input.conversationId)
@@ -555,7 +708,8 @@ export class ToolboxStore {
       conversationId: input.conversationId,
       role: input.role,
       content: input.content,
-      createdAtMs: now
+      createdAtMs: now,
+      ...(attachments.length > 0 ? { attachments } : {})
     }
   }
 
@@ -601,7 +755,8 @@ export class ToolboxStore {
          ORDER BY created_at_ms ASC, rowid ASC`
       )
       .all(conversationId, boundary.row_id) as MessageRow[]
-    return rows.map(toMessage)
+    const attachments = this.attachmentsByConversation(conversationId)
+    return rows.map((row) => toMessage(row, attachments.get(row.id)))
   }
 
   insertCheckpoint(input: ChatCheckpointInput): ChatCheckpointView {
@@ -2015,6 +2170,10 @@ export class ToolboxStore {
         [
           8,
           'SELECT id, kind, title, body, tags, scope, confidence, status, pinned, source_conversation_id, source_message_id, source_excerpt, created_at_ms, updated_at_ms, last_used_at_ms, expires_at_ms FROM memory_items LIMIT 0'
+        ],
+        [
+          9,
+          'SELECT id, message_id, kind, name, mime, size_bytes, file_path, text_chars, text_tokens, image_width, image_height, truncated, created_at_ms FROM chat_attachments LIMIT 0'
         ]
       ]
       for (const [minimum, sql] of checks) {
@@ -2338,6 +2497,30 @@ export class ToolboxStore {
           title,
           tokenize = 'unicode61 remove_diacritics 2'
         );
+      `)
+    }
+
+    if (current < 9) {
+      // v8 → v9：AI 对话附件只保存本机路径与元数据，不把文件内容写入数据库。
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS chat_attachments (
+          id TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('text', 'image')),
+          name TEXT NOT NULL,
+          mime TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL,
+          file_path TEXT NOT NULL,
+          text_chars INTEGER NOT NULL DEFAULT 0,
+          text_tokens INTEGER NOT NULL DEFAULT 0,
+          image_width INTEGER,
+          image_height INTEGER,
+          truncated INTEGER NOT NULL DEFAULT 0 CHECK (truncated IN (0, 1)),
+          created_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_attachments_message
+          ON chat_attachments(message_id);
       `)
     }
 

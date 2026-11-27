@@ -28,6 +28,7 @@ import type {
   ChatContextView,
   ChatDeltaEvent,
   ChatErrorEvent,
+  ChatMessage,
   ChatSendRequest,
   ChatSendResult,
   ChatStoppedEvent,
@@ -54,9 +55,14 @@ import {
   AiGatewayError,
   describeAiError,
   isContextOverflowError,
+  isVisionUnsupportedError,
   normalizeOpenAiBaseUrl,
   parseContextLimit
 } from './errors'
+import { prepareChatAttachments } from './chat-attachments'
+import type { ChatImageProcessor } from './chat-attachments'
+import { loadAttachmentContent } from './chat-attachments'
+import { nativeChatImageProcessor } from './chat-attachment-image'
 import { buildProviderHeaders, processSessionIdForSingleCall, requiresCustomUserAgent, withPinnedUserAgent } from './provider-headers'
 import type { SettingsService } from '../settings/settings-service'
 import type { ToolboxStore } from '../chat-store/chat-store'
@@ -104,7 +110,8 @@ export class AiGateway {
     private readonly chatStore: ToolboxStore,
     private readonly importService: ImportService,
     private readonly promptDir: string,
-    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage' | 'knowledge' | 'memory'> = {}
+    private readonly toolServices: Pick<AgentDeps, 'todos' | 'usage' | 'knowledge' | 'memory'> = {},
+    private readonly imageProcessor: ChatImageProcessor = nativeChatImageProcessor
   ) {
     this.contextService = new ContextService(chatStore, promptDir)
     this.candidateExtractor = new MemoryCandidateExtractor(promptDir, (system, user, options) =>
@@ -125,24 +132,31 @@ export class AiGateway {
       )
     }
 
-    const content = validateChatInput(request.content)
     const conversation = this.requireConversation(conversationId)
+    const content = validateChatInput(request.content, (request.attachments?.length ?? 0) > 0)
+    const attachments = prepareChatAttachments(
+      request.attachments ?? [],
+      this.imageProcessor
+    )
     const config = await this.settings.getAiConfig()
 
-    const userMessage = this.chatStore.appendMessage({
+    const userMessage = this.chatStore.appendMessageWithAttachments({
       conversationId,
       role: 'user',
-      content
+      content,
+      attachments
     })
 
-    const updatedConversation = this.autoTitle(conversation, content)
+    const titleSeed = content || attachments[0]?.name || ''
+    const updatedConversation = this.autoTitle(conversation, titleSeed)
+    const userText = content || attachments.map((item) => item.name).join('、')
     const controller = new AbortController()
     this.active.set(conversationId, controller)
 
     void this.runAgentTurn({
       conversationId,
       sourceMessageId: userMessage.id,
-      userText: content,
+      userText,
       config,
       controller,
       sink
@@ -281,11 +295,14 @@ export class AiGateway {
 
       let sawOutput = false
       let sawTool = false
-      const runOnce = (context: PreparedContext) =>
+      const hasImages = this.chatStore.hasImageAttachments(conversationId)
+      const runOnce = (context: PreparedContext, includeImages: boolean) =>
         runAgent({
           conversationId,
           sourceMessageId,
-          history: context.history,
+          history: includeImages
+            ? this.hydrateAttachmentContent(context.history)
+            : context.history,
           ...(context.summary ? { summary: context.summary } : {}),
           model,
           systemPrompt:
@@ -312,36 +329,49 @@ export class AiGateway {
         })
 
       let result: RunAgentResult
+      let omittedImages = false
       try {
-        result = await runOnce(prepared)
+        result = await runOnce(prepared, true)
       } catch (error) {
         // 已经输出或执行过工具时不能重试，否则可能重复写操作 / 重复文本
         if (
-          controller.signal.aborted ||
-          sawOutput ||
-          sawTool ||
-          !isContextOverflowError(error)
+          !controller.signal.aborted &&
+          !sawOutput &&
+          !sawTool &&
+          hasImages &&
+          isVisionUnsupportedError(error)
         ) {
-          throw error
-        }
-        const limit = parseContextLimit(error)
-        if (limit) {
-          try {
-            await this.settings.recordLearnedContextLimit(config.model, limit)
-          } catch {
-            // 学习值落盘失败不能影响本次恢复；仍用解析到的 N 压缩
+          // 供应商不支持图片：本次降级为纯文本，并在回复里明确说明。
+          omittedImages = true
+          result = await runOnce(prepared, false)
+        } else {
+          if (
+            controller.signal.aborted ||
+            sawOutput ||
+            sawTool ||
+            !isContextOverflowError(error)
+          ) {
+            throw error
           }
-          // 即使手动值更高，本次恢复也按供应商确认的真实上限来压缩
-          info = {
-            model: config.model,
-            provider: config.provider,
-            baseUrl: config.baseUrl,
-            limit: { tokens: limit, source: 'learned', updatedAtMs: Date.now() }
+          const limit = parseContextLimit(error)
+          if (limit) {
+            try {
+              await this.settings.recordLearnedContextLimit(config.model, limit)
+            } catch {
+              // 学习值落盘失败不能影响本次恢复；仍用解析到的 N 压缩
+            }
+            // 即使手动值更高，本次恢复也按供应商确认的真实上限来压缩
+            info = {
+              model: config.model,
+              provider: config.provider,
+              baseUrl: config.baseUrl,
+              limit: { tokens: limit, source: 'learned', updatedAtMs: Date.now() }
+            }
           }
+          prepared = await this.contextService.prepare(buildPrepareInput(true))
+          this.reportPreparedCompaction(conversationId, prepared, sink)
+          result = await runOnce(prepared, true)
         }
-        prepared = await this.contextService.prepare(buildPrepareInput(true))
-        this.reportPreparedCompaction(conversationId, prepared, sink)
-        result = await runOnce(prepared)
       }
 
       this.recordUsage(conversationId, result.usage, config.model)
@@ -354,9 +384,14 @@ export class AiGateway {
       if (!text.trim()) {
         throw new AiGatewayError('AI 未返回内容')
       }
-      const content = result.references.length
-        ? `${text}\n\n相关入口：\n${result.references.map((item) => `- ${referenceMarkdown(item)}`).join('\n')}`
-        : text
+      const notice = omittedImages
+        ? '> 当前模型不支持图片输入，图片已省略；本次仅按文字回复。\n\n'
+        : ''
+      const content = `${notice}${
+        result.references.length
+          ? `${text}\n\n相关入口：\n${result.references.map((item) => `- ${referenceMarkdown(item)}`).join('\n')}`
+          : text
+      }`
 
       const assistantMessage = this.chatStore.appendMessage({
         conversationId,
@@ -564,6 +599,31 @@ export class AiGateway {
       timeout: CHAT_TIMEOUT_MS,
       maxRetries: 0,
       configuration: buildClientConfig(config, `${conversationId}:compaction`)
+    })
+  }
+
+  /** 只在构造模型请求时按源路径读取内容；数据库、渲染层都不保留文件内容。 */
+  private hydrateAttachmentContent(messages: ChatMessage[]): ChatMessage[] {
+    const ids = messages.flatMap(
+      (message) => message.attachments?.map((attachment) => attachment.id) ?? []
+    )
+    if (ids.length === 0) return messages
+    const files = this.chatStore.attachmentFiles(ids)
+    return messages.map((message) => {
+      if (!message.attachments?.length) return message
+      return {
+        ...message,
+        attachments: message.attachments.map((attachment) => {
+          const file = files.get(attachment.id)
+          if (!file) return { ...attachment, missing: true }
+          const content = loadAttachmentContent(
+            file.filePath,
+            attachment.kind,
+            this.imageProcessor
+          )
+          return { ...attachment, ...content }
+        })
+      }
     })
   }
 

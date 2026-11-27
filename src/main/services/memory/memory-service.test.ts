@@ -36,10 +36,10 @@ afterEach(async () => {
 })
 
 describe('助手长期记忆', () => {
-  it('schema 升到 v8 并创建记忆表', () => {
+  it('schema 升到 v9 并保留记忆表', () => {
     const database = new Database(dbPath, { readonly: true })
     try {
-      expect(database.pragma('user_version', { simple: true })).toBe(8)
+      expect(database.pragma('user_version', { simple: true })).toBe(9)
       expect(
         database
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_items'")
@@ -50,7 +50,7 @@ describe('助手长期记忆', () => {
     }
   })
 
-  it('v7 数据库升级到 v8，重复打开保持幂等', async () => {
+  it('v7 数据库升级到当前版本，重复打开保持幂等', async () => {
     const legacyPath = join(root, 'legacy.db')
     const legacy = new Database(legacyPath)
     try {
@@ -62,13 +62,13 @@ describe('助手长期记忆', () => {
     const upgraded = new ToolboxStore(legacyPath, box)
     upgraded.close()
     const backups = await readdir(join(root, 'backups'))
-    expect(backups.some((name) => name.startsWith('toolbox-before-v8-'))).toBe(true)
+    expect(backups.some((name) => name.startsWith('toolbox-before-v9-'))).toBe(true)
     const inspected = new Database(legacyPath, { readonly: true })
     try {
       expect(
         inspected.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_items'").get()
       ).toBeTruthy()
-      expect(inspected.pragma('user_version', { simple: true })).toBe(8)
+      expect(inspected.pragma('user_version', { simple: true })).toBe(9)
     } finally {
       inspected.close()
     }

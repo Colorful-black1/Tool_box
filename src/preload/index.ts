@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 import { CHAT_EVENT, IPC, WINDOW_EVENT } from '../shared/ipc-contract'
 import type {
@@ -210,6 +210,7 @@ const bridge: ToolboxBridge = {
     listMessages: (conversationId: string) => ipcRenderer.invoke(IPC.messageList, conversationId),
     send: (request: ChatSendRequest) => ipcRenderer.invoke(IPC.chatSend, request),
     stop: (conversationId: string) => ipcRenderer.invoke(IPC.chatStop, conversationId),
+    openAttachment: (id: string) => ipcRenderer.invoke(IPC.chatAttachmentOpen, id),
     context: (conversationId: string): Promise<ChatContextView> =>
       ipcRenderer.invoke(IPC.chatContext, conversationId),
     compact: (conversationId: string): Promise<ChatCompactResult> =>
@@ -317,6 +318,14 @@ const bridge: ToolboxBridge = {
     portProcesses: () => ipcRenderer.invoke(IPC.systemNetworkPorts),
     stopPortProcess: (token: string) => ipcRenderer.invoke(IPC.systemNetworkProcessStop, token),
     copyText: (text: string) => ipcRenderer.invoke(IPC.systemCopy, text),
+    pathForFile: (file: File) => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        // 合成 File 或剪贴板内容没有本机路径；由渲染层提示改用文件选择。
+        return ''
+      }
+    },
     getShortcut: () => ipcRenderer.invoke(IPC.systemShortcutGet),
     setShortcut: (config: ShortcutConfig) =>
       ipcRenderer.invoke(IPC.systemShortcutSet, config)

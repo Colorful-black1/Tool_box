@@ -1,9 +1,19 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { ChatCheckpointView, ChatContextView, ChatMessage } from '@shared/types'
+import type {
+  ChatAttachmentView,
+  ChatCheckpointView,
+  ChatContextView,
+  ChatMessage
+} from '@shared/types'
 import { AGENT_PERMISSION_LABELS, AGENT_PERMISSION_MODES } from '@shared/types'
 import { formatCompact } from '@shared/usage-format'
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  formatChatAttachmentSize,
+  MAX_CHAT_ATTACHMENTS
+} from '@shared/chat-attachments'
 import type { PendingApprovalView } from '../stores/app-store'
 import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
@@ -13,7 +23,17 @@ import { formatMessageDateTime } from '../lib/message-time'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
 import { Popover } from './popover'
-import { CheckIcon, CopyIcon, NoteIcon, SendIcon, StopIcon } from './icons'
+import {
+  CheckIcon,
+  CloseIcon,
+  CopyIcon,
+  FileIcon,
+  ImageIcon,
+  NoteIcon,
+  PaperclipIcon,
+  SendIcon,
+  StopIcon
+} from './icons'
 
 export function ChatPanel(): JSX.Element {
   const conversations = useAppStore((state) => state.conversations)
@@ -353,6 +373,7 @@ function MessageList({
                     role={message.role}
                     content={message.content}
                     createdAtMs={message.createdAtMs}
+                    attachments={message.attachments}
                   />
                   {checkpoint && index === checkpointIndex ? (
                     <CheckpointCard checkpoint={checkpoint} />
@@ -445,6 +466,7 @@ interface MessageBubbleProps {
   role: ChatMessage['role']
   content: string
   createdAtMs?: number
+  attachments?: ChatAttachmentView[]
   streaming?: boolean
   placeholder?: string
 }
@@ -453,6 +475,7 @@ function MessageBubble({
   role,
   content,
   createdAtMs,
+  attachments,
   streaming = false,
   placeholder
 }: MessageBubbleProps): JSX.Element {
@@ -475,7 +498,7 @@ function MessageBubble({
   }, [])
 
   const copy = (): void => {
-    void copyText(content)
+    void copyText(messageClipboardText(content, attachments))
       .then(() => {
         setCopyState('copied')
         if (timerRef.current) clearTimeout(timerRef.current)
@@ -486,7 +509,7 @@ function MessageBubble({
 
   const saveAsNote = (): void => {
     const note = buildMessageNote({
-      content,
+      content: messageClipboardText(content, attachments),
       origin: conversationTitle ? `星轨对话 · ${conversationTitle}` : '星轨对话'
     })
     if (!note) {
@@ -518,6 +541,13 @@ function MessageBubble({
       <div className="chat-message-stack">
         <div className="message-bubble">
           <div className="message-role">{isAssistant ? 'AI · ASSISTANT' : '我 · USER'}</div>
+          {attachments && attachments.length > 0 ? (
+            <div className="chat-message-attachments" aria-label="消息附件">
+              {attachments.map((attachment) => (
+                <MessageAttachmentChip key={attachment.id} attachment={attachment} />
+              ))}
+            </div>
+          ) : null}
           <div className="message-content">
             {isAssistant ? (
               content.trim() ? (
@@ -590,15 +620,85 @@ function MessageBubble({
   )
 }
 
+function messageClipboardText(
+  content: string,
+  attachments: ChatAttachmentView[] | undefined
+): string {
+  const parts: string[] = []
+  if (content.trim()) parts.push(content)
+  for (const attachment of attachments ?? []) {
+    const label = attachment.truncated
+      ? `[附件：${attachment.name}（已截断）]`
+      : `[附件：${attachment.name}]`
+    parts.push(attachment.kind === 'image' ? `[图片附件：${attachment.name}]` : label)
+  }
+  return parts.join('\n\n')
+}
+
+function MessageAttachmentChip({
+  attachment
+}: {
+  attachment: ChatAttachmentView
+}): JSX.Element {
+  const [opening, setOpening] = useState(false)
+  const [error, setError] = useState('')
+
+  const openSource = async (): Promise<void> => {
+    if (opening) return
+    setOpening(true)
+    setError('')
+    try {
+      const bridge = window.toolbox?.chat
+      if (!bridge) throw new Error('本地桥接未就绪')
+      await bridge.openAttachment(attachment.id)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '找不到源文件'
+      setError(message.replace(/^Error invoking remote method '[^']+':\s*/, ''))
+    } finally {
+      setOpening(false)
+    }
+  }
+
+  return (
+    <span className="chat-message-attachment-item">
+      <button
+        type="button"
+        className="chat-message-attachment"
+        onClick={() => void openSource()}
+        disabled={opening}
+        aria-label={`打开附件 ${attachment.name}`}
+        title={`用系统默认程序打开源文件：${attachment.name}`}
+      >
+        {attachment.kind === 'image' ? <ImageIcon /> : <FileIcon />}
+        <span className="chat-message-attachment-name">{attachment.name}</span>
+        {attachment.truncated ? (
+          <span className="chat-message-attachment-meta">已截断</span>
+        ) : null}
+      </button>
+      {error ? (
+        <span className="chat-message-attachment-status" role="status">
+          {error}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 function Composer(): JSX.Element {
   const activeConversationId = useAppStore((state) => state.activeConversationId)
   const streaming = useAppStore((state) => state.streaming)
   const compacting = useAppStore((state) => state.compacting)
+  const chatSending = useAppStore((state) => state.chatSending)
   const sendMessage = useAppStore((state) => state.sendMessage)
   const stopGeneration = useAppStore((state) => state.stopGeneration)
   const value = useAppStore((state) => state.chatDraft)
   const setValue = useAppStore((state) => state.setChatDraft)
+  const attachments = useAppStore((state) => state.chatAttachments)
+  const addAttachments = useAppStore((state) => state.addChatAttachments)
+  const removeAttachment = useAppStore((state) => state.removeChatAttachment)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   // 从阅读器「问 AI」或发送失败带着草稿回到对话时，焦点已经落到 body，
   // 直接按 Enter 不会发送。挂载时若已有草稿就把焦点和光标放到末尾；只在挂载时执行，避免抢焦点。
@@ -610,12 +710,21 @@ function Composer(): JSX.Element {
     input.setSelectionRange(draft.length, draft.length)
   }, [])
 
-  const isStreaming = streaming !== null || compacting
-  const canSend = !isStreaming && activeConversationId !== null && value.trim().length > 0
+  const isStreaming = streaming !== null || compacting || chatSending
+  const hasImages = attachments.some((attachment) => attachment.kind === 'image')
+  const canSend =
+    !isStreaming &&
+    activeConversationId !== null &&
+    (value.trim().length > 0 || attachments.length > 0)
+
+  const addFiles = (files: File[]): void => {
+    if (files.length === 0) return
+    void addAttachments(files)
+  }
 
   const submit = (): void => {
     const content = value.trim()
-    if (!canSend || !content) return
+    if (!canSend || (!content && attachments.length === 0)) return
     setValue('')
     void sendMessage(content)
   }
@@ -628,19 +737,99 @@ function Composer(): JSX.Element {
         submit()
       }}
     >
-      <div className="composer-box">
+      <div
+        className={`composer-box chat-composer${dragging ? ' drop-active' : ''}`}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('Files') || isStreaming) return
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={(event) => {
+          const related = event.relatedTarget
+          if (related instanceof Node && event.currentTarget.contains(related)) return
+          setDragging(false)
+        }}
+        onDrop={(event) => {
+          const files = Array.from(event.dataTransfer.files)
+          if (files.length === 0) return
+          event.preventDefault()
+          setDragging(false)
+          if (isStreaming || !activeConversationId) return
+          addFiles(files)
+        }}
+      >
+        <input
+          ref={fileRef}
+          className="composer-file-input"
+          type="file"
+          multiple
+          accept={CHAT_ATTACHMENT_ACCEPT}
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => {
+            addFiles(Array.from(event.target.files ?? []))
+            event.target.value = ''
+          }}
+        />
         <label className="sr-only" htmlFor="chat-input">
           输入消息
         </label>
+        {attachments.length > 0 ? (
+          <div className="composer-attachments" aria-label="待发送附件">
+            {attachments.map((attachment) => (
+              <div className="composer-attachment" key={attachment.id}>
+                {attachment.kind === 'image' && attachment.previewUrl ? (
+                  <img
+                    className="composer-attachment-thumb"
+                    src={attachment.previewUrl}
+                    alt=""
+                  />
+                ) : (
+                  <FileIcon />
+                )}
+                <span className="composer-attachment-name" title={attachment.name}>
+                  {attachment.name}
+                </span>
+                <span className="composer-attachment-size">
+                  {formatChatAttachmentSize(attachment.sizeBytes)}
+                </span>
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  aria-label={`移除附件 ${attachment.name}`}
+                  disabled={isStreaming}
+                  onClick={() => removeAttachment(attachment.id)}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {hasImages ? (
+          <p className="composer-attachment-hint">
+            图片需要模型支持视觉输入；不支持时会提示并按文字继续。
+          </p>
+        ) : null}
         <textarea
           id="chat-input"
           className="composer-input"
           ref={inputRef}
           rows={3}
           value={value}
-          placeholder="输入消息，Enter 发送，Shift + Enter 换行"
+          placeholder={
+            attachments.length > 0
+              ? '补充说明（可留空），Enter 发送'
+              : '输入消息，Enter 发送，Shift + Enter 换行'
+          }
           disabled={!activeConversationId}
           onChange={(event) => setValue(event.target.value)}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData.files)
+            if (files.length === 0 || isStreaming) return
+            event.preventDefault()
+            addFiles(files)
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -648,7 +837,23 @@ function Composer(): JSX.Element {
             }
           }}
         />
+        {dragging ? (
+          <div className="composer-drop-hint" aria-hidden="true">
+            松开以添加附件
+          </div>
+        ) : null}
         <div className="composer-actions">
+          <button
+            type="button"
+            className="btn-ghost composer-attach"
+            disabled={isStreaming || !activeConversationId}
+            aria-label="添加附件"
+            title={`添加附件（最多 ${MAX_CHAT_ATTACHMENTS} 个图片或文本文件）`}
+            onClick={() => fileRef.current?.click()}
+          >
+            <PaperclipIcon />
+            附件
+          </button>
           <ModelSelect />
           {isStreaming ? (
             <button

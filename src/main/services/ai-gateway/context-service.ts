@@ -444,8 +444,26 @@ async function trimSource(messages: ChatMessage[], maxTokens: number): Promise<C
 
 function toBaseMessage(message: ChatMessage): BaseMessage {
   return message.role === 'user'
-    ? new HumanMessage({ content: message.content, id: message.id })
+    ? new HumanMessage({ content: messageTextWithAttachments(message), id: message.id })
     : new AIMessage({ content: message.content, id: message.id })
+}
+
+/** 摘要模型只接收文本：文本附件并入正文，图片以占位说明表示，不发送二进制。 */
+function messageTextWithAttachments(message: ChatMessage): string {
+  const parts: string[] = []
+  if (message.content.trim()) parts.push(message.content)
+  for (const attachment of message.attachments ?? []) {
+    if (attachment.kind === 'text') {
+      const label = attachment.truncated
+        ? `[附件：${attachment.name}（已截断）]`
+        : `[附件：${attachment.name}]`
+      if (attachment.text !== undefined) parts.push(`${label}\n${attachment.text}`)
+      else parts.push(label)
+    } else {
+      parts.push(`[图片附件：${attachment.name}]`)
+    }
+  }
+  return parts.join('\n\n')
 }
 
 function messageText(message: BaseMessage): string {

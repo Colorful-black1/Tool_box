@@ -21,6 +21,7 @@ import type {
   ChatContextView,
   ChatDeltaEvent,
   ChatErrorEvent,
+  ChatAttachmentInput,
   ChatMessage,
   ChatStoppedEvent,
   ConversationSummary,
@@ -33,6 +34,14 @@ import type {
 } from '../../../shared/types'
 import { DEFAULT_AGENT_PERMISSION, findAiProvider } from '../../../shared/types'
 import { resolveChatModels } from '../../../shared/model-list'
+import {
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_ATTACHMENT_TOTAL_BYTES,
+  MAX_CHAT_IMAGE_ATTACHMENT_BYTES,
+  MAX_CHAT_TEXT_ATTACHMENT_BYTES,
+  guessChatImageMime,
+  isChatTextAttachment
+} from '../../../shared/chat-attachments'
 import type { UsageQuery } from '../../../shared/agent-usage'
 
 export type AppView =
@@ -68,6 +77,18 @@ export interface SearchTarget {
 interface StreamingState {
   conversationId: string
   content: string
+}
+
+/** 发送前暂存在渲染层的附件；数据库只接收 path，File 仅用于本地预览。 */
+export interface PendingChatAttachment {
+  id: string
+  file: File
+  path: string
+  kind: 'text' | 'image'
+  name: string
+  mime: string
+  sizeBytes: number
+  previewUrl?: string
 }
 
 /** Agent 工具调用在界面上的呈现状态 */
@@ -106,6 +127,10 @@ interface AppState {
   activeConversationId: string | null
   /** 用户手动从工具填入的内容也留在草稿，发送仍由对话页触发。 */
   chatDraft: string
+  /** 发送前暂存；成功后清空，失败时保留以便重试。 */
+  chatAttachments: PendingChatAttachment[]
+  /** 正在读取附件 / 提交 send；用于阻止重复发送。 */
+  chatSending: boolean
   messages: ChatMessage[]
   /** 当前会话的上下文占用 / 检查点；切换会话后重新读取 */
   context: ChatContextView | null
@@ -150,6 +175,9 @@ interface AppState {
   deleteConversation(id: string): Promise<void>
   sendMessage(content: string): Promise<void>
   setChatDraft(content: string): void
+  addChatAttachments(files: File[]): Promise<void>
+  removeChatAttachment(id: string): void
+  clearChatAttachments(): void
   stopGeneration(): Promise<void>
   appendDelta(event: ChatDeltaEvent): void
   completeChat(event: ChatCompletedEvent): void
@@ -232,6 +260,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   chatDraft: '',
+  chatAttachments: [],
+  chatSending: false,
   messages: [],
   context: null,
   compacting: false,
@@ -387,28 +417,119 @@ export const useAppStore = create<AppState>((set, get) => ({
     void get().refreshContext()
   },
 
+  addChatAttachments: async (files) => {
+    const { activeConversationId, streaming, compacting, chatSending, chatAttachments } = get()
+    if (!activeConversationId || streaming || compacting || chatSending) return
+    const next = [...chatAttachments]
+    let failure = ''
+    for (const file of files) {
+      if (next.length >= MAX_CHAT_ATTACHMENTS) {
+        failure = `每条消息最多 ${MAX_CHAT_ATTACHMENTS} 个附件`
+        break
+      }
+      if (file.size === 0) {
+        failure = `附件“${file.name}”为空`
+        continue
+      }
+      const imageMime = guessChatImageMime(file.name, file.type)
+      const kind = imageMime ? 'image' : 'text'
+      const mime = imageMime ?? file.type ?? ''
+      if (kind === 'text' && !isChatTextAttachment(file.name, mime)) {
+        failure = `不支持的文件类型：${file.name}`
+        continue
+      }
+      const limit =
+        kind === 'image' ? MAX_CHAT_IMAGE_ATTACHMENT_BYTES : MAX_CHAT_TEXT_ATTACHMENT_BYTES
+      if (file.size > limit) {
+        failure =
+          kind === 'image'
+            ? `图片“${file.name}”超过 10 MB`
+            : `文本附件“${file.name}”超过 2 MB`
+        continue
+      }
+      const total = next.reduce((sum, item) => sum + item.sizeBytes, 0) + file.size
+      if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
+        failure = '附件总大小不能超过 30 MB'
+        break
+      }
+      const path = window.toolbox?.system?.pathForFile?.(file) ?? ''
+      if (!path) {
+        failure = '无法获取文件路径；请先保存图片到本机，再用附件按钮或拖拽添加'
+        continue
+      }
+      next.push({
+        id: createAttachmentId(),
+        file,
+        path,
+        kind,
+        name: file.name,
+        mime: kind === 'image' ? mime : mime || 'text/plain',
+        sizeBytes: file.size
+      })
+    }
+    set({ chatAttachments: next, error: failure || null })
+
+    // 先让 chip 出现，再异步补图片预览；读取失败仍可发送，主进程会重新校验。
+    await Promise.all(
+      next
+        .filter((attachment) => attachment.kind === 'image' && !attachment.previewUrl)
+        .map(async (attachment) => {
+          try {
+            const previewUrl = await readFileDataUrl(attachment.file)
+            set((state) => ({
+              chatAttachments: state.chatAttachments.map((item) =>
+                item.id === attachment.id ? { ...item, previewUrl } : item
+              )
+            }))
+          } catch {
+            // 预览失败不阻断发送；发送时会再次读取原始文件。
+          }
+        })
+    )
+  },
+
+  removeChatAttachment: (id) => {
+    set((state) => ({
+      chatAttachments: state.chatAttachments.filter((item) => item.id !== id)
+    }))
+  },
+
+  clearChatAttachments: () => {
+    set({ chatAttachments: [] })
+  },
+
   sendMessage: async (content) => {
-    const { activeConversationId, streaming } = get()
-    if (!activeConversationId || streaming) return
-    set({ error: null })
+    const { activeConversationId, streaming, chatSending, chatAttachments } = get()
+    if (!activeConversationId || streaming || chatSending) return
+    if (!content.trim() && chatAttachments.length === 0) return
+    set({ error: null, chatSending: true })
+
+    const attachments: ChatAttachmentInput[] = chatAttachments.map((attachment) => ({
+      path: attachment.path
+    }))
+
     try {
       const result = await window.toolbox.chat.send({
         conversationId: activeConversationId,
-        content
+        content,
+        ...(attachments.length > 0 ? { attachments } : {})
       })
       set((state) => ({
         messages: [...state.messages, result.userMessage],
         conversations: upsertConversation(state.conversations, result.conversation),
         streaming: { conversationId: activeConversationId, content: '' },
+        chatAttachments: [],
+        chatSending: false,
         toolCalls: [],
         pendingApproval: null
       }))
     } catch (error) {
       // 输入框在提交时已清空；发送失败要把原文还回去，避免配置未就绪或网络失败后重打长文。
-      // 用户若已在等待期间输入新内容，保留新内容。
+      // 用户若已在等待期间输入新内容，保留新内容；附件保留以便重试。
       set((state) => ({
         error: toErrorMessage(error),
-        chatDraft: state.chatDraft.trim() ? state.chatDraft : content
+        chatDraft: state.chatDraft.trim() ? state.chatDraft : content,
+        chatSending: false
       }))
     }
   },
@@ -781,6 +902,31 @@ function upsertConversation(
 ): ConversationSummary[] {
   const rest = conversations.filter((item) => item.id !== next.id)
   return [next, ...rest].sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+}
+
+/** 本地附件 id；Electron 渲染层通常支持 randomUUID，保留降级。 */
+function createAttachmentId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+/** 图片预览用 data URL；CSP 只允许 data:，不使用 blob:。 */
+function readFileDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string') {
+        reject(new Error(`读取附件“${file.name}”失败`))
+        return
+      }
+      resolve(result)
+    }
+    reader.onerror = () => reject(new Error(`读取附件“${file.name}”失败`))
+    reader.readAsDataURL(file)
+  })
 }
 
 function toErrorMessage(error: unknown): string {

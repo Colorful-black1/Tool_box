@@ -417,17 +417,45 @@ export interface ConversationSummary {
   messageCount: number
 }
 
+export type ChatAttachmentKind = 'text' | 'image'
+
+/** 渲染层提交的本机文件路径；主进程重新校验存在性、类型与大小。 */
+export interface ChatAttachmentInput {
+  path: string
+}
+
+/** 历史消息上的附件视图；数据库只保存路径与元数据，不保存文件内容。 */
+export interface ChatAttachmentView {
+  id: string
+  kind: ChatAttachmentKind
+  name: string
+  mime: string
+  sizeBytes: number
+  truncated: boolean
+  textChars?: number
+  textTokens?: number
+  width?: number
+  height?: number
+  /** 仅主进程构造模型请求时填充；listMessages 不返回文件内容。 */
+  text?: string
+  imageDataUrl?: string
+  /** 源文件已被移动或删除。 */
+  missing?: boolean
+}
+
 export interface ChatMessage {
   id: string
   conversationId: string
   role: ChatRole
   content: string
   createdAtMs: number
+  attachments?: ChatAttachmentView[]
 }
 
 export interface ChatSendRequest {
   conversationId: string
   content: string
+  attachments?: ChatAttachmentInput[]
 }
 
 export interface ChatSendResult {

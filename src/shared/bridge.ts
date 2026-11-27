@@ -308,6 +308,8 @@ export interface ToolboxBridge {
     listMessages(conversationId: string): Promise<ChatMessage[]>
     send(request: ChatSendRequest): Promise<ChatSendResult>
     stop(conversationId: string): Promise<void>
+    /** 用系统默认程序打开源文件；文件被移动或删除时抛错。 */
+    openAttachment(id: string): Promise<void>
     /** 当前上下文占用、检查点与窗口来源 */
     context(conversationId: string): Promise<ChatContextView>
     /** 手动压缩；进行中会拒绝重复调用 */
@@ -405,6 +407,8 @@ export interface ToolboxBridge {
     /** 只接受本次端口快照签发的停止引用，不接受 PID 或命令。 */
     stopPortProcess(token: string): Promise<PortProcessStopResult>
     copyText(text: string): Promise<void>
+    /** 把用户选择的 File 转为本机真实路径；合成或粘贴内容没有路径时返回空串。 */
+    pathForFile(file: File): string
     /** 读取全局快捷键配置 */
     getShortcut(): Promise<ShortcutConfig>
     /** 修改全局快捷键配置（会立刻生效） */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  estimateImageTokens,
   estimateMessageTokens,
   estimateMessagesTokens,
   estimateTextTokens,
@@ -46,6 +47,27 @@ describe('estimateMessageTokens / estimateMessagesTokens', () => {
   it('多条消息累加', () => {
     expect(estimateMessagesTokens([{ content: '你好' }, { content: 'abcd' }])).toBe(20)
     expect(estimateMessagesTokens([])).toBe(0)
+  })
+
+  it('文本附件计入正文与结构开销', () => {
+    expect(
+      estimateMessageTokens({
+        content: '',
+        attachments: [{ kind: 'text', text: '你好' }]
+      })
+    ).toBe(18)
+    expect(
+      estimateMessageTokens({
+        content: '',
+        attachments: [{ kind: 'text', textTokens: 100 }]
+      })
+    ).toBe(116)
+  })
+
+  it('图片按尺寸估算，未知尺寸按低细节兜底', () => {
+    expect(estimateImageTokens(512, 512)).toBe(255)
+    expect(estimateImageTokens(1600, 1200)).toBe(85 + 170 * 12)
+    expect(estimateImageTokens()).toBe(85)
   })
 })
 

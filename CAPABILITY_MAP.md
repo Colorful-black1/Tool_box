@@ -1,5 +1,14 @@
 # Capability Map: Tool_box
 
+## 2026-11-27 AI 对话附件
+
+| Module id | Responsibility | Depends on | Spec |
+| --- | --- | --- | --- |
+| chat-attachments-store | schema v9 `chat_attachments` 只保存源文件路径与元数据、消息与附件同事务落库、级联删除；不保存正文 / 图片字节 | persistence, shared | [对话契约](docs/chat.md) |
+| chat-attachments-service | 主进程复核路径、存在性、magic bytes / 扩展名、UTF-8 / GBK 文本解码与截断、图片发送前缩放重编码 | shared, chat-attachments-store | 同上 |
+| chat-attachments-model | 模型请求时按路径读取文本 / 图片，文本并入正文、图片转 `image_url`、视觉不支持时无图重试并提示 | ai-gateway, chat-attachments-service | 同上 |
+| chat-attachments-ui | 选择 / 拖拽、附件 chip、发送前预览、点击用系统程序打开源文件、缺失提示；粘贴图片因无源路径会提示先保存 | renderer-ui, shared | 同上 |
+
 ## 2026-11-17 助手长期记忆（P0）
 
 | Module id | Responsibility | Depends on | Spec |
@@ -118,4 +127,4 @@ Agent 工具调用已交付；生图、RAG、云同步和自动更新保留为�
 | claude-runtime | 官方 SDK 的增量、审批、停止、模型及原生历史；已支持结构化问答／计划确认 | coding-agent-runtime | [能力与验证](docs/coding-agent.md) |
 | dsh-runtime | 独立 ACP、受控 CLI 启动、单次审批／取消；提交后更新，不回放旧消息 | coding-agent-runtime | [能力与验证](docs/coding-agent.md) |
 
-手机端自 2026-10-23 冻结；Kimi 只保留枚举。当前数据库为 schema v8，未验收项见 [ROADMAP](docs/ROADMAP.md)。
+手机端自 2026-10-23 冻结；Kimi 只保留枚举。当前数据库为 schema v9，未验收项见 [ROADMAP](docs/ROADMAP.md)。

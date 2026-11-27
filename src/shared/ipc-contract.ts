@@ -101,6 +101,7 @@ export const IPC = {
   chatToolApproval: 'chat:tool-approval',
   chatContext: 'chat:context',
   chatCompact: 'chat:compact',
+  chatAttachmentOpen: 'chat:attachment:open',
 
   memoryList: 'memory:list',
   memorySave: 'memory:save',
