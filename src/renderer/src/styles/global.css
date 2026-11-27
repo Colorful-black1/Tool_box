@@ -6250,8 +6250,22 @@ textarea,
   justify-content: flex-end;
 }
 
-.message-bubble {
+.chat-message-stack {
+  display: flex;
+  flex-direction: column;
   max-width: min(700px, 82%);
+}
+
+.message-row.user .chat-message-stack {
+  align-items: flex-end;
+}
+
+.message-row.assistant .chat-message-stack {
+  align-items: flex-start;
+}
+
+.message-bubble {
+  max-width: 100%;
   padding: 11px 15px;
   border: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: 14px;
@@ -6261,6 +6275,62 @@ textarea,
 .message-row.user .message-bubble {
   border-color: rgba(var(--accent-rgb), 0.32);
   background: linear-gradient(140deg, rgba(var(--accent-rgb), 0.14), var(--bg-message));
+}
+
+.chat-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.chat-message-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chat-message-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color var(--dur-press) var(--ease-out),
+    background var(--dur-press) var(--ease-out);
+}
+
+.chat-message-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-message-icon-btn:hover {
+  color: var(--gold);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-message-icon-btn:focus-visible {
+  outline: 1px solid var(--gold-line);
+  outline-offset: 2px;
+}
+
+.chat-message-meta-status {
+  white-space: nowrap;
+}
+
+.chat-message-meta-status:empty {
+  display: none;
 }
 
 .message-role {
@@ -6323,39 +6393,10 @@ textarea,
   padding-left: 11px;
 }
 
-.message-foot {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 7px;
-  font-size: 10px;
-  color: var(--text-dim);
-}
-
 .message-time {
   font-family: var(--mono);
-  letter-spacing: 1px;
-}
-
-.message-copy {
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: color var(--dur-press) var(--ease-out);
-}
-
-.message-copy:hover {
-  color: var(--gold);
-}
-
-.message-copy:focus-visible {
-  outline: 1px solid var(--gold-line);
-  outline-offset: 2px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
 }
 
 .message-empty {

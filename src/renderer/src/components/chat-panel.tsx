@@ -9,10 +9,11 @@ import { useAppStore } from '../stores/app-store'
 import { renderMarkdown } from '../lib/markdown'
 import { buildMessageNote } from '@shared/message-note'
 import { openAppReference } from '../lib/open-app-reference'
+import { formatMessageDateTime } from '../lib/message-time'
 import { Dropdown } from './dropdown'
 import type { DropdownOption } from './dropdown'
 import { Popover } from './popover'
-import { SendIcon, StopIcon } from './icons'
+import { CheckIcon, CopyIcon, NoteIcon, SendIcon, StopIcon } from './icons'
 
 export function ChatPanel(): JSX.Element {
   const conversations = useAppStore((state) => state.conversations)
@@ -504,79 +505,89 @@ function MessageBubble({
   }
 
   const isAssistant = role === 'assistant'
+  const sentAtLabel = createdAtMs !== undefined ? formatMessageDateTime(createdAtMs) : ''
+  const sentAtIso =
+    sentAtLabel && createdAtMs !== undefined ? new Date(createdAtMs).toISOString() : ''
+  const failureText =
+    copyState === 'failed' ? '复制失败' : noteState === 'failed' ? '保存失败' : ''
+  const liveText =
+    copyState === 'copied' ? '已复制' : noteState === 'saved' ? '已存入记事本' : ''
 
   return (
     <div className={`message-row ${role}`}>
-      <div className="message-bubble">
-        <div className="message-role">{isAssistant ? 'AI · ASSISTANT' : '我 · USER'}</div>
-        <div className="message-content">
-          {isAssistant ? (
-            content.trim() ? (
-              <div
-                className="message-md markdown-body md-chat"
-                onClick={(event) => {
-                  const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[data-app-target]') : null
-                  const href = button?.dataset.appTarget
-                  if (!href) return
-                  event.preventDefault()
-                  setOpenError('')
-                  button.disabled = true
-                  void openAppReference(href).catch((error: unknown) => {
-                    setOpenError(error instanceof Error ? error.message : '无法打开结果，请重新查询')
-                  }).finally(() => { button.disabled = false })
-                }}
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(content, true) }}
-              />
+      <div className="chat-message-stack">
+        <div className="message-bubble">
+          <div className="message-role">{isAssistant ? 'AI · ASSISTANT' : '我 · USER'}</div>
+          <div className="message-content">
+            {isAssistant ? (
+              content.trim() ? (
+                <div
+                  className="message-md markdown-body md-chat"
+                  onClick={(event) => {
+                    const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[data-app-target]') : null
+                    const href = button?.dataset.appTarget
+                    if (!href) return
+                    event.preventDefault()
+                    setOpenError('')
+                    button.disabled = true
+                    void openAppReference(href).catch((error: unknown) => {
+                      setOpenError(error instanceof Error ? error.message : '无法打开结果，请重新查询')
+                    }).finally(() => { button.disabled = false })
+                  }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(content, true) }}
+                />
+              ) : (
+                streaming && (placeholder ?? '正在连接模型…')
+              )
             ) : (
-              streaming && (placeholder ?? '正在连接模型…')
-            )
-          ) : (
-            content
-          )}
-          {streaming ? (
-            <span className="typing-dots" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          ) : null}
+              content
+            )}
+            {streaming ? (
+              <span className="typing-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            ) : null}
+          </div>
+          {openError ? <p className="status-banner" role="alert">{openError}</p> : null}
         </div>
-        {openError ? <p className="status-banner" role="alert">{openError}</p> : null}
-        {createdAtMs !== undefined ? (
-          <div className="message-foot">
-            <span className="message-time">{formatTime(createdAtMs)}</span>
-            <button
-              type="button"
-              className="message-copy"
-              onClick={() => void copy()}
-              aria-label="复制消息"
-            >
-              {copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制'}
-            </button>
-            <button
-              type="button"
-              className="message-copy"
-              onClick={saveAsNote}
-              aria-label="存入记事本"
-            >
-              {noteState === 'saved'
-                ? '已存入记事本'
-                : noteState === 'failed'
-                  ? '保存失败'
-                  : '存入记事本'}
-            </button>
+        {sentAtLabel ? (
+          <div className="chat-message-meta">
+            <time className="message-time" dateTime={sentAtIso}>
+              {sentAtLabel}
+            </time>
+            <div className="chat-message-meta-actions">
+              <button
+                type="button"
+                className="chat-message-icon-btn"
+                onClick={() => void copy()}
+                aria-label="复制消息"
+                title={copyState === 'copied' ? '已复制' : '复制消息'}
+              >
+                {copyState === 'copied' ? <CheckIcon /> : <CopyIcon />}
+              </button>
+              <button
+                type="button"
+                className="chat-message-icon-btn"
+                onClick={saveAsNote}
+                aria-label="存入记事本"
+                title={noteState === 'saved' ? '已存入记事本' : '存入记事本'}
+              >
+                {noteState === 'saved' ? <CheckIcon /> : <NoteIcon />}
+              </button>
+            </div>
+            <span className="chat-message-meta-status" role="status" aria-live="polite">
+              {failureText}
+            </span>
+            <span className="sr-only" role="status" aria-live="polite">
+              {liveText}
+            </span>
           </div>
         ) : null}
       </div>
     </div>
   )
-}
-
-/** 消息时间戳：只到分钟 */
-function formatTime(createdAtMs: number): string {
-  const date = new Date(createdAtMs)
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function Composer(): JSX.Element {
